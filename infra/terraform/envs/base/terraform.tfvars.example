@@ -1,0 +1,40 @@
+# envs/base/terraform.tfvars.example
+#
+# Copy this file to terraform.tfvars and fill in your own values:
+#   cp terraform.tfvars.example terraform.tfvars
+#
+# terraform.tfvars is gitignored (see repo .gitignore). NEVER commit a real
+# account id, email, or role ARN. None of the values below are secrets; they are
+# placeholders that show the expected shape.
+
+# Project name. Leave as-is unless you are renaming the platform.
+project = "harbormaster"
+
+# Environment for this root. The base root is always "base".
+environment = "base"
+
+# Region for all resources. Budgets and Cost Explorer report in us-east-1
+# regardless; keeping everything in us-east-1 is simplest for Phase 0.
+aws_region = "us-east-1"
+
+# Email subscribed to budget and cost-anomaly alerts. AWS emails a one-time
+# confirmation link to this address; click it or you will receive no alerts.
+alert_email = "you@example.com"
+
+# Name (not ARN) of an EXISTING IAM role that your platform/CI assumes to create
+# spend-incurring resources. On a $75 breach the budget action attaches a deny
+# policy to THIS role. Do not point it at your break-glass admin identity.
+# Example: "harbormaster-platform" or "github-actions-deployer".
+platform_role_name = "REPLACE_WITH_YOUR_PLATFORM_ROLE_NAME"
+
+# Create the single NAT gateway. Default false avoids the hourly NAT charge.
+# Only set true when a private-subnet workload needs general internet egress.
+enable_nat = false
+
+# Create the EventBridge schedule that runs the teardown Lambda nightly.
+enable_nightly_teardown = true
+
+# Keep the teardown Lambda in dry-run (logs only, no destructive action) until
+# you have read its logs and trust what it would stop/terminate. Set false to
+# let it actually stop streaming/EMR/MSK workloads overnight.
+teardown_dry_run = true

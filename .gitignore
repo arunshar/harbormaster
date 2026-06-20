@@ -1,0 +1,64 @@
+# ---- Terraform ----
+.terraform/
+.terraform.lock.hcl.bak
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+tfplan
+*.tfplan
+
+# Ignore all tfvars (may contain account ids, emails), but keep the examples.
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+ENV/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# ---- Environment / secrets ----
+.env
+.env.*
+!.env.example
+secrets.*
+credentials.*
+*.pem
+*.key
+
+# ---- OS / editor ----
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# raw internship analysis kept local-only (HONESTY.md carries the polished version)
+docs/internship/

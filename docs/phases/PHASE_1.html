@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Harbormaster Phase 1: Vertical Slice (Execution Plan)</title>
+<style>
+  :root{
+    --accent:#0891b2; --accent-dk:#0e7490; --accent-soft:rgba(8,145,178,.12);
+    --bg:#ffffff; --bg-2:#f5f8fa; --bg-3:#eaf0f3; --fg:#16202a; --fg-2:#48586a;
+    --line:#dde6ec; --card:#ffffff; --code:#eef3f6; --ok:#0a8a4a; --warn:#b9822a; --bad:#d0494a;
+    --shadow:0 1px 3px rgba(0,0,0,.07),0 6px 24px rgba(0,0,0,.05);
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#0f1620; --bg-2:#15202b; --bg-3:#1d2a36; --fg:#e6edf3; --fg-2:#9fb1c1;
+      --line:#26333f; --card:#15202b; --code:#0b1219; --ok:#3fce8e; --warn:#e0a83e; --bad:#e56767;
+      --shadow:0 1px 3px rgba(0,0,0,.4),0 8px 30px rgba(0,0,0,.35);
+    }
+  }
+  html[data-theme="light"]{ --bg:#fff; --bg-2:#f5f8fa; --bg-3:#eaf0f3; --fg:#16202a; --fg-2:#48586a; --line:#dde6ec; --card:#fff; --code:#eef3f6; }
+  html[data-theme="dark"]{ --bg:#0f1620; --bg-2:#15202b; --bg-3:#1d2a36; --fg:#e6edf3; --fg-2:#9fb1c1; --line:#26333f; --card:#15202b; --code:#0b1219; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+  a{color:var(--accent-dk);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .layout{display:flex;min-height:100vh}
+  nav.side{width:300px;flex:0 0 300px;background:var(--bg-2);border-right:1px solid var(--line);padding:22px 16px 60px;position:sticky;top:0;height:100vh;overflow-y:auto}
+  .brand{display:flex;align-items:center;gap:10px;margin:0 6px 16px}
+  .dot{width:11px;height:11px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
+  .brand b{font-size:14px;letter-spacing:.2px}
+  .brand span{display:block;font-size:11.5px;color:var(--fg-2);font-weight:400}
+  .navgroup{margin:14px 6px 4px;font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--fg-2);font-weight:700}
+  nav.side a.lnk{display:flex;gap:9px;align-items:baseline;padding:7px 10px;border-radius:8px;color:var(--fg);font-size:14px;cursor:pointer;line-height:1.35}
+  nav.side a.lnk .n{color:var(--fg-2);font-size:12px;min-width:26px}
+  nav.side a.lnk:hover{background:var(--bg-3);text-decoration:none}
+  nav.side a.lnk.active{background:var(--accent-soft);color:var(--accent-dk);font-weight:600}
+  main{flex:1;min-width:0;max-width:900px;margin:0 auto;padding:36px 40px 120px}
+  .topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:8px}
+  .crumbs{font-size:12.5px;color:var(--fg-2)}
+  .tools{display:flex;gap:8px}
+  .btn{border:1px solid var(--line);background:var(--card);color:var(--fg-2);border-radius:8px;padding:6px 11px;font-size:12.5px;cursor:pointer}
+  .btn:hover{border-color:var(--accent);color:var(--accent-dk)}
+  .page{display:none;animation:fade .25s ease}
+  .page.active{display:block}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  h1{font-size:26px;line-height:1.2;margin:6px 0 4px}
+  h2{font-size:18px;margin:26px 0 8px}
+  h3{font-size:14px;margin:18px 0 6px;color:var(--accent-dk);text-transform:uppercase;letter-spacing:.05em}
+  .lede{font-size:16px;color:var(--fg-2);margin:8px 0 18px}
+  ul,ol{padding-left:22px}
+  li{margin:5px 0}
+  code{background:var(--code);padding:1.5px 6px;border-radius:5px;font:13px/1.5 "SF Mono",ui-monospace,Menlo,Consolas,monospace}
+  pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto;border:1px solid var(--line)}
+  pre code{background:none;padding:0;font-size:12.5px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:14px 0;box-shadow:var(--shadow)}
+  .callout{border-left:3px solid var(--accent);background:var(--accent-soft);border-radius:0 10px 10px 0;padding:12px 16px;margin:14px 0}
+  .warn{border-left:3px solid var(--warn);background:rgba(185,130,42,.12);border-radius:0 10px 10px 0;padding:12px 16px;margin:14px 0}
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:13.5px}
+  th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+  th{background:var(--bg-3);font-weight:600}
+  .term{border-bottom:1.5px dotted var(--accent-dk);cursor:help}
+  .gate{font-size:12px;font-weight:700;padding:2px 9px;border-radius:20px;background:var(--accent-soft);color:var(--accent-dk);letter-spacing:.03em}
+  .pill{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;margin-right:6px}
+  .pill.u{background:rgba(8,145,178,.16);color:var(--accent-dk)}
+  .pill.s{background:rgba(185,130,42,.16);color:var(--warn)}
+  .pill.c{background:rgba(10,138,74,.16);color:var(--ok)}
+  .kbd{font:11px ui-monospace,monospace;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 6px;background:var(--bg-3)}
+  .pager{display:flex;justify-content:space-between;margin-top:36px;padding-top:18px;border-top:1px solid var(--line);font-size:13.5px}
+  .pager a{cursor:pointer}
+  .pop{position:absolute;z-index:50;max-width:320px;background:var(--card);border:1px solid var(--accent);border-radius:10px;padding:11px 13px;box-shadow:var(--shadow);font-size:13px;color:var(--fg);display:none}
+  .pop b{color:var(--accent-dk)}
+  .statusbar{display:inline-block;font-size:12.5px;font-weight:600;padding:4px 12px;border-radius:8px;background:rgba(185,130,42,.14);color:var(--warn);border:1px solid rgba(185,130,42,.3)}
+  footer{color:var(--fg-2);font-size:12px;margin-top:28px}
+  @media print{nav.side,.tools,.pager{display:none}.page{display:block!important}main{max-width:none}}
+  @media(max-width:760px){nav.side{display:none}main{padding:20px}}
+</style>
+</head>
+<body>
+<div class="layout">
+  <nav class="side" id="side">
+    <div class="brand"><span class="dot"></span><div><b>Harbormaster Phase 1</b><span>Vertical slice, execution plan</span></div></div>
+    <div class="navgroup">Start</div>
+    <a class="lnk" data-p="overview"><span class="n"></span><span>Overview &amp; status</span></a>
+    <a class="lnk" data-p="prereq"><span class="n"></span><span>AWS setup (prerequisite)</span></a>
+    <a class="lnk" data-p="gatemodel"><span class="n"></span><span>The gate model</span></a>
+    <div class="navgroup">Sub-phases</div>
+    <a class="lnk" data-p="p10"><span class="n">1.0</span><span>Pre-flight</span></a>
+    <a class="lnk" data-p="p11"><span class="n">1.1</span><span>Service + CI scaffold</span></a>
+    <a class="lnk" data-p="p12"><span class="n">1.2</span><span>GeoTrace serving adaptation</span></a>
+    <a class="lnk" data-p="p13"><span class="n">1.3</span><span>Terraform modules</span></a>
+    <a class="lnk" data-p="p14"><span class="n">1.4</span><span>Replay ingestor</span></a>
+    <a class="lnk" data-p="p15"><span class="n">1.5</span><span>Flink feature job</span></a>
+    <a class="lnk" data-p="p16"><span class="n">1.6</span><span>Streamlit HITL console</span></a>
+    <a class="lnk" data-p="p17"><span class="n">1.7</span><span>Observability + SLOs</span></a>
+    <a class="lnk" data-p="p18"><span class="n">1.8</span><span>E2E acceptance gate</span></a>
+    <a class="lnk" data-p="p19"><span class="n">1.9</span><span>Live AIS + teardown</span></a>
+    <div class="navgroup">Reference</div>
+    <a class="lnk" data-p="cost"><span class="n"></span><span>Cost envelope</span></a>
+    <a class="lnk" data-p="reuse"><span class="n"></span><span>Reuse anchors</span></a>
+    <a class="lnk" data-p="glossary"><span class="n"></span><span>Glossary</span></a>
+  </nav>
+
+  <main>
+    <div class="topbar">
+      <div class="crumbs" id="crumbs">Start / Overview</div>
+      <div class="tools">
+        <button class="btn" id="themebtn">Theme</button>
+        <button class="btn" onclick="window.print()">Print</button>
+      </div>
+    </div>
+
+    <!-- overview -->
+    <section class="page" id="overview">
+      <h1>Phase 1: Vertical slice</h1>
+      <p class="lede">A genuinely production-grade end-to-end slice: recorded AIS replay to <span class="term" data-term="kinesis">Kinesis</span>, <span class="term" data-term="flink">Managed Flink</span> features with the <span class="term" data-term="pphys">P_phys</span> gate, an async score on the <span class="term" data-term="fargate">ECS Fargate</span> GeoTrace front door, anomalies to the <span class="term" data-term="hitl">Streamlit HITL</span> console, every event landing in S3/<span class="term" data-term="iceberg">Iceberg</span>, with full observability and the $75 guardrails honored.</p>
+
+      <p><span class="statusbar">Status: APPROVED 2026-06-19, NOT STARTED</span></p>
+      <div class="warn">Do not begin execution until (a) the Ray/rate submission is done, (b) the AWS setup guide is complete, and (c) the internship-contents reveal is folded in or explicitly deferred. Governance: this doc is the working plan for Phase 1; any change updates this file AND the master plan, and is re-confirmed before executing. No scope drift mid-phase.</div>
+
+      <h2>Decisions locked for Phase 1</h2>
+      <table>
+        <tr><th>Decision</th><th>Choice and why</th></tr>
+        <tr><td>Serving compute</td><td><span class="term" data-term="fargate">ECS Fargate</span> (GeoTrace container as-is, scale to zero, ~$5/mo). <span class="term" data-term="eks">EKS</span> deferred to Phase 5: the control plane alone is ~$73/mo and would eat the whole $75 cap.</td></tr>
+        <tr><td>Region</td><td>us-east-1 (all Terraform defaults, Cost Explorer).</td></tr>
+        <tr><td>AIS source</td><td>Replay-first (recorded <span class="term" data-term="marinecadastre">MarineCadastre</span> fixture in S3); live <span class="term" data-term="aisstream">AISStream.io</span> behind a flag at 1.9.</td></tr>
+        <tr><td>Live-scoring path</td><td>Strip GeoTrace's LLM planner: a deterministic <span class="term" data-term="heuristic">HeuristicPlanner</span> + a new <code>POST /v1/score-ais</code> run the deterministic agents (<span class="term" data-term="stagd">STAGD</span>/AGM, <span class="term" data-term="tgard">TGARD</span>, <span class="term" data-term="skbm">S-KBM</span>) with zero LLM cost.</td></tr>
+      </table>
+
+      <h2>How to use this</h2>
+      <ul>
+        <li>Navigate with the sidebar, or press <span class="kbd">&darr;</span> / <span class="kbd">&uarr;</span> (also <span class="kbd">j</span> / <span class="kbd">k</span>).</li>
+        <li>Click any <span class="term" data-term="checksum">dotted term</span> for a definition. The full <a data-jump="glossary">glossary</a> is the last page.</li>
+        <li>Each sub-phase is a gate: it lists the <span class="pill u">UNIT</span> tests, the <span class="pill s">SMOKE</span> test, and the <span class="pill c">CHECKSUM</span> that must pass before the next sub-phase.</li>
+      </ul>
+    </section>
+
+    <!-- prereq -->
+    <section class="page" id="prereq">
+      <h1>AWS setup (one-time prerequisite)</h1>
+      <p class="lede">Complete before sub-phase 1.0. Region us-east-1. Guardrails before any spend.</p>
+      <ol>
+        <li><b>Account hygiene:</b> enable MFA on the root user, then stop using root. Create an admin via IAM Identity Center (SSO) or an IAM admin user.</li>
+        <li><b>CLI:</b> install AWS CLI v2; configure an SSO profile or access keys; <code>aws sts get-caller-identity</code> must succeed in us-east-1.</li>
+        <li><b>Platform role:</b> create the IAM role the finops <span class="term" data-term="budgetaction">budget action</span> attaches the deny policy to and that Terraform/services assume (e.g. <code>harbormaster-platform</code>). Record it as <code>platform_role_name</code> in terraform.tfvars.</li>
+        <li><b>Billing:</b> enable <span class="term" data-term="costexplorer">Cost Explorer</span> (~24h to populate); confirm budget-action and cost-anomaly permissions.</li>
+        <li><b>State bucket:</b> manually create a dedicated, versioned, encrypted S3 bucket for Terraform state (NOT the data lake).</li>
+        <li><b>Phase 0 apply:</b> <code>cd infra/terraform/envs/base; cp terraform.tfvars.example terraform.tfvars</code>; set project, aws_region=us-east-1, platform_role_name, alert_email; <code>make fmt validate plan apply</code>. Confirm budgets, the $75 IAM-deny action, the cost-anomaly monitor, and the <span class="term" data-term="teardown">teardown Lambda</span>.</li>
+        <li><b>Backend migration:</b> enable the S3 backend in backend.tf with the state bucket + the tf_state_lock_table output; <code>terraform init -migrate-state</code>.</li>
+        <li><b>Guardrail proof:</b> simulate a small over-spend and confirm the IAM-deny action blocks new resource creation; run the teardown Lambda (DRY_RUN=true) and confirm the SNS cost summary.</li>
+      </ol>
+      <div class="callout"><b>Local prerequisites:</b> terraform &gt;= 1.6, AWS CLI v2, docker, jq, python 3.11 for the container build; kubectl + helm later (Phase 5).</div>
+    </section>
+
+    <!-- gatemodel -->
+    <section class="page" id="gatemodel">
+      <h1>The gate model</h1>
+      <p class="lede">Every sub-phase has the same shape: a deliverable, then three verification layers. Nothing proceeds past a red gate.</p>
+      <div class="card">
+        <p><span class="pill u">UNIT</span> Fast, isolated tests of the new logic (no AWS). Run in CI on every commit.</p>
+        <p><span class="pill s">SMOKE</span> A minimal real run of the component (a container, a deployed task, a single request) to prove it is wired and alive.</p>
+        <p><span class="pill c">CHECKSUM</span> A specific, falsifiable assertion that the sub-phase actually did its job (a golden value, a reconciled count, a tag check). This is the gate.</p>
+      </div>
+      <p>Sub-phase <b>1.8</b> is the phase gate: a scripted end-to-end test that must be green to declare Phase 1 done. Sub-phases are sequenced so each one's checksum de-risks the next.</p>
+      <div class="callout">This mirrors the testing pyramid: many cheap unit tests, fewer smoke tests, one end-to-end acceptance test. The checksum is what turns "it ran" into "it is correct."</div>
+    </section>
+
+    <!-- 1.0 -->
+    <section class="page" id="p10">
+      <h1>1.0 Pre-flight <span class="gate">gate G0</span></h1>
+      <h3>Deliverable</h3>
+      <p>AWS setup guide complete; Phase 0 applied; backend migrated; platform role present.</p>
+      <h3>Checksum</h3>
+      <ul>
+        <li><span class="pill c">CHECKSUM</span> <code>aws sts get-caller-identity</code> ok in us-east-1.</li>
+        <li><span class="pill c">CHECKSUM</span> <code>terraform -chdir=envs/base plan</code> shows no drift.</li>
+        <li><span class="pill c">CHECKSUM</span> the $75 budget action and the teardown Lambda exist; <span class="term" data-term="costexplorer">Cost Explorer</span> populated.</li>
+      </ul>
+    </section>
+
+    <!-- 1.1 -->
+    <section class="page" id="p11">
+      <h1>1.1 Service + CI scaffold <span class="gate">gate G1</span></h1>
+      <h3>Deliverable</h3>
+      <ul>
+        <li>A Python 3.11 service project (pyproject, ruff, pytest).</li>
+        <li>A recorded <span class="term" data-term="marinecadastre">MarineCadastre</span> fixture <code>streaming/fixtures/ais_recorded.jsonl</code> (a few thousand events over ~6h, with &gt;=1 known implausible jump and &gt;=1 known multi-hour AIS gap) plus a sidecar <code>expectations.json</code> naming the known-anomaly <span class="term" data-term="mmsi">MMSIs</span> and timestamps.</li>
+        <li>GitHub Actions CI (lint + unit + container build, no deploy).</li>
+      </ul>
+      <h3>Gate</h3>
+      <ul>
+        <li><span class="pill u">UNIT</span> the fixture loader parses and schema-validates every record.</li>
+        <li><span class="pill s">SMOKE</span> CI green.</li>
+        <li><span class="pill c">CHECKSUM</span> fixture committed with a recorded SHA256 and expectations.json.</li>
+      </ul>
+    </section>
+
+    <!-- 1.2 -->
+    <section class="page" id="p12">
+      <h1>1.2 GeoTrace serving adaptation <span class="gate">gate G2</span></h1>
+      <h3>Deliverable (reuse geotrace-agent)</h3>
+      <ul>
+        <li>Vendor the deterministic agents + prism kernel.</li>
+        <li>Add <code>app/agents/heuristic_planner.py</code> (<span class="term" data-term="heuristic">deterministic routing</span> by history length, no LLM).</li>
+        <li>Add <code>AisScoreIn</code> + <code>POST /v1/score-ais</code>; add <code>orchestrator.run_plan(plan)</code> that skips the planner.</li>
+        <li>Implement the real Postgres <span class="term" data-term="hitl">HITL</span> backend (replace the in-memory <code>_mem</code> stub in observability/feedback.py): table (id, trace_id, mmsi, ts, score, reasons jsonb, confidence, label, reviewer, created_at).</li>
+        <li>Keep <code>/healthz</code> + Prometheus metrics mirroring MIRROR serving/metrics.py.</li>
+      </ul>
+      <h3>Gate</h3>
+      <ul>
+        <li><span class="pill u">UNIT</span> HeuristicPlanner routing for history len 0/1/3+; <code>/v1/score-ais</code> happy path returns score + reasons + hitl_flag; the <span class="term" data-term="skbm">S-KBM</span> Validator rejects an impossible region (422); HITL enqueue writes a row; confidence &lt; 0.7 sets hitl_required.</li>
+        <li><span class="pill s">SMOKE</span> docker build then run; <code>curl /healthz</code> == ok; <code>POST /v1/score-ais</code> on one fixture event returns a score in &lt; 200 ms.</li>
+        <li><span class="pill c">CHECKSUM</span> (<span class="term" data-term="golden">golden</span>) the documented known-anomaly event yields hitl_required (or an anomaly reason) matching expectations.json within tolerance; a documented normal event yields none.</li>
+      </ul>
+      <h3>Corridor add-on (internship intake)</h3>
+      <p>Also add a <span class="term" data-term="cdd">CorridorDeviationDetector</span> as a third deterministic agent, using a static <span class="term" data-term="corridor">corridor graph</span> artifact (a frozen <span class="term" data-term="gtra">GTRA</span>-style graph for the demo regions, built offline from NOAA ENC charts + a one-time MarineCadastre extract, loaded read-only at startup from the S3 model bucket). It runs the GTRA association test (perpendicular distance of each AIS point to the nearest sea-lane edge) and emits two reasons into the same fusion + HITL path: <code>off_corridor</code> (deviation from the nearest lane) and <code>unexpected_node</code> (a course change far from any <span class="term" data-term="waypoint">waypoint</span> node). Inline CPU, no new always-on cost.</p>
+      <ul>
+        <li><span class="pill u">UNIT</span> the perpendicular-distance association flags an off-corridor point and passes an on-corridor point.</li>
+        <li><span class="pill c">CHECKSUM</span> a known off-corridor fixture event (added to expectations.json) is flagged <code>off_corridor</code>.</li>
+      </ul>
+      <div class="callout">This is the honest re-use of Arun's real ESRI waypoint work as a personal Harbormaster component. The full GTRA graph, bathymetry, and weather layers are in <code>docs/corridor-preprocessing.html</code>.</div>
+    </section>
+
+    <!-- 1.3 -->
+    <section class="page" id="p13">
+      <h1>1.3 Terraform Phase 1 modules <span class="gate">gate G3</span></h1>
+      <h3>Deliverable (extend Phase 0 conventions)</h3>
+      <ul>
+        <li><code>modules/kinesis</code> (1-shard <span class="term" data-term="kinesis">stream</span> ais-raw).</li>
+        <li><code>modules/firehose</code> (<span class="term" data-term="firehose">Firehose</span> Kinesis -&gt; S3 <span class="term" data-term="iceberg">Iceberg</span> ais_raw, partitioned by days(time_stamp), mmsi).</li>
+        <li><code>modules/rds</code> (Postgres 16 + PostGIS, db.t4g.micro free tier, private subnets, security group).</li>
+        <li><code>modules/ecs_cluster</code> (Fargate + Fargate Spot), <code>modules/ecs_serving</code> (serving task def + service behind an <span class="term" data-term="alb">ALB</span> + target-tracking autoscale 1-&gt;3), <code>modules/ecs_ingestor</code> (replay task), <code>modules/kda_flink</code> (<span class="term" data-term="flink">Managed Apache Flink</span> app + IAM: read Kinesis, write DynamoDB + S3, call the ALB).</li>
+        <li>Reuse Phase 0 outputs: vpc_id, private_subnet_ids, lake_bucket_name, feast_online_table_name (the <span class="term" data-term="dynamodb">DynamoDB</span> features table), budget_alerts_sns_topic_arn. Wire into envs/base + outputs + tfvars.example.</li>
+      </ul>
+      <h3>Gate</h3>
+      <ul>
+        <li><span class="pill u">UNIT</span> <code>terraform fmt -check</code>, <code>validate</code>, <code>plan</code> clean.</li>
+        <li><span class="pill s">SMOKE</span> a successful apply in the <span class="term" data-term="demoenv">demo env</span>, then destroy.</li>
+        <li><span class="pill c">CHECKSUM</span> plan shows the expected resource count, no replacement of Phase 0 resources, Project/Environment tags on every new resource.</li>
+      </ul>
+    </section>
+
+    <!-- 1.4 -->
+    <section class="page" id="p14">
+      <h1>1.4 Replay ingestor <span class="gate">gate G4</span></h1>
+      <h3>Deliverable</h3>
+      <p><code>streaming/ingestor</code>: a Fargate task that reads the fixture from S3 and PutRecords (batched, partitionKey=MMSI, ~10x real time) to Kinesis. Dual-mode via env: REPLAY default; AISStream websocket with exponential backoff behind <code>AIS_LIVE=true</code> (wired at 1.9).</p>
+      <h3>Gate</h3>
+      <ul>
+        <li><span class="pill u">UNIT</span> the replay reader yields records in time order; kinesis batching respects the 500-record / 5 MB limits; the backoff schedule.</li>
+        <li><span class="pill s">SMOKE</span> run the ingestor against demo Kinesis; GetRecords returns the fixture count.</li>
+        <li><span class="pill c">CHECKSUM</span> records-in == fixture line count; no single hot shard in the fixture.</li>
+      </ul>
+    </section>
+
+    <!-- 1.5 -->
+    <section class="page" id="p15">
+      <h1>1.5 Flink feature job <span class="gate">gate G5</span></h1>
+      <h3>Deliverable</h3>
+      <p><code>streaming/flink</code>: source Kinesis ais-raw, keyBy(MMSI), 1-min tumbling window, compute features (sog, cog, heading, gap_since_last_s, distance_m, v_required_mps, <span class="term" data-term="pphys">p_physical</span> = min(1, v_max_mps / max(v_required, eps)), v_max from GT_VESSEL_V_MAX_KTS = 25 kts = 12.86 m/s), apply the P_phys cheap-gate (drop / low-priority below 0.3), sink features to the DynamoDB features table, async-IO <code>POST /v1/score-ais</code> to the serving ALB for events passing the gate, and Firehose-tee the enriched raw event to S3/Iceberg.</p>
+      <h3>Gate</h3>
+      <ul>
+        <li><span class="pill u">UNIT</span> (feature funcs as a local library) haversine, v_required, the p_physical formula equals the config constant exactly, window aggregation.</li>
+        <li><span class="pill s">SMOKE</span> deploy, push the fixture through, confirm features in DynamoDB, a returned score, events in Iceberg.</li>
+        <li><span class="pill c">CHECKSUM</span> for the known-anomaly event, p_physical &lt; gate and serving flags it; Iceberg row count == events passing the gate.</li>
+      </ul>
+    </section>
+
+    <!-- 1.6 -->
+    <section class="page" id="p16">
+      <h1>1.6 Streamlit HITL console <span class="gate">gate G6</span></h1>
+      <h3>Deliverable</h3>
+      <p><code>serving/frontend</code> (reuse the GeoTrace Streamlit): read the Postgres <span class="term" data-term="hitl">HITL</span> queue, show enqueued anomalous/ambiguous events on a map with reasons, let a reviewer label {correct, incorrect, ambiguous} via <code>POST /v1/feedback</code>, write the verdict to Postgres.</p>
+      <h3>Gate</h3>
+      <ul>
+        <li><span class="pill s">SMOKE</span> open the console, see the known-anomaly event enqueued, label it, confirm the DB row updates.</li>
+        <li><span class="pill c">CHECKSUM</span> a labeled verdict persists and is queryable (the seed of the Phase 4 RL-flywheel data).</li>
+      </ul>
+    </section>
+
+    <!-- 1.7 -->
+    <section class="page" id="p17">
+      <h1>1.7 Observability + SLOs <span class="gate">gate G7</span></h1>
+      <h3>Deliverable</h3>
+      <ul>
+        <li>OTel traces ingestor -&gt; Kinesis -&gt; Flink -&gt; serving exported to AWS X-Ray (or CloudWatch).</li>
+        <li>Prometheus metrics scraped or shipped via CloudWatch EMF; extend cost_tracker to a cost-per-inference number.</li>
+        <li>A Phase 1 dashboard (availability, p95 score latency, anomalies/min, events/min, $/inference).</li>
+        <li>Phase 1 SLOs: /score success 99.9% over the demo window; <span class="term" data-term="p95">p95</span> &lt; 300 ms kernel path; end-to-end replay-to-HITL p95 &lt; 10 s.</li>
+      </ul>
+      <h3>Gate</h3>
+      <ul>
+        <li><span class="pill s">SMOKE</span> one trace spans the whole pipeline; the dashboard populates; an injected error shows.</li>
+        <li><span class="pill c">CHECKSUM</span> the dashboard reports a real $/inference and a real p95.</li>
+      </ul>
+    </section>
+
+    <!-- 1.8 -->
+    <section class="page" id="p18">
+      <h1>1.8 End-to-end acceptance test <span class="gate">gate G8 (phase gate)</span></h1>
+      <h3>Deliverable</h3>
+      <p>A scripted e2e test (<code>tests/e2e/test_phase1.py</code> + a make target) that brings up the demo env (terraform apply + ecs deploy + flink start), runs the replay ingestor over the fixture, then asserts:</p>
+      <ol>
+        <li>the documented known anomaly is scored and visible in the Streamlit HITL / anomaly output within the ~10 s p95 SLO;</li>
+        <li>every fixture event is in Iceberg and queryable via Athena (count reconciles with fixture minus gate-dropped);</li>
+        <li>cost_tracker shows a real $/inference;</li>
+        <li>no error-level logs;</li>
+        <li>the slice tears down clean (terraform destroy leaves only the base).</li>
+      </ol>
+      <h3>Gate</h3>
+      <ul>
+        <li><span class="pill c">CHECKSUM</span> known-anomaly MMSI present in output; Athena count reconciles; p95 within SLO; spend delta logged.</li>
+      </ul>
+      <div class="callout"><b>This gate must be green to declare Phase 1 done.</b></div>
+    </section>
+
+    <!-- 1.9 -->
+    <section class="page" id="p19">
+      <h1>1.9 Live AIS toggle + cost/teardown drill <span class="gate">gate G9</span></h1>
+      <h3>Deliverable</h3>
+      <ul>
+        <li>Enable <code>AIS_LIVE=true</code> to ingest from <span class="term" data-term="aisstream">AISStream.io</span> with reconnect/backoff (off by default; replay stays the test/CI path).</li>
+        <li>A FinOps reconciliation (month-to-date spend under budget, $/inference recorded).</li>
+        <li>A teardown drill (run the teardown Lambda DRY_RUN then wet; confirm <span class="term" data-term="scalezero">scale-to-zero</span> and base-only remains).</li>
+      </ul>
+      <h3>Gate</h3>
+      <ul>
+        <li><span class="pill c">CHECKSUM</span> live mode scores events end-to-end for a short window; spend &lt; the Phase 1 envelope; teardown verified.</li>
+      </ul>
+    </section>
+
+    <!-- cost -->
+    <section class="page" id="cost">
+      <h1>Cost envelope (us-east-1, $75 cap)</h1>
+      <table>
+        <tr><th>Item</th><th>Estimate</th></tr>
+        <tr><td>Kinesis 1 shard</td><td>~$11/mo</td></tr>
+        <tr><td>Firehose</td><td>~$3-5/mo</td></tr>
+        <tr><td>RDS t4g.micro</td><td>free tier ~$0 (else ~$12/mo)</td></tr>
+        <tr><td>DynamoDB on-demand</td><td>~$1-3/mo</td></tr>
+        <tr><td>S3 / Athena</td><td>~$2/mo</td></tr>
+        <tr><td>ECS Fargate serving</td><td>~$3-5/mo (scale-to-zero base + burst)</td></tr>
+        <tr><td>Managed Flink (KPUs during demos)</td><td>~$3-8/run</td></tr>
+        <tr><td>ALB</td><td>~$16/mo (always-on)</td></tr>
+      </table>
+      <div class="warn"><b>WATCH:</b> the <span class="term" data-term="alb">ALB</span> (~$16/mo always-on) and any always-on Flink are the two budget threats under a $75 cap. Run both in demo-mode by default, and consider exposing the service via API Gateway HTTP API or a public Fargate task instead of a standing ALB if the ALB cost bites.</div>
+      <p>Steady always-on target ~$30-40/mo; bursts ~$5/demo.</p>
+    </section>
+
+    <!-- reuse -->
+    <section class="page" id="reuse">
+      <h1>Reuse anchors (do not rebuild)</h1>
+      <ul>
+        <li>geotrace-agent <code>app/agents/{space_time_reasoner,gap_detector,rendezvous_finder,validator}.py</code>, <code>app/components/space_time_prism.py</code>, <code>app/main.py</code> routes, <code>app/models.py</code> (QueryOut), <code>app/config.py</code> (GT_VESSEL_V_MAX_KTS=25, GT_HITL_CONFIDENCE_THRESHOLD=0.7), <code>observability/{feedback.py,cost_tracker.py}</code>, <code>app/Dockerfile</code> (python:3.11-slim, port 8000, uvicorn).</li>
+        <li>MIRROR <code>serving/metrics.py</code> (Prometheus shape) and <code>serving/inference/app.py</code> (score request/response contract).</li>
+        <li>The Phase 0 Terraform module/output conventions (name_prefix, tags, outputs, the demo env pattern).</li>
+      </ul>
+      <footer>Phase 1 working doc. Twin of docs/phases/PHASE_1.md. Master plan: ~/.claude/plans/i-am-thinking-to-rustling-sifakis.md.</footer>
+    </section>
+
+    <!-- glossary -->
+    <section class="page" id="glossary">
+      <h1>Glossary</h1>
+      <p class="lede">The same definitions power the click-to-define popovers. Click any dotted term anywhere in the doc.</p>
+      <div id="glossarylist"></div>
+    </section>
+
+    <div class="pager">
+      <a id="prev">&larr; Prev</a>
+      <a id="next">Next &rarr;</a>
+    </div>
+  </main>
+</div>
+<div class="pop" id="pop"></div>
+
+<script>
+(function(){
+  "use strict";
+  var pages=["overview","prereq","gatemodel","p10","p11","p12","p13","p14","p15","p16","p17","p18","p19","cost","reuse","glossary"];
+  var titles={overview:"Start / Overview & status",prereq:"Start / AWS setup",gatemodel:"Start / The gate model",p10:"Sub-phases / 1.0 Pre-flight",p11:"Sub-phases / 1.1 Service + CI",p12:"Sub-phases / 1.2 GeoTrace adaptation",p13:"Sub-phases / 1.3 Terraform modules",p14:"Sub-phases / 1.4 Replay ingestor",p15:"Sub-phases / 1.5 Flink feature job",p16:"Sub-phases / 1.6 Streamlit HITL",p17:"Sub-phases / 1.7 Observability + SLOs",p18:"Sub-phases / 1.8 E2E acceptance",p19:"Sub-phases / 1.9 Live AIS + teardown",cost:"Reference / Cost envelope",reuse:"Reference / Reuse anchors",glossary:"Reference / Glossary"};
+  var GLOSSARY={
+    pphys:["P_phys (kinematic plausibility gate)","A cheap per-event physics score, min(1, v_max / v_required), where v_max is the vessel speed bound (25 kts = 12.86 m/s). Below ~0.3 the event is implausibly fast and is dropped or low-priority. Used in the stream as a load-shedding gate before the expensive scorer."],
+    skbm:["S-KBM validator","Single-axle Kinematic Bicycle Model gate. A hard physical-feasibility filter that vetoes any returned region requiring a speed no real vessel can achieve. Same physics used in serving and in the RL reward, so there is no train/serve objective skew."],
+    stagd:["STAGD / AGM","Space-Time Abnormal Gap Detection and the Abnormal Gap Measure: the dissertation kernel that scores an AIS gap (dark-vessel behavior) by how much of the reachable space-time prism is plausible. Deterministic, explainable, no training."],
+    tgard:["TGARD","Time-slicing Gap-Aware Rendezvous Detection: finds tight time windows where two tracks could have met by intersecting their space-time prisms slice by slice. DC-TGARD is the faster dual-convergence variant."],
+    heuristic:["HeuristicPlanner","A deterministic router that replaces GeoTrace's LLM planner on the live path: it spawns the right deterministic agents based on how much trajectory history an event has, with zero LLM cost and sub-second latency."],
+    hitl:["HITL (human in the loop)","Low-confidence or ambiguous events are enqueued (Postgres) for a human reviewer to label via the Streamlit console. Those verdicts are the seed of the Phase 4 RL retraining flywheel."],
+    fargate:["ECS Fargate","Serverless containers on AWS: you run a container without managing servers or a Kubernetes control plane, and it scales to zero. Chosen for Phase 1 (~$5/mo) over EKS, whose control plane alone is ~$73/mo."],
+    eks:["EKS","Amazon's managed Kubernetes. Powerful and the eventual home for multi-tenant serving + KEDA in Phase 5, but the control plane costs ~$73/mo, which is why Phase 1 uses Fargate instead."],
+    kinesis:["Kinesis Data Streams","AWS's serverless streaming broker. One shard (~$11/mo, ~1 MB/s, 1000 rec/s) carries the AIS feed; it scales to near-zero cost at idle. Kafka is reserved for the Phase 2 CDC path."],
+    flink:["Managed Apache Flink","AWS's managed stream processor (formerly Kinesis Data Analytics). True event-time, per-key (per-MMSI) state, async-IO calls to the scorer, and first-class backpressure. EMR Spark is used only for one-time batch backfill."],
+    firehose:["Kinesis Data Firehose","A managed delivery stream that batches records from Kinesis and writes them to S3, here as Iceberg-formatted Parquet, partitioned by day and MMSI."],
+    iceberg:["Apache Iceberg","An open table format on top of S3 with schema evolution, hidden partitioning, and time-travel snapshots. AWS-native (Glue, Athena, Firehose, EMR all read/write it), so it is the default lake format here."],
+    dynamodb:["DynamoDB","AWS's serverless key-value store. On-demand billing means it costs almost nothing at idle; used as the Feast online feature store for single-digit-ms reads on the serving path."],
+    alb:["ALB (Application Load Balancer)","The HTTP entry point in front of the Fargate serving task. Costs ~$16/mo always-on, which is significant under a $75 cap, so it runs in demo-mode by default with API Gateway HTTP API as a cheaper fallback."],
+    marinecadastre:["MarineCadastre","The public U.S. AIS archive (BOEM): ~150K ships, ~600 GB, minute-level, US waters 2009-2017. The source of the recorded replay fixture and the Phase 3 historical backfill."],
+    aisstream:["AISStream.io","A free live global AIS websocket feed. Wired behind a flag (AIS_LIVE) at 1.9; replay stays the test and CI path so nothing depends on a flaky third party."],
+    mmsi:["MMSI","Maritime Mobile Service Identity, the 9-digit vessel identifier in every AIS message. Used as the stream partition key and the per-vessel windowing key."],
+    p95:["p95 latency / SLO","The 95th-percentile latency. A service level objective is a target on it (here p95 < 300 ms on the kernel path, < 10 s end-to-end), with an error budget that drives rollback decisions."],
+    checksum:["Checksum (gate)","A specific, falsifiable assertion that a sub-phase did its job: a golden value, a reconciled count, a tag check. It is what turns 'it ran' into 'it is correct', and it gates progress to the next sub-phase."],
+    golden:["Golden test","A test that pins the expected output for a known input (here the documented anomaly fixture event) and fails if the output drifts. The Phase 1 golden checks the known-anomaly event is flagged and a normal event is not."],
+    demoenv:["Demo env","The ephemeral Terraform environment (envs/demo): apply, run a demo, destroy. Streaming and the ALB run here in bursts to keep steady-state cost near zero."],
+    scalezero:["Scale to zero","Letting compute drop to no running tasks (and near-zero cost) when idle, then spinning back up on demand. Fargate and DynamoDB/Kinesis on-demand make this the default cost posture."],
+    budgetaction:["Budget action","An AWS Budgets feature that, on a cost breach, automatically attaches an IAM deny policy to the platform role, actually preventing new spend rather than just alerting. The $75 hard cap is enforced this way."],
+    costexplorer:["Cost Explorer","The AWS billing analytics service the budgets and the teardown Lambda read for month-to-date spend. It takes ~24h to populate after first enabling."],
+    teardown:["Teardown Lambda","A nightly Lambda that stops the Flink app, terminates orphaned EMR/MSK, drains tagged ASGs, and posts an SNS cost summary, so a forgotten resource cannot quietly run up the bill."],
+    gtra:["GTRA (Graph-based Traffic Representation and Association)","From Singh et al. 2022: build a graph from AIS where nodes are clusters of waypoints (course-change points, via RDP + DBSCAN/HDBSCAN) and edges are sea-lanes, then associate new AIS to the graph. Harbormaster re-implements the corridor-graph half on public data."],
+    corridor:["Corridor graph","A GTRA-style graph of the sea: waypoint nodes (where ships change course) and sea-lane edges (route segments). Harbormaster builds it from AIS (RDP + HDBSCAN) and from NOAA ENC nautical-chart shipping lanes, and uses it as a prior for anomaly scoring and routing."],
+    waypoint:["Waypoint","A geographic point where a vessel maneuvers or changes course. Detected from AIS turning points (RDP line simplification + HDBSCAN clustering, mean center) and from NOAA chart shipping-lane bends. The core of Arun's real ESRI internship deliverable."],
+    cdd:["CorridorDeviationDetector","A deterministic serving agent that scores each AIS point by perpendicular distance to the nearest sea-lane edge, emitting off_corridor (off the lane) and unexpected_node (a course change far from any waypoint) reasons alongside STAGD, TGARD, and Pi-DPM."]
+  };
+
+  function $(id){return document.getElementById(id);}
+  var pop=$("pop");
+
+  function renderGlossary(){
+    var keys=Object.keys(GLOSSARY).sort(function(a,b){return GLOSSARY[a][0].localeCompare(GLOSSARY[b][0]);});
+    var html="";
+    keys.forEach(function(k){html+='<div class="card" style="padding:12px 16px;margin:10px 0"><b style="color:var(--accent-dk)">'+GLOSSARY[k][0]+'</b><br>'+GLOSSARY[k][1]+'</div>';});
+    var el=$("glossarylist"); if(el) el.innerHTML=html;
+  }
+  function show(id,push){
+    if(pages.indexOf(id)<0) id="overview";
+    pages.forEach(function(p){var el=$(p); if(el) el.classList.toggle("active",p===id);});
+    document.querySelectorAll("nav.side a.lnk").forEach(function(a){a.classList.toggle("active",a.getAttribute("data-p")===id);});
+    var cr=$("crumbs"); if(cr) cr.textContent=titles[id]||id;
+    var i=pages.indexOf(id), prev=$("prev"), next=$("next");
+    if(prev) prev.style.visibility = i>0 ? "visible":"hidden";
+    if(next) next.style.visibility = i<pages.length-1 ? "visible":"hidden";
+    window.scrollTo(0,0); hidePop();
+    if(push){ try{ history.replaceState(null,"","#"+id); }catch(e){} }
+  }
+  function go(delta){ var i=pages.indexOf(current()); var j=Math.min(pages.length-1,Math.max(0,i+delta)); show(pages[j],true); }
+  function current(){ for(var k=0;k<pages.length;k++){var el=$(pages[k]); if(el&&el.classList.contains("active")) return pages[k];} return "overview"; }
+
+  function showPop(term,x,y){
+    var g=GLOSSARY[term]; if(!g) return;
+    pop.innerHTML="<b>"+g[0]+"</b><br>"+g[1]; pop.style.display="block";
+    var w=pop.offsetWidth,h=pop.offsetHeight;
+    var left=Math.min(x,(window.scrollX+document.documentElement.clientWidth)-w-14);
+    var top=y+16; if(top+h>window.scrollY+document.documentElement.clientHeight) top=y-h-12;
+    pop.style.left=Math.max(8,left)+"px"; pop.style.top=Math.max(8,top)+"px";
+  }
+  function hidePop(){ pop.style.display="none"; }
+
+  document.addEventListener("click",function(e){
+    var t=e.target.closest?e.target.closest(".term"):null;
+    if(t){ e.preventDefault(); showPop(t.getAttribute("data-term"),e.pageX,e.pageY); return; }
+    if(!e.target.closest||!e.target.closest("#pop")) hidePop();
+    var j=e.target.closest?e.target.closest("[data-jump]"):null;
+    if(j){ e.preventDefault(); show(j.getAttribute("data-jump"),true); }
+    var lnk=e.target.closest?e.target.closest("a.lnk"):null;
+    if(lnk){ e.preventDefault(); show(lnk.getAttribute("data-p"),true); }
+  });
+  var pv=$("prev"), nx=$("next");
+  if(pv) pv.addEventListener("click",function(e){e.preventDefault();go(-1);});
+  if(nx) nx.addEventListener("click",function(e){e.preventDefault();go(1);});
+  document.addEventListener("keydown",function(e){
+    var tag=(e.target&&e.target.tagName)||"";
+    if(tag==="INPUT"||tag==="TEXTAREA") return;
+    if(e.key==="ArrowDown"||e.key==="j"){ e.preventDefault(); go(1); }
+    else if(e.key==="ArrowUp"||e.key==="k"){ e.preventDefault(); go(-1); }
+    else if(e.key==="Escape"){ hidePop(); }
+  });
+
+  var root=document.documentElement;
+  function loadTheme(){ try{ return localStorage.getItem("hm_p1_theme"); }catch(e){ return null; } }
+  function saveTheme(v){ try{ localStorage.setItem("hm_p1_theme",v); }catch(e){} }
+  var saved=loadTheme(); if(saved) root.setAttribute("data-theme",saved);
+  var tb=$("themebtn");
+  if(tb) tb.addEventListener("click",function(){
+    var cur=root.getAttribute("data-theme");
+    var sysDark=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches;
+    var nowDark=cur?cur==="dark":sysDark;
+    var nv=nowDark?"light":"dark"; root.setAttribute("data-theme",nv); saveTheme(nv);
+  });
+
+  renderGlossary();
+  var start="overview";
+  try{ if(location.hash){ var h=location.hash.replace("#",""); if(pages.indexOf(h)>=0) start=h; } }catch(e){}
+  show(start,false);
+})();
+</script>
+</body>
+</html>

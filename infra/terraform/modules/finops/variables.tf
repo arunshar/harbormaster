@@ -1,0 +1,115 @@
+# modules/finops/variables.tf
+
+variable "project" {
+  description = "Project name, used in tags and resource names."
+  type        = string
+  default     = "harbormaster"
+}
+
+variable "environment" {
+  description = "Deployment environment: base or demo."
+  type        = string
+
+  validation {
+    condition     = contains(["base", "demo"], var.environment)
+    error_message = "environment must be one of: base, demo."
+  }
+}
+
+variable "aws_region" {
+  description = "AWS region for the teardown Lambda and EventBridge schedule."
+  type        = string
+  default     = "us-east-1"
+}
+
+variable "alert_email" {
+  description = "Email address subscribed to the SNS budget-alert topic. AWS sends a confirmation link that must be clicked once."
+  type        = string
+}
+
+variable "platform_role_name" {
+  description = <<-EOT
+    Name of the IAM role that the $75 hard-budget action attaches a deny policy
+    to when breached. This should be the role your platform/CI assumes to create
+    spend-incurring resources, NOT your break-glass admin identity. On breach the
+    deny policy is applied to this role, freezing new expensive resource creation
+    until you intervene.
+  EOT
+  type        = string
+}
+
+variable "soft_budget_amount" {
+  description = "Soft monthly budget in USD that drives SNS alerts."
+  type        = number
+  default     = 30
+}
+
+variable "hard_budget_amount" {
+  description = "Hard monthly budget in USD. Breaching ACTUAL spend triggers the IAM deny action."
+  type        = number
+  default     = 75
+}
+
+variable "soft_actual_thresholds_usd" {
+  description = "Absolute USD ACTUAL-spend thresholds on the soft budget that each fire an SNS alert."
+  type        = list(number)
+  default     = [5, 15, 25]
+}
+
+variable "soft_forecast_threshold_usd" {
+  description = "Absolute USD FORECASTED-spend threshold on the soft budget that fires an SNS alert."
+  type        = number
+  default     = 30
+}
+
+variable "anomaly_threshold_usd" {
+  description = "Dollar impact above which a Cost Explorer anomaly notifies the SNS topic."
+  type        = number
+  default     = 10
+}
+
+variable "enable_nightly_teardown" {
+  description = <<-EOT
+    Whether to create the EventBridge schedule that invokes the teardown Lambda
+    nightly. The Lambda itself and its role are always created so it can be
+    invoked manually; only the recurring trigger is gated. Default true so an
+    idle account never runs a forgotten streaming job overnight.
+  EOT
+  type        = bool
+  default     = true
+}
+
+variable "teardown_schedule_expression" {
+  description = "EventBridge Scheduler expression for the nightly teardown sweep (UTC). Default 07:00 UTC, roughly overnight in US Central."
+  type        = string
+  default     = "cron(0 7 * * ? *)"
+}
+
+variable "teardown_dry_run" {
+  description = "When true, the teardown Lambda logs what it would stop/terminate but takes no destructive action. Set false to actually tear down."
+  type        = bool
+  default     = true
+}
+
+variable "lambda_source_dir" {
+  description = "Path to the teardown Lambda source directory, zipped by archive_file at plan time."
+  type        = string
+}
+
+variable "lambda_runtime" {
+  description = "Python runtime for the teardown Lambda."
+  type        = string
+  default     = "python3.12"
+}
+
+variable "lambda_timeout_seconds" {
+  description = "Teardown Lambda timeout in seconds."
+  type        = number
+  default     = 120
+}
+
+variable "tags" {
+  description = "Common tags applied to every resource."
+  type        = map(string)
+  default     = {}
+}

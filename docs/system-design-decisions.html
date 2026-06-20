@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Harbormaster: System Design Decisions</title>
+<style>
+  :root{
+    --accent:#6366f1; --accent-dk:#4f46e5; --accent-soft:rgba(99,102,241,.12);
+    --bg:#ffffff; --bg-2:#f7f7fb; --bg-3:#edeef5; --fg:#1a1b25; --fg-2:#4a4d63;
+    --line:#e3e4ee; --card:#ffffff; --code:#f1f2f8; --shadow:0 1px 3px rgba(20,20,50,.07),0 6px 24px rgba(20,20,50,.05);
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#15161d; --bg-2:#1b1c26; --bg-3:#23253200; --bg-3:#232532; --fg:#e9eaf2; --fg-2:#a6a9c0;
+      --line:#2c2e3e; --card:#1b1c26; --code:#0f1016; --shadow:0 1px 3px rgba(0,0,0,.4),0 8px 30px rgba(0,0,0,.35);
+    }
+  }
+  html[data-theme="light"]{
+    --bg:#ffffff; --bg-2:#f7f7fb; --bg-3:#edeef5; --fg:#1a1b25; --fg-2:#4a4d63; --line:#e3e4ee; --card:#fff; --code:#f1f2f8;
+  }
+  html[data-theme="dark"]{
+    --bg:#15161d; --bg-2:#1b1c26; --bg-3:#232532; --fg:#e9eaf2; --fg-2:#a6a9c0; --line:#2c2e3e; --card:#1b1c26; --code:#0f1016;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+  a{color:var(--accent-dk);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .layout{display:flex;min-height:100vh}
+  /* sidebar */
+  nav.side{width:312px;flex:0 0 312px;background:var(--bg-2);border-right:1px solid var(--line);padding:22px 16px 60px;position:sticky;top:0;height:100vh;overflow-y:auto}
+  .brand{display:flex;align-items:center;gap:10px;margin:0 6px 16px}
+  .dot{width:11px;height:11px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
+  .brand b{font-size:14px;letter-spacing:.2px}
+  .brand span{display:block;font-size:11.5px;color:var(--fg-2);font-weight:400}
+  .navgroup{margin:14px 6px 4px;font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--fg-2);font-weight:700}
+  nav.side a.lnk{display:flex;gap:9px;align-items:baseline;padding:7px 10px;border-radius:8px;color:var(--fg);font-size:13.5px;cursor:pointer;line-height:1.35}
+  nav.side a.lnk .n{color:var(--fg-2);font-size:11.5px;min-width:30px;text-align:right;font-variant-numeric:tabular-nums}
+  nav.side a.lnk:hover{background:var(--bg-3);text-decoration:none}
+  nav.side a.lnk.active{background:var(--accent-soft);color:var(--accent-dk);font-weight:600}
+  /* main */
+  main{flex:1;min-width:0;max-width:920px;margin:0 auto;padding:40px 40px 120px}
+  .topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:8px}
+  .crumbs{font-size:12.5px;color:var(--fg-2)}
+  .tools{display:flex;gap:8px}
+  .btn{border:1px solid var(--line);background:var(--card);color:var(--fg-2);border-radius:8px;padding:6px 11px;font-size:12.5px;cursor:pointer}
+  .btn:hover{border-color:var(--accent);color:var(--accent-dk)}
+  .page{display:none;animation:fade .25s ease}
+  .page.active{display:block}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  h1{font-size:27px;line-height:1.2;margin:6px 0 4px}
+  h2{font-size:19px;margin:30px 0 8px;padding-top:6px}
+  h3{font-size:15.5px;margin:20px 0 6px;color:var(--accent-dk)}
+  h4{font-size:14px;margin:16px 0 4px;color:var(--fg-2);text-transform:uppercase;letter-spacing:.05em}
+  p,li{color:var(--fg)}
+  .lede{font-size:16.5px;color:var(--fg-2);margin:8px 0 18px}
+  ul,ol{padding-left:22px}
+  li{margin:5px 0}
+  code{background:var(--code);padding:1.5px 6px;border-radius:5px;font:13px/1.5 "SF Mono",ui-monospace,Menlo,Consolas,monospace}
+  pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto;border:1px solid var(--line)}
+  pre code{background:none;padding:0;font-size:12.5px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:16px 0;box-shadow:var(--shadow)}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:760px){.grid{grid-template-columns:1fr}}
+  .callout{border-left:3px solid var(--accent);background:var(--accent-soft);border-radius:0 10px 10px 0;padding:12px 16px;margin:16px 0}
+  .callout b{color:var(--accent-dk)}
+  .warn{border-left:3px solid #e0a83e;background:rgba(224,168,62,.12);border-radius:0 10px 10px 0;padding:12px 16px;margin:16px 0}
+  .warn b{color:#b9822a}
+  .soundbite{border-left:3px solid var(--accent-dk);background:var(--accent-soft);border-radius:0 10px 10px 0;padding:10px 16px;margin:14px 0;font-style:italic}
+  .soundbite b{font-style:normal;color:var(--accent-dk);display:block;font-size:11px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px}
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:13.5px}
+  th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+  th{background:var(--bg-3);font-weight:600}
+  .dr-meta{font-size:13.5px}
+  .dr-meta dt{font-weight:700;color:var(--accent-dk);margin-top:12px;font-size:12px;text-transform:uppercase;letter-spacing:.05em}
+  .dr-meta dd{margin:3px 0 0;padding:0}
+  .term{border-bottom:1.5px dotted var(--accent-dk);cursor:help}
+  .kbd{font:11px ui-monospace,monospace;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 6px;background:var(--bg-3)}
+  .tag{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:20px;background:var(--accent-soft);color:var(--accent-dk);letter-spacing:.03em}
+  .pager{display:flex;justify-content:space-between;margin-top:40px;padding-top:18px;border-top:1px solid var(--line);font-size:13.5px}
+  .pager a{cursor:pointer}
+  .pop{position:absolute;z-index:50;max-width:330px;background:var(--card);border:1px solid var(--accent);border-radius:10px;padding:11px 13px;box-shadow:var(--shadow);font-size:13px;color:var(--fg);display:none;line-height:1.5}
+  .pop b{color:var(--accent-dk)}
+  footer{color:var(--fg-2);font-size:12px;margin-top:30px}
+  @media print{nav.side,.tools,.pager{display:none}.page{display:block!important}main{max-width:none}}
+</style>
+</head>
+<body>
+<div class="layout">
+  <nav class="side" id="side">
+    <div class="brand"><span class="dot"></span><div><b>Harbormaster</b><span>System design decisions, decoded</span></div></div>
+
+    <div class="navgroup">Start</div>
+    <a class="lnk" data-p="overview"><span class="n">•</span><span>Overview</span></a>
+    <a class="lnk" data-p="why-patterns"><span class="n">•</span><span>Why patterns matter</span></a>
+
+    <div class="navgroup">Data &amp; CDC</div>
+    <a class="lnk" data-p="dr1"><span class="n">DR-1</span><span>CDC pipeline</span></a>
+    <a class="lnk" data-p="dr2"><span class="n">DR-2</span><span>Idempotent consumer</span></a>
+    <a class="lnk" data-p="dr4"><span class="n">DR-4</span><span>Read vs write model (CQRS)</span></a>
+    <a class="lnk" data-p="dr5"><span class="n">DR-5</span><span>Event sourcing audit log</span></a>
+    <a class="lnk" data-p="dr10"><span class="n">DR-10</span><span>CDC schema evolution</span></a>
+    <a class="lnk" data-p="dr16"><span class="n">DR-16</span><span>Consistency (PACELC)</span></a>
+
+    <div class="navgroup">Streaming &amp; serving</div>
+    <a class="lnk" data-p="dr6"><span class="n">DR-6</span><span>Flink backpressure + P_phys</span></a>
+    <a class="lnk" data-p="dr8"><span class="n">DR-8</span><span>Async model call</span></a>
+    <a class="lnk" data-p="dr9"><span class="n">DR-9</span><span>Shard / partition design</span></a>
+    <a class="lnk" data-p="dr12"><span class="n">DR-12</span><span>Lambda vs kappa</span></a>
+    <a class="lnk" data-p="dr15"><span class="n">DR-15</span><span>Serving API design</span></a>
+
+    <div class="navgroup">Lifecycle &amp; ops</div>
+    <a class="lnk" data-p="dr3"><span class="n">DR-3</span><span>Model-promotion pipeline</span></a>
+    <a class="lnk" data-p="dr7"><span class="n">DR-7</span><span>Multi-tenant isolation</span></a>
+    <a class="lnk" data-p="dr11"><span class="n">DR-11</span><span>Strangler fig rebuild</span></a>
+    <a class="lnk" data-p="dr13"><span class="n">DR-13</span><span>SLOs &amp; burn-rate</span></a>
+    <a class="lnk" data-p="dr14"><span class="n">DR-14</span><span>Capacity sizing</span></a>
+
+    <div class="navgroup">Deep dives</div>
+    <a class="lnk" data-p="saga"><span class="n">•</span><span>The promotion saga</span></a>
+    <a class="lnk" data-p="sizing"><span class="n">•</span><span>Capacity worked example</span></a>
+    <a class="lnk" data-p="interview"><span class="n">•</span><span>45-minute interview</span></a>
+
+    <div class="navgroup">Reference</div>
+    <a class="lnk" data-p="catalog"><span class="n">•</span><span>Patterns catalog</span></a>
+    <a class="lnk" data-p="reading"><span class="n">•</span><span>Curated reading path</span></a>
+    <a class="lnk" data-p="glossary"><span class="n">•</span><span>Glossary</span></a>
+  </nav>
+
+  <main>
+    <div class="topbar">
+      <div class="crumbs" id="crumbs">Start / Overview</div>
+      <div class="tools">
+        <button class="btn" id="themebtn">Theme</button>
+        <button class="btn" onclick="window.print()">Print</button>
+      </div>
+    </div>
+
+    <!-- OVERVIEW -->
+    <section class="page" id="overview">
+      <h1>Harbormaster: system design decisions</h1>
+      <p class="lede">A learning companion to <code>SYSTEM_DESIGN_DECISIONS.md</code>. Every significant Harbormaster decision mapped to its established distributed-systems pattern, the canonical source that names it, and the staff-level reasoning a committee or a senior interviewer expects to hear.</p>
+
+      <div class="card">
+        <h3 style="margin-top:0">What Harbormaster is</h3>
+        <p>A personal maritime anomaly-detection platform (see <code>docs/HONESTY.md</code> for the real-versus-simulated framing and the ESRI boundary). It ingests live AIS vessel traffic (around 150K ships), serves spatial anomaly detectors over a streaming feature plane on AWS, and trains heavy models off-cloud on MSI. It is continental-scale, not petabyte-scale; the honesty rule (numbers are quoted, not inflated) applies to this document too.</p>
+      </div>
+
+      <h2>The goal of this doc</h2>
+      <p>Twofold: build the platform on good practice from day one, and be able to defend each choice in a 45-minute system-design interview without hand-waving. Each <span class="term" data-term="dr">Decision Record</span> below has a fixed shape so you always know where the reasoning, the tradeoff, the AWS mechanism, and the one-line soundbite live.</p>
+
+      <h2>How to read an entry</h2>
+      <ul>
+        <li><b>Decision:</b> the concrete choice Harbormaster makes.</li>
+        <li><b>Pattern and source:</b> the named pattern and the canonical citation (author, work, chapter or URL).</li>
+        <li><b>Staff-level reasoning:</b> why this is the right move, argued the way a principal engineer would.</li>
+        <li><b>Tradeoffs and alternatives:</b> what we gave up and what we rejected, honestly.</li>
+        <li><b>How Harbormaster instantiates it:</b> the specific AWS or code mechanism.</li>
+        <li><b>Interview soundbite:</b> one line you can say under pressure that signals you understand the pattern, not just the name.</li>
+      </ul>
+
+      <div class="callout"><b>A note on sources.</b> Where a source is a public article (Martin Fowler's bliki, microservices.io, the Google SRE book, HelloInterview's free framework), the URL is given and you should read it. Where a source is a book (Kleppmann's <i>Designing Data-Intensive Applications</i>, Newman's <i>Building Microservices</i>, Nygard's <i>Release It!</i>, Fowler and Joshi's <i>Patterns of Distributed Systems</i>), it is referenced by chapter or pattern name only; do not expect quoted text.</div>
+
+      <h2>How to use this page</h2>
+      <ul>
+        <li>Navigate with the sidebar, or press <span class="kbd">&darr;</span> / <span class="kbd">&uarr;</span> (also <span class="kbd">j</span> / <span class="kbd">k</span>) to move between pages.</li>
+        <li>Click any <span class="term" data-term="cdc">dotted term</span> for an inline definition. The full <a data-jump="glossary">glossary</a> is at the end.</li>
+        <li>Theme follows your system setting; the Theme button overrides it. Print or save to PDF from the top right.</li>
+      </ul>
+    </section>
+
+    <!-- WHY PATTERNS -->
+    <section class="page" id="why-patterns">
+      <h1>Why patterns matter and how to use them</h1>
+      <p class="lede">A pattern is a named, reusable answer to a recurring design problem, along with the context in which it applies and the tradeoff it imposes.</p>
+
+      <h2>Three reasons patterns matter</h2>
+      <ol>
+        <li><b>Compressed experience.</b> Someone already paid for the mistake, wrote down the fix, and gave it a name, so you inherit the lesson instead of rediscovering it in production. The Harbormaster war stories in <code>PLATFORM_WAR_STORIES.md</code> are exactly these lessons, several of them anticipated before the build hits them.</li>
+        <li><b>Shared vocabulary.</b> A team and an interviewer can reason at a higher altitude: saying "<span class="term" data-term="idempotent-receiver">idempotent receiver</span>" conveys a precise contract that would otherwise take a paragraph.</li>
+        <li><b>Knowing the tradeoff.</b> Knowing the pattern means knowing what it costs, so you can say out loud what you are giving up, which is the single clearest signal of seniority.</li>
+      </ol>
+
+      <div class="callout"><b>The honesty note (applies throughout).</b> Several Harbormaster components are planned phases, and several war stories are anticipated rather than already hit. The patterns and the reasoning are real and defensible; the claim is "this is how it is designed and why," not "every line is already running in production."</div>
+    </section>
+
+    <!-- DR-1 -->
+    <section class="page" id="dr1">
+      <h1><span class="tag">DR-1</span> CDC pipeline</h1>
+      <p class="lede">RDS Postgres logical decoding to derived stores.</p>
+      <dl class="dr-meta">
+        <dt>Decision</dt>
+        <dd>Operational state lives in RDS Postgres. Changes are captured by logical decoding and Debezium, published to Kinesis as a change stream, consumed by an idempotent LSN-guarded consumer, and fanned out to derived stores: Feast/DynamoDB (online features), Redis (hot cache), and an Iceberg <code>cdc_audit</code> table (append-only history).</dd>
+        <dt>Pattern and source</dt>
+        <dd><span class="term" data-term="cdc">Change Data Capture</span> and the <span class="term" data-term="dual-write">dual-write problem</span>; the log-based message broker; derived-data synchronization. Kleppmann, <i>Designing Data-Intensive Applications</i>, ch 11 and ch 12. Chris Richardson, microservices.io, <a href="https://microservices.io/patterns/data/transactional-outbox.html" target="_blank" rel="noopener">Transactional Outbox</a> for the dual-write framing. HelloInterview Core Concepts: <a href="https://hellointerview.com/learn/system-design/core-concepts" target="_blank" rel="noopener">change data capture</a>.</dd>
+        <dt>Staff-level reasoning</dt>
+        <dd>The naive design writes to Postgres and then writes to the cache and the feature store from application code. That is a dual write: two systems updated by two separate operations with no shared transaction, so any crash between them leaves the stores inconsistent, and there is no retry that fixes it because you do not know which write landed. CDC removes the dual write by making the database's own commit log the single source of truth: you write once, to Postgres, and every derived store is a deterministic function of the ordered change log. The log is the contract; the stores are projections. This is the same insight as "<span class="term" data-term="unbundling">unbundling the database</span>" (Kleppmann ch 12).</dd>
+        <dt>Tradeoffs and alternatives considered</dt>
+        <dd>The alternative is the <span class="term" data-term="outbox">Transactional Outbox</span>: write the business row and an outbox row in one local transaction, then relay the outbox to the broker. Outbox is the right call when you control the application's write path and want application-level events. Harbormaster chose log-based CDC instead because it captures every change with no application changes and no risk of a developer forgetting to write the outbox row; the cost is operational (logical decoding load on Postgres, connector to run, schema-evolution discipline). CDC imposes eventual consistency between the write model and the read models (DR-4, DR-16) and a cold-start snapshot cost (war story P3).</dd>
+        <dt>How Harbormaster instantiates it</dt>
+        <dd>RDS Postgres with <code>wal_level=logical</code> and replica identity set; Debezium reads the WAL via logical decoding and publishes to Kinesis; the consumer upserts into DynamoDB/Feast and Redis and appends to Iceberg <code>cdc_audit</code>. Phase 3 in the README.</dd>
+      </dl>
+      <div class="soundbite"><b>Interview soundbite</b>"I write once to Postgres and let the WAL be the source of truth; every derived store is a projection of the log, so I never have a dual write to keep consistent by hand."</div>
+    </section>
+
+    <!-- DR-2 -->
+    <section class="page" id="dr2">
+      <h1><span class="tag">DR-2</span> Idempotent consumer</h1>
+      <p class="lede">LSN-guarded upsert.</p>
+      <dl class="dr-meta">
+        <dt>Decision</dt>
+        <dd>The CDC consumer is idempotent: it upserts by primary key, guards application with a monotonic <code>last_applied_lsn</code> (skip any record whose LSN is not greater than what was already applied), commits the stream offset only after the sink acknowledges the write, and represents deletes as tombstones.</dd>
+        <dt>Pattern and source</dt>
+        <dd><span class="term" data-term="idempotent-receiver">Idempotent Receiver</span>. Fowler and Joshi, <i>Patterns of Distributed Systems</i>, <a href="https://martinfowler.com/articles/patterns-of-distributed-systems/idempotent-receiver.html" target="_blank" rel="noopener">"Idempotent Receiver"</a>. Kleppmann, <i>DDIA</i>, ch 11 (exactly-once / effectively-once, idempotence as the practical mechanism). <span class="term" data-term="high-water-mark">High-Water Mark</span> / <span class="term" data-term="versioned-value">Versioned Value</span>: <i>Patterns of Distributed Systems</i>.</dd>
+        <dt>Staff-level reasoning</dt>
+        <dd>Kinesis, like any log-based broker, gives <span class="term" data-term="at-least-once">at-least-once</span> delivery: on consumer restart or rebalance you will re-read records you already processed. True exactly-once across a network and an external sink is not achievable in general, so the honest target is <span class="term" data-term="effectively-once">effectively-once</span>: at-least-once delivery plus idempotent application equals the same end state no matter how many times a record is redelivered. Upsert-by-PK makes a re-applied insert a no-op. The monotonic <code>last_applied_lsn</code> guard makes stale redeliveries safe by rejecting anything not strictly newer, which is a high-water mark over the WAL's log sequence numbers. The offset-commit-after-sink-ack ordering closes the last gap: committing only after the sink acknowledges means a crash leaves the offset un-advanced and the record is safely re-read.</dd>
+        <dt>Tradeoffs and alternatives considered</dt>
+        <dd>The alternative "exactly-once" framings (broker transactions, two-phase commit to the sink) add coordination cost and still reduce, in practice, to idempotent writes plus deduplication. Choosing effectively-once keeps the consumer simple and fast. The cost is that you must design every sink write to be idempotent (LSN guard plus upsert) and store the high-water mark durably alongside the sink. Tombstone deletes cost extra storage and require downstream readers to honor the tombstone, but they preserve the log's append-only property.</dd>
+        <dt>How Harbormaster instantiates it</dt>
+        <dd>Consumer keeps <code>last_applied_lsn</code> per key (or per partition) in the sink; applies a record only if its LSN exceeds the stored value; upserts to DynamoDB/Feast and Redis; appends to Iceberg with the LSN; commits the Kinesis iterator position only after the sink ack. Deletes become tombstone rows.</dd>
+      </dl>
+      <div class="soundbite"><b>Interview soundbite</b>"Kinesis is at-least-once, so I make the consumer effectively-once: upsert by key, reject anything not newer than my last-applied LSN, and commit the offset only after the sink acks."</div>
+    </section>
+
+    <!-- DR-4 -->
+    <section class="page" id="dr4">
+      <h1><span class="tag">DR-4</span> Read models versus write model</h1>
+      <p class="lede">CQRS: Postgres command side, online store query side.</p>
+      <dl class="dr-meta">
+        <dt>Decision</dt>
+        <dd>The write model is Postgres (the model registry and operational state). The read models are the Feast online feature store, DynamoDB, and a Redis hot cache. Writes go to Postgres; serving reads go to the online store and cache; the two are connected by the CDC pipeline (DR-1).</dd>
+        <dt>Pattern and source</dt>
+        <dd><span class="term" data-term="cqrs">Command Query Responsibility Segregation</span> and materialized views. Fowler, <a href="https://martinfowler.com/bliki/CQRS.html" target="_blank" rel="noopener">CQRS</a>. Chris Richardson, microservices.io, <a href="https://microservices.io/patterns/data/cqrs.html" target="_blank" rel="noopener">CQRS</a>. <span class="term" data-term="read-your-writes">Read-your-writes consistency</span>: Kleppmann, <i>DDIA</i>, ch 5.</dd>
+        <dt>Staff-level reasoning</dt>
+        <dd>The write side and the read side have different shapes. The write side wants transactional integrity, relational constraints, and a normalized registry; Postgres is right for that. The read side wants single-digit-millisecond point lookups of per-vessel features at serving time; a denormalized key-value online store is the right one. CQRS makes this split explicit: optimize each side independently and accept that the read model is a derived, eventually-consistent projection of the write model. The online feature store is, in CQRS terms, a <span class="term" data-term="materialized-view">materialized view</span> maintained by the CDC stream.</dd>
+        <dt>Tradeoffs and alternatives considered</dt>
+        <dd>The alternative is one store serving both paths: simpler, strongly consistent, but it forces a compromise schema and couples serving latency to the write store's load. CQRS buys independent scaling and latency at the cost of eventual consistency and the machinery to keep the read model fresh (DR-1, DR-2). The sharp edge is read-your-writes: a client that just wrote to Postgres may not yet see the change in the online store. Harbormaster accepts this because serving reads tolerate sub-second staleness; where read-your-writes matters (a just-promoted model's metadata), the serving path reads the registry directly. CQRS is overkill for a CRUD app; it earns its keep here because the workloads genuinely diverge.</dd>
+        <dt>How Harbormaster instantiates it</dt>
+        <dd>Postgres registry is the command side; Feast/DynamoDB and Redis are the query side; CDC keeps them in sync. GeoTrace front door reads the online store, not Postgres, on the hot path.</dd>
+      </dl>
+      <div class="soundbite"><b>Interview soundbite</b>"Write to Postgres, read from the online store; they are different workloads, so I treat the online store as a materialized view kept fresh by CDC, and I accept eventual consistency on the read side."</div>
+    </section>
+
+    <!-- DR-5 -->
+    <section class="page" id="dr5">
+      <h1><span class="tag">DR-5</span> Event sourcing audit log</h1>
+      <p class="lede">Iceberg <code>cdc_audit</code> log and the anomaly event stream.</p>
+      <dl class="dr-meta">
+        <dt>Decision</dt>
+        <dd>The Iceberg <code>cdc_audit</code> table is append-only: it records the full ordered history of changes, not just current state. The anomaly event stream is likewise a log of detected events. State is derived from these logs.</dd>
+        <dt>Pattern and source</dt>
+        <dd><span class="term" data-term="event-sourcing">Event Sourcing</span>; the log as source of truth; unbundling the database. Fowler, <a href="https://martinfowler.com/eaaDev/EventSourcing.html" target="_blank" rel="noopener">Event Sourcing</a>. Kleppmann, <i>DDIA</i>, ch 11 and ch 12.</dd>
+        <dt>Staff-level reasoning</dt>
+        <dd>Storing current state only is lossy: you can never answer "what did the system believe at time T" or rebuild a derived store after a bug, because the history is gone. An append-only log keeps every change as an immutable fact; current state becomes a fold over the log, and any derived view can be rebuilt by replaying. For an anomaly platform this is not a luxury: auditability ("why did we flag this vessel, and on what evidence") and reproducible training pulls (DR-12) both require the history. Iceberg's snapshot isolation and time-travel make the log queryable and reproducible at a point in time.</dd>
+        <dt>Tradeoffs and alternatives considered</dt>
+        <dd>The alternative is mutable current-state tables: smaller, simpler, but unauditable and unreplayable. Event sourcing costs storage (the full history) and adds compaction and snapshot-expiry maintenance (war story P6: a streaming sink into a table format is a maintenance commitment). It also pushes complexity onto readers, who must fold the log or query the right snapshot. Harbormaster does not event-source everything (the registry is current-state in Postgres), only the audit and anomaly logs where history is the product.</dd>
+        <dt>How Harbormaster instantiates it</dt>
+        <dd>Firehose lands CDC and events into S3/Iceberg; <code>cdc_audit</code> is append-only with LSNs; Iceberg snapshots give time-travel for reproducible MSI training pulls; scheduled compaction and snapshot expiry manage the small-file cost.</dd>
+      </dl>
+      <div class="soundbite"><b>Interview soundbite</b>"The audit table is an append-only event log, so current state is a fold over it and I can replay to rebuild any derived store or reproduce exactly what the system saw at training time."</div>
+    </section>
+
+    <!-- DR-10 -->
+    <section class="page" id="dr10">
+      <h1><span class="tag">DR-10</span> CDC event schema</h1>
+      <p class="lede">Encoding and evolution.</p>
+      <dl class="dr-meta">
+        <dt>Decision</dt>
+        <dd>CDC events use an explicit, versioned schema managed through a schema registry, with backward and forward compatibility enforced so producers and consumers can be deployed independently.</dd>
+        <dt>Pattern and source</dt>
+        <dd><span class="term" data-term="encoding-evolution">Encoding and Evolution</span>; schema registry; <span class="term" data-term="backward-compat">backward</span> / <span class="term" data-term="forward-compat">forward</span> compatibility. Kleppmann, <i>DDIA</i>, ch 4 (schema evolution, Avro/Protobuf).</dd>
+        <dt>Staff-level reasoning</dt>
+        <dd>In a streaming system, producers and consumers are deployed at different times and run different code versions simultaneously, so the schema must evolve without a flag-day where everything redeploys at once. Backward compatibility means new consumer code can read old data (so you can deploy the consumer first). Forward compatibility means old consumer code can read new data (so a producer can add a field before all consumers know about it). Honoring both limits schema changes to safe operations: add optional fields, never remove or repurpose a field's meaning. A schema registry enforces this at publish time, turning an incompatible change into a deploy-time error instead of a 3 a.m. deserialization failure in production.</dd>
+        <dt>Tradeoffs and alternatives considered</dt>
+        <dd>Schemaless JSON is easy to start with but pushes every compatibility decision to runtime and to tribal knowledge, which is where silent data-corruption bugs live. A registry plus a binary encoding (Avro or Protobuf) costs upfront ceremony and a registry to operate, in exchange for compile-or-publish-time guarantees and compact wire format. Harbormaster accepts the ceremony because CDC events feed the audit log (DR-5), which is the system of record, and a corrupt schema there is unrecoverable. The constraint: no breaking field changes, only additive evolution.</dd>
+        <dt>How Harbormaster instantiates it</dt>
+        <dd>CDC events carry a schema version; a registry enforces backward/forward compatibility on publish; the Iceberg sink uses Iceberg's own schema evolution so the audit table evolves safely alongside.</dd>
+      </dl>
+      <div class="soundbite"><b>Interview soundbite</b>"Producers and consumers deploy independently, so the CDC schema is registry-enforced and only evolves additively; backward compatibility lets me deploy the consumer first, forward compatibility lets the producer add a field early."</div>
+    </section>
+
+    <!-- DR-16 -->
+    <section class="page" id="dr16">
+      <h1><span class="tag">DR-16</span> Consistency choice</h1>
+      <p class="lede">Postgres write versus online-store read (PACELC).</p>
+      <dl class="dr-meta">
+        <dt>Decision</dt>
+        <dd>Harbormaster accepts eventual consistency between the Postgres write model and the online-store read model on the hot serving path, and reserves strong/read-your-writes consistency for the few places that require it (reading just-promoted model metadata from the registry directly).</dd>
+        <dt>Pattern and source</dt>
+        <dd><span class="term" data-term="pacelc">PACELC</span>; eventual versus strong consistency; read-your-writes; <span class="term" data-term="linearizability">linearizability</span> and quorums. Kleppmann, <i>DDIA</i>, ch 9 and ch 5. PACELC framing: HelloInterview Core Concepts.</dd>
+        <dt>Staff-level reasoning</dt>
+        <dd>PACELC extends CAP with the everyday case: if there is a Partition you trade Availability against Consistency, but Else (the normal, no-partition case) you trade Latency against Consistency. That "else" is the one that matters most days, and it forces an explicit choice: strong consistency costs latency (coordination on every read), eventual consistency buys latency at the price of possibly stale reads. Harbormaster's hot path reads per-vessel features that tolerate sub-second staleness, so the latency-favoring choice (eventual consistency on the CDC-fed read model) is correct. The senior move is not "eventual is fine everywhere": it is to name the few operations that genuinely need read-your-writes (a freshly promoted model's metadata must be visible immediately) and route those to the strongly-consistent write store directly.</dd>
+        <dt>Tradeoffs and alternatives considered</dt>
+        <dd>Strong consistency everywhere would simplify reasoning but add coordination latency to every serving read and couple read availability to the write store, the opposite of what the read path needs. Eventual everywhere risks a correctness bug where a control-plane action (promotion) is not yet visible; mitigated by reading the registry directly for those operations. The choice is per-operation, not global, which is the whole point of PACELC thinking.</dd>
+        <dt>How Harbormaster instantiates it</dt>
+        <dd>Hot-path feature reads hit the eventually-consistent online store; control-plane reads (model metadata, registry) hit Postgres directly for read-your-writes; the CDC lag between them is monitored.</dd>
+      </dl>
+      <div class="soundbite"><b>Interview soundbite</b>"By PACELC, with no partition I am trading latency against consistency, so the hot path reads the eventually-consistent online store, and I route only the handful of read-your-writes operations, like reading a just-promoted model, to Postgres directly."</div>
+    </section>
+
+    <!-- DR-6 -->
+    <section class="page" id="dr6">
+      <h1><span class="tag">DR-6</span> Streaming ingestion</h1>
+      <p class="lede">Flink backpressure and the P_phys cheap-gate.</p>
+      <dl class="dr-meta">
+        <dt>Decision</dt>
+        <dd>Flink computes streaming features with <span class="term" data-term="event-time">event-time windows</span> and <span class="term" data-term="watermark">watermarks</span>; backpressure propagates naturally when a downstream stage is slow. A cheap physics-based gate, <code>P_phys</code>, runs first and sheds or short-circuits work that cannot be anomalous, before the expensive model is consulted.</dd>
+        <dt>Pattern and source</dt>
+        <dd><span class="term" data-term="backpressure">Backpressure</span> / flow control: Kleppmann, <i>DDIA</i>, ch 11. <span class="term" data-term="load-shedding">Load Shedding</span> and <span class="term" data-term="steady-state">Steady State</span>: Nygard, <i>Release It!</i>. Watermarks and event-time windows: Kleppmann ch 11.</dd>
+        <dt>Staff-level reasoning</dt>
+        <dd>A streaming system has a producer (AIS at its own rate) and a consumer (feature computation plus model calls) that can fall behind. Without flow control, a slow consumer either drops data or exhausts memory buffering it; backpressure is the disciplined answer, propagating slowness upstream so the producer is throttled rather than the system crashing. Flink gives this natively through its bounded buffers. The second mechanism, load shedding, is for the case where even backpressure is not enough and you must drop work; the senior move is to drop the cheapest-to-drop, least-valuable work first. <code>P_phys</code> is exactly that: a cheap physics check that decides most positions are obviously normal and never need the expensive Pi-DPM call. This is load shedding by relevance, not random drop.</dd>
+        <dt>Tradeoffs and alternatives considered</dt>
+        <dd>The alternative to backpressure is an unbounded queue (postpones the problem until memory runs out) or silent drops (data loss, war story P4 in spirit). Backpressure trades throughput-under-overload for stability and no loss. The alternative to the cheap-gate is calling the heavy model on every event: simpler, but it wastes the expensive path on obvious normals and makes overload far more likely. <code>P_phys</code> costs a small false-negative risk if the gate is too aggressive, mitigated by tuning conservatively and auditing what it filters. Watermarks carry the classic risk (war story P2): adversarial timestamps can stall them, so they need bounded out-of-orderness and an idleness timeout.</dd>
+        <dt>How Harbormaster instantiates it</dt>
+        <dd>Flink on Kinesis Data Analytics, keyed per-vessel state, event-time windows with bounded-out-of-orderness watermarks; <code>P_phys</code> runs inline as the first filter; only events that pass the gate reach the async model call (DR-8).</dd>
+      </dl>
+      <div class="soundbite"><b>Interview soundbite</b>"Flink backpressures naturally, and I shed load by relevance with a cheap physics gate so the expensive model only ever sees plausible anomalies, not every position report."</div>
+    </section>
+
+    <!-- DR-8 -->
+    <section class="page" id="dr8">
+      <h1><span class="tag">DR-8</span> Async model call</h1>
+      <p class="lede">From the stream to the serving endpoint.</p>
+      <dl class="dr-meta">
+        <dt>Decision</dt>
+        <dd>The stream calls the heavy model (Pi-DPM on a SageMaker asynchronous multi-model endpoint) through a circuit breaker with a timeout, bounded retries with exponential backoff and jitter, and a bounded async queue. "No result within SLA" is treated as an explicit failure, not a success.</dd>
+        <dt>Pattern and source</dt>
+        <dd><span class="term" data-term="circuit-breaker">Circuit Breaker</span>: Fowler, <a href="https://martinfowler.com/bliki/CircuitBreaker.html" target="_blank" rel="noopener">CircuitBreaker</a>; Nygard, <i>Release It!</i>. <span class="term" data-term="timeout-retry">Timeout and Retry</span>: Nygard, <i>Release It!</i>; Newman, <i>Building Microservices</i> 2nd ed. <span class="term" data-term="jitter">Backoff with jitter</span> and the bounded queue: standard resilience practice.</dd>
+        <dt>Staff-level reasoning</dt>
+        <dd>Any synchronous call across a process boundary can hang, and a hung call holds a resource (a thread, a slot) that, multiplied under load, exhausts the caller; this is how one slow dependency cascades into a full outage. A timeout bounds the wait. A circuit breaker goes further: after a threshold of failures it opens and fails fast for a cooldown, so the caller stops hammering a sick dependency, then half-opens to test recovery. Retries handle transient blips, but naive retries cause a thundering herd; exponential backoff with jitter spreads them out. Because the endpoint is asynchronous, it is a queue, and a queue has a drop policy (war story P4): "no result within SLA" must be an explicit, observable failure that triggers a retry, not a silent success.</dd>
+        <dt>Tradeoffs and alternatives considered</dt>
+        <dd>Synchronous real-time inference would give lower latency per call but cannot absorb bursts and would force over-provisioning, blowing the cost cap. The async endpoint absorbs bursts in its queue at the cost of higher and more variable latency, acceptable because detection is not real-time-critical and the cheap gate (DR-6) already filtered the obvious normals. Circuit breakers add a failure mode of their own (an over-eager breaker rejects healthy traffic), tuned by threshold and cooldown. Retries without idempotency would duplicate work; the consumer's idempotence (DR-2) makes retries safe.</dd>
+        <dt>How Harbormaster instantiates it</dt>
+        <dd>SageMaker async MME for Pi-DPM with success and failure SNS topics wired; autoscaling on backlog-per-instance; caller applies timeout, circuit breaker, and jittered backoff; SLA breach is an explicit retry path.</dd>
+      </dl>
+      <div class="soundbite"><b>Interview soundbite</b>"The heavy model call goes through a timeout and a circuit breaker with jittered backoff, and because it is an async queue I treat 'no result in SLA' as an explicit failure, not a silent drop."</div>
+    </section>
+
+    <!-- DR-9 -->
+    <section class="page" id="dr9">
+      <h1><span class="tag">DR-9</span> Shard / partition design</h1>
+      <p class="lede">Kinesis shard / Kafka partition design and the MMSI hot-shard incident.</p>
+      <dl class="dr-meta">
+        <dt>Decision</dt>
+        <dd>The partition key for the AIS stream is an MMSI-derived hash (high cardinality), not a coarse region code. Shard count is sized to throughput, and a per-shard hot-key metric makes skew visible before it throttles.</dd>
+        <dt>Pattern and source</dt>
+        <dd><span class="term" data-term="partitioning">Partitioning, skew, and hot spots</span>: Kleppmann, <i>DDIA</i>, ch 6 (partitioning by hash of key). Consumer-group rebalancing: Kleppmann ch 11. Partition-key choice: war story P1 (the MMSI hot-shard incident).</dd>
+        <dt>Staff-level reasoning</dt>
+        <dd>A partitioned log spreads load by key, and the entire scheme lives or dies on the key choice. A low-cardinality or skewed key (a region code, where a few dense shipping lanes carry most traffic) maps disproportionate load onto one shard: that shard throttles (<code>ProvisionedThroughputExceeded</code>) while siblings idle. The seductive wrong fix is to add shards, but total throughput was never the problem; the key distribution was, so more shards just redistribute the same skew (war story P1: shard count treats a symptom, partition-key cardinality is the disease). The right fix is a high-cardinality key (a hash of MMSI). The second discipline is observability: graph per-shard throughput, not just aggregate, because aggregate health hides a single hot shard until it throttles.</dd>
+        <dt>Tradeoffs and alternatives considered</dt>
+        <dd>Hashing by MMSI spreads load but scatters a single vessel's records across consumers unless you key by vessel deliberately; Harbormaster keys per-vessel because per-vessel ordering and keyed state matter for feature computation, and MMSI cardinality (around 150K) is high enough to avoid hot shards. Explicit hot-key splitting (salting the few hottest keys) is more complex and reserved for the case where one vessel genuinely dominates, which AIS does not exhibit. Rebalancing during scale events briefly disrupts consumers; this is accepted and handled by idempotent processing (DR-2).</dd>
+        <dt>How Harbormaster instantiates it</dt>
+        <dd>Kinesis partition key is an MMSI-derived hash; per-shard throughput and a hot-key metric are dashboards; shard count is sized from the capacity estimate (see the worked example).</dd>
+      </dl>
+      <div class="soundbite"><b>Interview soundbite</b>"I key by an MMSI hash, not a region code, because skew throttles a single shard while the others idle; shard count treats the symptom, key cardinality is the cure."</div>
+    </section>
+
+    <!-- DR-12 -->
+    <section class="page" id="dr12">
+      <h1><span class="tag">DR-12</span> Batch backfill, live stream, replay</h1>
+      <p class="lede">Lambda versus kappa.</p>
+      <dl class="dr-meta">
+        <dt>Decision</dt>
+        <dd>Harbormaster runs a live stream (Flink) for current features, a batch path (EMR) for historical backfill, and the ability to replay history from the Iceberg log to reprocess. The architecture leans toward <span class="term" data-term="kappa">kappa</span> (reprocess by replaying the log) with a pragmatic batch backfill where reprocessing 600 GB from scratch on the stream would be wasteful.</dd>
+        <dt>Pattern and source</dt>
+        <dd><span class="term" data-term="lambda-kappa">Lambda versus Kappa architecture</span>; reprocessing. Lambda is Nathan Marz's coinage; Kappa is Jay Kreps's ("Questioning the Lambda Architecture," O'Reilly Radar, 2014). Kleppmann, <i>DDIA</i>, ch 11 and ch 12 (the lambda architecture and its critique) is the textbook treatment of both. The kappa idea (reprocess by replaying one log) is the natural consequence of the log-as-source-of-truth (DR-5).</dd>
+        <dt>Staff-level reasoning</dt>
+        <dd>Lambda architecture runs two code paths, a batch layer and a speed layer, and merges them; its well-known cost is maintaining the same logic twice in two engines and reconciling their results. Kappa collapses this: if the log is the source of truth and is replayable, you reprocess by replaying it through the same streaming code, so there is one codebase and no reconciliation. Harbormaster's Iceberg audit log (DR-5) is exactly the replayable log kappa needs. The pragmatic exception is large historical backfill: replaying 600 GB through the live stream competes with live traffic and is slow, so a bounded EMR batch job is the right tool for the one-time cold load, while ongoing reprocessing uses replay.</dd>
+        <dt>Tradeoffs and alternatives considered</dt>
+        <dd>Pure lambda buys a battle-tested batch layer at the cost of duplicated logic and drift between the two paths. Pure kappa is cleanest but assumes the log retains enough history and that replay throughput is acceptable; for a multi-hundred-GB cold start it is not, which is why Harbormaster keeps EMR for backfill. The hybrid's cost is having two execution engines (Flink and EMR) to operate, justified because they do genuinely different jobs (continuous vs one-time bulk) rather than duplicating the same logic.</dd>
+        <dt>How Harbormaster instantiates it</dt>
+        <dd>Flink for live features; EMR for the historical 600 GB backfill; Iceberg time-travel snapshots for replay-based reprocessing and reproducible training pulls back to MSI.</dd>
+      </dl>
+      <div class="soundbite"><b>Interview soundbite</b>"I lean kappa: the Iceberg log is replayable, so I reprocess through the same streaming code instead of maintaining a separate batch layer, and I only drop to EMR batch for the one-time multi-hundred-GB cold backfill."</div>
+    </section>
+
+    <!-- DR-15 -->
+    <section class="page" id="dr15">
+      <h1><span class="tag">DR-15</span> Serving API design</h1>
+      <p class="lede">Idempotency keys, cursor pagination, versioning.</p>
+      <dl class="dr-meta">
+        <dt>Decision</dt>
+        <dd>The serving API uses idempotency keys on writes, cursor-based pagination on list endpoints, explicit versioning, and resource-oriented design.</dd>
+        <dt>Pattern and source</dt>
+        <dd>API design: <span class="term" data-term="idempotency-key">idempotency keys</span>, <span class="term" data-term="cursor-pagination">pagination</span>, versioning. HelloInterview, <a href="https://hellointerview.com/learn/system-design/core-concepts/api-design" target="_blank" rel="noopener">API Design</a>. Idempotency keys generalize the Idempotent Receiver (DR-2). <span class="term" data-term="request-pipeline">Request Pipeline</span>: Fowler and Joshi, <i>Patterns of Distributed Systems</i>.</dd>
+        <dt>Staff-level reasoning</dt>
+        <dd>An API over a network is called by clients that retry, so any non-idempotent write (submit an anomaly report, trigger a promotion) will be sent twice when a client times out and retries; an idempotency key lets the server deduplicate and return the original result, turning at-least-once client behavior into effectively-once semantics at the API boundary, the same principle as DR-2. Cursor (not offset) pagination is correct under a live, changing dataset because offset pagination skips or repeats rows when the underlying data shifts between pages, while a cursor anchors to a stable position. Explicit versioning lets the API evolve without breaking existing clients, the API-surface analogue of schema evolution (DR-10).</dd>
+        <dt>Tradeoffs and alternatives considered</dt>
+        <dd>Offset pagination is simpler and allows random page access but is wrong for a live feed; cursor pagination gives stable iteration at the cost of no jump-to-page-N. Idempotency keys require the server to store seen keys for a window (storage and lookup cost) in exchange for safe client retries. Versioning costs the discipline of supporting old versions during a deprecation window. These are standard, low-controversy choices; the point in an interview is to volunteer them unprompted.</dd>
+        <dt>How Harbormaster instantiates it</dt>
+        <dd>Write endpoints accept an idempotency key and dedupe within a TTL; list endpoints (vessels, events) use opaque cursors; the API is versioned; responses are resource-oriented.</dd>
+      </dl>
+      <div class="soundbite"><b>Interview soundbite</b>"Writes take an idempotency key so client retries are safe, lists use cursor pagination because the feed is live and offsets drift, and the API is explicitly versioned so it can evolve without breaking clients."</div>
+    </section>
+
+    <!-- DR-3 -->
+    <section class="page" id="dr3">
+      <h1><span class="tag">DR-3</span> Model-promotion pipeline</h1>
+      <p class="lede">The promotion gate and the retraining flywheel.</p>
+      <dl class="dr-meta">
+        <dt>Decision</dt>
+        <dd>A model trained on MSI is promoted through a multi-stage gate: a MIRROR-holdout quality gate, then <span class="term" data-term="shadow">shadow</span> (parallel run, no production effect), then <span class="term" data-term="canary">canary</span> at 5%, 25%, 50% traffic, then full rollout via Argo CD. A separate closed loop runs continuously: drift detection triggers human-in-the-loop (HITL) review, which feeds Pi-GRPO retraining, which produces the next candidate that re-enters the promotion gate.</dd>
+        <dt>Pattern and source</dt>
+        <dd><span class="term" data-term="saga">Saga</span> orchestration versus choreography; <span class="term" data-term="compensating-transaction">compensating transactions</span>; <span class="term" data-term="durable-execution">durable execution</span>. Richardson, microservices.io, <a href="https://microservices.io/patterns/data/saga.html" target="_blank" rel="noopener">Saga</a>; Newman, <i>Building Microservices</i> 2nd ed; HelloInterview, <a href="https://hellointerview.com/learn/system-design/patterns/multi-step-processes" target="_blank" rel="noopener">"Multi-step Processes"</a>. <span class="term" data-term="parallel-run">Parallel Run</span> / shadowing: Newman. Canary Release: <a href="https://martinfowler.com/bliki/CanaryRelease.html" target="_blank" rel="noopener">Fowler</a>. <span class="term" data-term="blue-green">Blue-Green</span>: <a href="https://martinfowler.com/bliki/BlueGreenDeployment.html" target="_blank" rel="noopener">Fowler</a>. See the saga deep-dive.</dd>
+        <dt>Staff-level reasoning</dt>
+        <dd>Promotion is a multi-step process where each step can fail and some steps have side effects that must be undone. That is precisely a saga: a sequence of local steps, each with a compensating action, coordinated so that a failure anywhere triggers the compensations for the steps already taken. The compensation for "shifted 25% of traffic to the new model" is "shift it back" (auto-rollback). Modeling promotion as a saga with explicit compensations is what makes auto-rollback a first-class, tested path rather than an incident-time scramble. The retraining flywheel is a longer-lived saga: drift to HITL to retrain to re-promote, with the human approval as a deliberate durable wait.</dd>
+        <dt>Tradeoffs and alternatives considered</dt>
+        <dd>Orchestration (a central coordinator drives the steps) versus choreography (services react to events) is the core saga choice; Harbormaster uses orchestration for promotion because the sequence is fixed, the rollback logic must be auditable, and a single place to see "where is this promotion" is worth the coupling. Canary versus blue-green: blue-green flips all traffic at once (fast rollback, but no graduated exposure and double the resources during the flip); canary exposes a small percentage first and ramps, which catches model-quality regressions that only appear under real traffic. Harbormaster uses canary for model promotion and would reserve blue-green for stateless infra swaps. The cost of the saga is the orchestrator and the requirement that every step be idempotent and every compensation be safe to run more than once.</dd>
+        <dt>How Harbormaster instantiates it</dt>
+        <dd>Argo CD drives the rollout; shadow runs the candidate in parallel against live traffic with its output discarded; canary weights step 5/25/50; burn-rate on the SLO (DR-13) is the auto-rollback trigger, which is the compensating transaction. The flywheel's retraining is Pi-GRPO on MSI; promotion re-enters the same gate.</dd>
+      </dl>
+      <div class="soundbite"><b>Interview soundbite</b>"Promotion is a saga: shadow, then canary 5/25/50, with auto-rollback as the compensating transaction, orchestrated so rollback is a tested path, not an incident-time improvisation."</div>
+    </section>
+
+    <!-- DR-7 -->
+    <section class="page" id="dr7">
+      <h1><span class="tag">DR-7</span> Multi-tenant isolation</h1>
+      <p class="lede">Bulkhead, default-deny.</p>
+      <dl class="dr-meta">
+        <dt>Decision</dt>
+        <dd>Every record and request carries a <code>tenant_id</code>; access is <span class="term" data-term="default-deny">default-deny</span> (a request with no matching tenant grant is rejected, fail-closed). Tenants get per-tenant resource pools and per-tenant models so one tenant's load or failure cannot starve another.</dd>
+        <dt>Pattern and source</dt>
+        <dd><span class="term" data-term="bulkhead">Bulkhead</span>: Nygard, <i>Release It!</i>; Newman, <i>Building Microservices</i> 2nd ed. <span class="term" data-term="cell-based">Cell-based architecture</span> / shuffle sharding. Default-deny / fail-closed: standard security posture.</dd>
+        <dt>Staff-level reasoning</dt>
+        <dd>A bulkhead, named for a ship's watertight compartment, contains a failure so it cannot sink the whole vessel. Without isolation, one noisy or compromised tenant consumes a shared pool (connections, threads, model capacity) and degrades everyone: a single tenant becomes a single point of failure for all tenants. Per-tenant pools partition the blast radius so the damage stops at the compartment wall. Default-deny is the security counterpart: the safe default when a tenant grant is missing or ambiguous is to refuse, not to serve, because a fail-open default leaks data across the tenant boundary, which for a maritime tracking platform is the worst possible bug.</dd>
+        <dt>Tradeoffs and alternatives considered</dt>
+        <dd>A shared pool is cheaper and simpler and gives better average utilization; the bulkhead trades some utilization (idle capacity reserved per tenant) for guaranteed isolation. Full cell-based isolation (a separate stack per tenant) is the strongest form but the most expensive; Harbormaster uses per-tenant pools and models within a shared control plane as the proportionate middle. Default-deny costs occasional friction (a legitimately new tenant is refused until granted), which is the correct direction to fail.</dd>
+        <dt>How Harbormaster instantiates it</dt>
+        <dd><code>tenant_id</code> stamped at ingest and carried through the pipeline; per-tenant pools and per-tenant models on the serving plane; authorization checks default to deny when no tenant grant matches.</dd>
+      </dl>
+      <div class="soundbite"><b>Interview soundbite</b>"Each tenant is a bulkhead with its own pool and model, and authorization is default-deny, so one tenant's overload or a missing grant fails closed instead of bleeding across the boundary."</div>
+    </section>
+
+    <!-- DR-11 -->
+    <section class="page" id="dr11">
+      <h1><span class="tag">DR-11</span> Rebuilding the prototype</h1>
+      <p class="lede">Strangler fig.</p>
+      <dl class="dr-meta">
+        <dt>Decision</dt>
+        <dd>Harbormaster does not rewrite the original maritime detector in one big-bang cutover. It grows the new platform around the problem incrementally, standing up streaming, CDC, serving, and observability as separate phases, and routing functionality across as each new piece proves out. (Per <code>docs/HONESTY.md</code>, the ESRI work itself stays separate; this is a personal rebuild of the same problem on public data.)</dd>
+        <dt>Pattern and source</dt>
+        <dd><span class="term" data-term="strangler-fig">Strangler Fig Application</span>. Fowler, <a href="https://martinfowler.com/bliki/StranglerFigApplication.html" target="_blank" rel="noopener">StranglerFigApplication</a>.</dd>
+        <dt>Staff-level reasoning</dt>
+        <dd>A big-bang rewrite is the highest-risk way to replace a working system: you carry all the risk until the single cutover, and if it fails you have no incremental value and a hard rollback. The strangler fig (named for the vine that grows around a tree and gradually replaces it) inverts this: build the new system alongside the old, move one capability at a time, and keep both running until the new one has fully taken over. Each phase delivers standalone value and is independently reversible, so risk is paid down continuously instead of all at the end. Harbormaster's phase plan (foundations, streaming, serving, lakehouse/CDC, observability, case studies) is a strangler-fig schedule.</dd>
+        <dt>Tradeoffs and alternatives considered</dt>
+        <dd>A rewrite is simpler to reason about and avoids running two systems in parallel, but the risk profile is unacceptable for anything load-bearing. The strangler fig costs a longer total timeline and the complexity of an interim state where old and new coexist (and sometimes a facade to route between them). Harbormaster accepts the longer timeline because incremental, reversible delivery is the whole point of a learning-grade platform, and because the cost guardrails (DR-13) reward building the cheapest safe thing first.</dd>
+        <dt>How Harbormaster instantiates it</dt>
+        <dd>The phased README roadmap: Phase 0 foundations and FinOps before any spend, then streaming, serving, lakehouse/CDC, observability, and simulated case studies, each phase delivering and de-risking independently.</dd>
+      </dl>
+      <div class="soundbite"><b>Interview soundbite</b>"I grow the platform around the problem phase by phase rather than big-bang rewriting it, so every phase delivers value and stays reversible instead of betting everything on one cutover."</div>
+    </section>
+
+    <!-- DR-13 -->
+    <section class="page" id="dr13">
+      <h1><span class="tag">DR-13</span> SLOs, error budgets, burn-rate</h1>
+      <p class="lede">Burn-rate auto-rollback.</p>
+      <dl class="dr-meta">
+        <dt>Decision</dt>
+        <dd>Serving has explicit <span class="term" data-term="slo">SLOs</span> (latency and availability targets). The complement of the SLO is an <span class="term" data-term="error-budget">error budget</span>. Canary auto-rollback and alerting are driven by <span class="term" data-term="burn-rate">burn-rate</span>: how fast the current error rate is consuming the budget.</dd>
+        <dt>Pattern and source</dt>
+        <dd>SLOs, error budgets, burn-rate alerting. <a href="https://sre.google/books" target="_blank" rel="noopener">Google SRE Book</a>, chapters on Service Level Objectives and Alerting on SLOs / burn-rate. The auto-rollback tie-in is the compensating transaction of the promotion saga (DR-3).</dd>
+        <dt>Staff-level reasoning</dt>
+        <dd>"Is the service healthy" is unanswerable without a number; an SLO is that number (for example, 99.9% of inference requests under the latency target over 30 days). The error budget is what makes it actionable: 99.9% available means 0.1% is the budget you are allowed to spend, which reframes reliability from "never fail" (impossible, and it freezes shipping) to "fail within budget" (a quantitative speed limit). Burn-rate alerting is the senior refinement over threshold alerting: instead of paging on a raw error count, you alert on how fast the budget is being consumed, so a fast burn pages immediately while a slow burn is a ticket, not a 3 a.m. page. Wiring canary auto-rollback to burn-rate makes the rollback decision objective and automatic.</dd>
+        <dt>Tradeoffs and alternatives considered</dt>
+        <dd>Threshold alerting (page when errors exceed N) is simpler but either pages on harmless blips or misses slow bleeds; burn-rate needs multiple windows (fast and slow) tuned correctly, more setup for far better signal-to-noise. The error-budget discipline costs organizational buy-in (you must actually halt risky changes when the budget is spent). Harbormaster's version is lightweight (a personal platform) but the mechanism is the real one, because the canary gate (DR-3) needs an objective rollback trigger.</dd>
+        <dt>How Harbormaster instantiates it</dt>
+        <dd>Latency and availability SLOs on the serving plane; error budget tracked from the SLO; multi-window burn-rate alerts; canary promotion auto-rolls-back when the candidate's burn-rate exceeds threshold.</dd>
+      </dl>
+      <div class="soundbite"><b>Interview soundbite</b>"I set an SLO, treat its complement as an error budget, and alert and auto-rollback on burn-rate, so a canary that eats the budget too fast rolls itself back and a slow bleed is a ticket, not a page."</div>
+    </section>
+
+    <!-- DR-14 -->
+    <section class="page" id="dr14">
+      <h1><span class="tag">DR-14</span> Capacity sizing</h1>
+      <p class="lede">For the live AIS feed.</p>
+      <dl class="dr-meta">
+        <dt>Decision</dt>
+        <dd>Shard count, storage growth, and rough cost are derived from a <span class="term" data-term="back-of-envelope">back-of-envelope estimate</span> of the AIS message rate, not guessed. (Full worked example in the deep-dive.)</dd>
+        <dt>Pattern and source</dt>
+        <dd>Back-of-envelope estimation: message rate, shard count, bytes/day, cost. HelloInterview, "System Design in a Hurry," the estimation method within the <a href="https://hellointerview.com/learn/system-design" target="_blank" rel="noopener">Delivery Framework</a>. Kinesis sizing follows from the partitioning analysis (DR-9).</dd>
+        <dt>Staff-level reasoning</dt>
+        <dd>Estimation is how you turn "it should scale" into a defensible number, and an interviewer is grading whether you reason in orders of magnitude rather than reaching for precision you cannot have. The method is: state assumptions explicitly (ships, messages per ship per minute, bytes per message), compute the derived rate (messages per second), and size each resource from that single rate (shards from records-per-second and per-shard limits, storage from bytes times rate times seconds-per-day, cost from the resource counts). Doing this before provisioning prevents both under-provisioning (war story P1's throttling) and the far more expensive over-provisioning that blows the cost cap.</dd>
+        <dt>Tradeoffs and alternatives considered</dt>
+        <dd>Guessing or copying someone else's shard count ignores your actual rate and is how you end up paying for idle capacity or throttling under load. The estimate's cost is that it depends on assumptions that may be wrong; the mitigation is to state them so they can be challenged and re-run, and to size with headroom for burst.</dd>
+        <dt>How Harbormaster instantiates it</dt>
+        <dd>See the worked example; the numbers feed the Kinesis shard count (DR-9), the Iceberg storage plan (DR-5/DR-12), and the FinOps budget ($30 soft / $75 hard).</dd>
+      </dl>
+      <div class="soundbite"><b>Interview soundbite</b>"I size from one derived number, the messages-per-second from stated assumptions, then drive shards, storage, and cost from it, with headroom for burst, instead of guessing a shard count."</div>
+    </section>
+
+    <!-- SAGA DEEP DIVE -->
+    <section class="page" id="saga">
+      <h1>Saga deep-dive: the promotion saga and the retraining flywheel</h1>
+      <p class="lede">This expands DR-3 because the promotion pipeline and the retraining flywheel are the most interesting distributed-coordination problem in Harbormaster, and "multi-step process with compensations" is one of the highest-leverage patterns to discuss at a staff level.</p>
+
+      <div class="callout"><b>Sources for this section:</b> Chris Richardson, microservices.io, <a href="https://microservices.io/patterns/data/saga.html" target="_blank" rel="noopener">Saga</a>; Sam Newman, <i>Building Microservices</i> 2nd ed (sagas, orchestration vs choreography; resilience patterns drawing on Nygard's <i>Release It!</i>); HelloInterview, <a href="https://hellointerview.com/learn/system-design/patterns/multi-step-processes" target="_blank" rel="noopener">"Multi-step Processes"</a>, which covers distributed transactions, sagas, workflow engines, and durable execution as a progression.</div>
+
+      <h2>Why not a distributed transaction</h2>
+      <p>The textbook way to make "promote the model, shift traffic, update the registry, notify" atomic would be a distributed transaction (<span class="term" data-term="two-phase-commit">two-phase commit</span>) across all the services. In practice 2PC across heterogeneous managed services (Argo CD, SageMaker, the registry, traffic routing) is not available and would not be desirable: it blocks (the coordinator holds locks across services while it waits), it does not survive a coordinator crash gracefully, and the participants here do not speak a common transaction protocol. The saga is the answer to "I need a multi-step process to be reliable, but I cannot have a single ACID transaction across all the steps."</p>
+
+      <h2>Saga = local steps + compensations</h2>
+      <p>A saga is a sequence of local transactions where each step has a compensating transaction that semantically undoes it. There is no global rollback; instead, if step N fails, you run the compensations for steps N-1, N-2, ... back to the start.</p>
+      <table>
+        <tr><th>Forward step</th><th>Compensating action</th></tr>
+        <tr><td>Pass MIRROR-holdout quality gate</td><td>none needed (no external effect; a failure here aborts before any traffic move)</td></tr>
+        <tr><td>Deploy candidate in shadow (parallel run)</td><td>tear down the shadow deployment</td></tr>
+        <tr><td>Canary 5% traffic</td><td>shift the 5% back to the incumbent</td></tr>
+        <tr><td>Canary 25%</td><td>shift back to 5%, then to incumbent</td></tr>
+        <tr><td>Canary 50%</td><td>shift back to 25%, then to incumbent</td></tr>
+        <tr><td>Full rollout via Argo CD</td><td>roll back to the incumbent revision</td></tr>
+      </table>
+      <div class="callout"><b>The crucial design point:</b> auto-rollback is not a special incident path bolted on later; it is the compensating transaction of whichever step the burn-rate breach (DR-13) interrupts. Because every step's compensation is defined up front, rollback is a tested, ordinary path.</div>
+
+      <h2>Orchestration versus choreography</h2>
+      <p>In <span class="term" data-term="choreography">choreography</span>, each service emits events and the next service reacts; there is no central brain. In <span class="term" data-term="orchestration">orchestration</span>, a central coordinator explicitly invokes each step and decides what to compensate on failure. Richardson and Newman both frame this as a real tradeoff: choreography is loosely coupled and avoids a central bottleneck but scatters the workflow logic across services, so no single place tells you "where is this saga and why did it stop"; orchestration centralizes the logic (easier to reason about, audit, and visualize) at the cost of coupling everything to the coordinator.</p>
+      <p>Harbormaster uses orchestration for promotion. The sequence is fixed, the rollback logic must be auditable (you will be asked "why did this model roll back"), and a single source of truth for promotion state is worth the coupling. The drift-to-retrain flywheel is more event-driven, so it leans choreographed at the outer loop while the inner promotion remains orchestrated: choreograph the loosely-coupled long-running loop, orchestrate the tightly-sequenced critical sub-process.</p>
+
+      <h2>Why durable execution (Temporal-style) fits</h2>
+      <p>The promotion saga and especially the retraining flywheel are long-running and span a human approval (HITL), which can take hours or days. A naive orchestrator that holds the workflow in memory loses everything if it restarts mid-saga. <span class="term" data-term="durable-execution">Durable execution</span> engines (Temporal is the canonical example) persist the workflow's state and history so it survives process restarts, retries each step with its own policy, and can wait durably on a human signal without burning resources.</p>
+
+      <h2>The non-negotiable: idempotency</h2>
+      <p>Every saga step and every compensation must be idempotent, because the durable engine will retry steps after crashes and may re-deliver signals. "Shift traffic to 25%" run twice must equal run once; "tear down the shadow" run twice must not error on the second call. This is the same <span class="term" data-term="effectively-once">effectively-once</span> discipline as DR-2, applied to control-plane operations rather than data-plane records. A saga without idempotent steps is not a saga; it is a generator of duplicate side effects.</p>
+
+      <div class="soundbite"><b>Interview soundbite for the whole section</b>"Promotion is an orchestrated saga with a compensation defined for every step, so auto-rollback is just the compensation of whichever step the burn-rate trips; I run it on a durable-execution engine because it spans a human approval and must survive restarts, and every step is idempotent because the engine retries."</div>
+    </section>
+
+    <!-- CAPACITY SIZING -->
+    <section class="page" id="sizing">
+      <h1>Back-of-envelope capacity sizing: the live AIS feed</h1>
+      <p class="lede">A worked example in the HelloInterview style (DR-14). The point is the method and the orders of magnitude, not false precision. All inputs are stated assumptions; change them and re-run.</p>
+
+      <h2>Assumptions (stated, challengeable)</h2>
+      <ul>
+        <li>Vessels tracked: ~150K (from the README; continental-scale, not global-every-ship).</li>
+        <li>Not all are transmitting at once. Assume ~100K actively transmitting in a busy window.</li>
+        <li>AIS position report cadence: varies by vessel speed and class (seconds for fast vessels, minutes for slow/anchored). Assume an average of 1 message per vessel per 10 seconds as a working mean.</li>
+        <li>Message size on the wire after normalization: ~200 bytes (raw NMEA AIS is small; ~100-200 bytes after parsing to a JSON/Avro record). Use 200 bytes.</li>
+      </ul>
+
+      <h2>Derived message rate</h2>
+      <ul>
+        <li>Messages per second = 100K vessels / 10 s = <b>10,000 msg/s</b> average.</li>
+        <li>Allow a burst factor of ~3x for dense windows and reporting bursts: <b>~30,000 msg/s peak</b>.</li>
+      </ul>
+
+      <h2>Kinesis shard count</h2>
+      <ul>
+        <li>A Kinesis shard ingests up to 1,000 records/s or 1 MB/s, whichever binds first.</li>
+        <li>By record count: 10,000 msg/s / 1,000 = 10 shards average; 30,000 / 1,000 = 30 shards at peak.</li>
+        <li>By bytes: 10,000 msg/s x 200 B = 2 MB/s average (2 shards) and 6 MB/s peak (6 shards). Records-per-second is the binding constraint here, not bytes.</li>
+        <li>Size to peak with headroom: on the order of <b>30-40 shards</b>, and crucially use the high-cardinality MMSI-hash key (DR-9) so those shards are evenly loaded rather than one running hot.</li>
+      </ul>
+
+      <h2>Storage growth (bytes/day into the lakehouse)</h2>
+      <ul>
+        <li>Bytes/day = 10,000 msg/s x 200 B x 86,400 s/day &asymp; 1.7 x 10^11 B/day &asymp; <b>~170 GB/day raw</b>.</li>
+        <li>Compression: AIS records are highly compressible; assume ~5x with columnar Parquet/Iceberg, so <b>~30-40 GB/day on disk</b>.</li>
+        <li>Per year: ~12-15 TB/year compressed. Consistent with the ~600 GB historical figure being a bounded archive, not the full firehose retained forever; retention and compaction (war story P6) are deliberate choices.</li>
+      </ul>
+
+      <h2>Rough monthly cost intuition (orders of magnitude, not a quote)</h2>
+      <ul>
+        <li>Kinesis: ~30-40 shards x shard-hour pricing, plus PUT payload units. Shards are the dominant Kinesis line; on the order of low hundreds of dollars/month at this shard count if run continuously.</li>
+        <li>S3/Iceberg storage: ~30-40 GB/day growth; storage cost is small per month early on and grows linearly; the bigger cost lever is request/scan volume, which compaction controls.</li>
+      </ul>
+      <div class="warn"><b>The honesty cost note:</b> this is exactly why the architecture keeps GPU off AWS and runs under a $75 hard cap with a $30 soft budget. At sustained full-feed shard counts the real bill would exceed the cap, so the personal build runs reduced/intermittent ingestion and leans on the teardown actuator (war story P7) rather than pretending the full continuous feed fits in $75. State this honestly: the <i>design</i> sizes to the full feed; the <i>personal demo</i> runs a bounded slice within the cap.</div>
+
+      <h2>Method recap</h2>
+      <p>State assumptions, derive one rate (messages/second), size each resource from that rate (shards by the binding limit, storage by rate x size x seconds, cost by resource counts), add burst headroom, and name the dominant cost lever. That is the whole method.</p>
+    </section>
+
+    <!-- INTERVIEW WALKTHROUGH -->
+    <section class="page" id="interview">
+      <h1>Harbormaster as a 45-minute system-design interview</h1>
+      <p class="lede">A walkthrough using the HelloInterview Delivery Framework (requirements, core entities, API, high-level design, deep dives). Time-box each phase; the deep dives are where senior signal is won.</p>
+      <p>Reference: HelloInterview <a href="https://hellointerview.com/learn/system-design" target="_blank" rel="noopener">"System Design in a Hurry," the Delivery Framework</a>.</p>
+
+      <h2>1. Requirements (about 5 min)</h2>
+      <p><b>Functional:</b> ingest live AIS for ~150K vessels; compute per-vessel streaming features; detect anomalies (light spatial detectors inline, heavy diffusion model async); serve anomaly events with explanations; support multiple tenants; keep an auditable history.</p>
+      <p><b>Non-functional</b> (the ones that drive the design): event-time correctness under out-of-order/late AIS; low-latency serving reads; effectively-once processing; tenant isolation; reproducible training data; and a hard cost ceiling. Call out the explicit <b>non-goals</b> (from <code>docs/HONESTY.md</code>): no sharded query router, no consensus protocol; coordination uses managed services. Stating non-goals up front is senior behavior.</p>
+
+      <h2>2. Core entities (about 5 min)</h2>
+      <p>Vessel (by MMSI), Position report (the AIS event), Feature (per-vessel, time-windowed), Anomaly event (detection + evidence + explanation), Model (versioned artifact in the registry), Tenant. These map directly to the streams, the online store, the registry, and the audit log.</p>
+
+      <h2>3. API (about 5 min)</h2>
+      <pre><code>POST /v1/anomaly-reports              (idempotency key)
+GET  /v1/vessels/{mmsi}/anomalies?cursor=...   (cursor pagination)
+GET  /v1/vessels/{mmsi}/features
+POST /v1/models/{id}/promote          (idempotency key, kicks off the promotion saga)</code></pre>
+      <p>Versioned, resource-oriented (DR-15).</p>
+
+      <h2>4. High-level design (about 10 min)</h2>
+      <p>Draw the serving plane from <code>docs/ARCHITECTURE.md</code>: AISStream to Fargate ingestor to Kinesis (MMSI-hash key) fanning out to Flink (features to Feast/DynamoDB + Redis) and Firehose (to S3/Iceberg). EKS GeoTrace front door serves the light detectors inline and delegates Pi-DPM to a SageMaker async endpoint. RDS + Debezium CDC feeds the lakehouse. Training plane is MSI, off-cloud; models promote across the boundary. Observability and FinOps wrap both planes. Name the patterns as you draw: CDC, CQRS, event sourcing in the audit log, circuit breaker on the async call.</p>
+
+      <h2>5. Deep dives (about 15 min, pick 2-3)</h2>
+      <p>Strong candidates, each backed by a DR and a war story:</p>
+      <ul>
+        <li><b>Hot-shard partitioning (DR-9, war story P1):</b> why MMSI-hash over region code; per-shard metrics.</li>
+        <li><b>Effectively-once CDC (DR-1, DR-2):</b> the dual-write problem, the LSN high-water-mark guard, offset-after-ack.</li>
+        <li><b>The promotion saga (DR-3, saga deep-dive):</b> orchestration vs choreography, compensations, durable execution.</li>
+        <li><b>Event-time watermarks and backpressure (DR-6, war story P2):</b> why windows stall and how the watermark is guarded; load shedding via the P_phys gate.</li>
+        <li><b>Consistency (DR-16):</b> PACELC, why the hot path is eventual and what gets read-your-writes.</li>
+      </ul>
+      <div class="callout"><b>The move that signals seniority:</b> for each deep dive, state the failure mode first (the war story symptom), then the pattern that addresses it, then the tradeoff you accept.</div>
+    </section>
+
+    <!-- PATTERNS CATALOG -->
+    <section class="page" id="catalog">
+      <h1>Patterns catalog: quick reference</h1>
+      <p class="lede">Every pattern, its canonical source, where it lives in Harbormaster, and the one-line interview cue.</p>
+      <table>
+        <tr><th>Pattern</th><th>Canonical source</th><th>Where in Harbormaster</th><th>Interview cue</th></tr>
+        <tr><td>Change Data Capture</td><td>Kleppmann DDIA ch 11; Richardson</td><td>RDS to Debezium to Kinesis to derived stores (DR-1)</td><td>"Write once, derive the rest from the log."</td></tr>
+        <tr><td>Transactional Outbox / dual-write</td><td>Richardson, microservices.io</td><td>The problem CDC avoids (DR-1)</td><td>"Two writes, no shared transaction, is the bug."</td></tr>
+        <tr><td>Idempotent Receiver</td><td>Fowler &amp; Joshi, <i>Patterns of Distributed Systems</i></td><td>LSN-guarded upsert consumer (DR-2)</td><td>"At-least-once delivery + idempotence = effectively-once."</td></tr>
+        <tr><td>High-Water Mark / Versioned Value</td><td>Fowler &amp; Joshi</td><td><code>last_applied_lsn</code> guard (DR-2)</td><td>"Reject anything not newer than my high-water mark."</td></tr>
+        <tr><td>Saga (orchestration vs choreography)</td><td>Richardson; Newman</td><td>Promotion + retraining flywheel (DR-3)</td><td>"Local steps with compensations, no global transaction."</td></tr>
+        <tr><td>Compensating transaction</td><td>Richardson; HelloInterview Multi-step</td><td>Canary auto-rollback (DR-3, DR-13)</td><td>"Rollback is the compensation, defined up front."</td></tr>
+        <tr><td>Durable execution / workflow engine</td><td>HelloInterview Multi-step; Newman</td><td>The promotion/flywheel orchestrator (DR-3)</td><td>"Survives restarts and waits durably on a human."</td></tr>
+        <tr><td>Parallel Run / shadowing</td><td>Newman</td><td>Shadow stage before canary (DR-3)</td><td>"Run the candidate live with its output discarded."</td></tr>
+        <tr><td>Canary Release</td><td>Fowler, CanaryRelease.html</td><td>5/25/50 traffic ramp (DR-3)</td><td>"Graduated exposure catches traffic-dependent regressions."</td></tr>
+        <tr><td>Blue-Green Deployment</td><td>Fowler, BlueGreenDeployment.html</td><td>Considered, reserved for infra swaps (DR-3)</td><td>"All-at-once flip, fast rollback, double resources."</td></tr>
+        <tr><td>CQRS</td><td>Fowler, CQRS.html; Richardson</td><td>Postgres write vs online-store read (DR-4)</td><td>"Different read and write workloads, separate stores."</td></tr>
+        <tr><td>Event Sourcing</td><td>Fowler, EventSourcing.html; Kleppmann ch 11-12</td><td>Iceberg <code>cdc_audit</code> append-only log (DR-5)</td><td>"Current state is a fold over an immutable log."</td></tr>
+        <tr><td>Unbundling the database</td><td>Kleppmann DDIA ch 12</td><td>Log connects store, index, cache (DR-1, DR-5)</td><td>"The log re-synchronizes the unbundled pieces."</td></tr>
+        <tr><td>Backpressure / flow control</td><td>Kleppmann DDIA ch 11</td><td>Flink bounded buffers (DR-6)</td><td>"Throttle the producer, do not drop or OOM."</td></tr>
+        <tr><td>Load Shedding / Steady State</td><td>Nygard, <i>Release It!</i></td><td>P_phys cheap-gate (DR-6)</td><td>"Shed the cheapest, least-valuable work first."</td></tr>
+        <tr><td>Bulkhead</td><td>Nygard; Newman</td><td>Per-tenant pools/models (DR-7)</td><td>"Watertight compartments; one failure does not sink all."</td></tr>
+        <tr><td>Cell-based / shuffle sharding</td><td>Cloud architecture practice</td><td>Per-tenant isolation generalization (DR-7)</td><td>"Partition the blast radius by tenant."</td></tr>
+        <tr><td>Default-deny / fail-closed</td><td>Security practice</td><td><code>tenant_id</code> authorization (DR-7)</td><td>"Missing grant fails closed, never open."</td></tr>
+        <tr><td>Circuit Breaker</td><td>Fowler, CircuitBreaker.html; Nygard</td><td>Async Pi-DPM call (DR-8)</td><td>"Open after failures, fail fast, half-open to test."</td></tr>
+        <tr><td>Timeout + Retry w/ backoff+jitter</td><td>Nygard; Newman</td><td>Async call resilience (DR-8)</td><td>"Jitter so retries do not thunder-herd recovery."</td></tr>
+        <tr><td>Partitioning / skew / hot spots</td><td>Kleppmann DDIA ch 6</td><td>MMSI-hash shard key (DR-9, war story P1)</td><td>"Key cardinality, not shard count, fixes a hot shard."</td></tr>
+        <tr><td>Encoding and Evolution / schema registry</td><td>Kleppmann DDIA ch 4</td><td>CDC event schema (DR-10)</td><td>"Additive-only; backward + forward compatible."</td></tr>
+        <tr><td>Strangler Fig</td><td>Fowler, StranglerFigApplication.html</td><td>Phased platform rebuild (DR-11)</td><td>"Grow around it; no big-bang cutover."</td></tr>
+        <tr><td>Lambda vs Kappa</td><td>Marz (Lambda) / Kreps (Kappa); Kleppmann DDIA ch 11-12</td><td>Flink + EMR + Iceberg replay (DR-12)</td><td>"Replay one log; drop to batch only for cold backfill."</td></tr>
+        <tr><td>SLOs / error budgets / burn-rate</td><td>Google SRE Book</td><td>Canary auto-rollback trigger (DR-13)</td><td>"Alert and roll back on budget burn-rate, not raw count."</td></tr>
+        <tr><td>Back-of-envelope estimation</td><td>HelloInterview SDIAH</td><td>AIS feed sizing (DR-14, worked example)</td><td>"One derived rate drives shards, storage, and cost."</td></tr>
+        <tr><td>API design (idempotency, pagination, versioning)</td><td>HelloInterview API Design</td><td>Serving API (DR-15)</td><td>"Idempotency keys, cursor pagination, explicit versions."</td></tr>
+        <tr><td>Request Pipeline</td><td>Fowler &amp; Joshi</td><td>Overlapping API requests (DR-15)</td><td>"Pipeline requests without head-of-line blocking."</td></tr>
+        <tr><td>PACELC / consistency</td><td>Kleppmann DDIA ch 9; HelloInterview</td><td>Postgres vs online-store reads (DR-16)</td><td>"Else-latency-vs-consistency is the everyday tradeoff."</td></tr>
+        <tr><td>Linearizability / quorums</td><td>Kleppmann DDIA ch 9</td><td>Context for consistency choice (DR-16)</td><td>"Strong consistency costs coordination latency."</td></tr>
+      </table>
+    </section>
+
+    <!-- READING PATH -->
+    <section class="page" id="reading">
+      <h1>Curated reading path</h1>
+      <p class="lede">Read in this order; each item maps to the DRs above. Books are referenced by chapter; read the chapter, do not look for quoted text here.</p>
+      <ol>
+        <li><b>Foundations of the framework.</b> HelloInterview, <a href="https://hellointerview.com/learn/system-design" target="_blank" rel="noopener">"System Design in a Hurry"</a>: the Delivery Framework and Core Concepts. Read the Delivery Framework, then Core Concepts on consistency, CDC, and PACELC. Maps to the interview walkthrough, DR-1, DR-16.</li>
+        <li><b>The data-systems backbone.</b> Kleppmann, <i>Designing Data-Intensive Applications</i>: ch 4 (DR-10), ch 5 (DR-4/DR-16), ch 6 (DR-9), ch 9 (DR-16), ch 11 (DR-1/DR-2/DR-5/DR-6/DR-12), ch 12 (DR-5/DR-12). The single most load-bearing source for Harbormaster.</li>
+        <li><b>The named distributed-systems patterns.</b> Fowler and Joshi, <a href="https://martinfowler.com/articles/patterns-of-distributed-systems/" target="_blank" rel="noopener"><i>Patterns of Distributed Systems</i></a>: Idempotent Receiver, High-Water Mark, Versioned Value, Request Pipeline (DR-2, DR-15). Also Write-Ahead Log and Replicated Log as background (DR-1, DR-5).</li>
+        <li><b>Resilience and stability.</b> Nygard, <i>Release It!</i>: Circuit Breaker, Bulkhead, Timeout, Steady State, Load Shedding (DR-6, DR-7, DR-8). Short, concrete, exactly the failure modes Harbormaster's war stories anticipate.</li>
+        <li><b>Microservices judgment.</b> Newman, <i>Building Microservices</i> 2nd ed: sagas (orchestration vs choreography), resilience, deployment (canary, blue-green, parallel run / shadowing), and the "do not start with microservices" caution (DR-3, DR-7, DR-8, DR-11). Read the saga and deployment chapters before the interview.</li>
+        <li><b>The data patterns, applied.</b> Chris Richardson, <a href="https://microservices.io/patterns/" target="_blank" rel="noopener">microservices.io</a>: the pattern language index, then <a href="https://microservices.io/patterns/data/saga.html" target="_blank" rel="noopener">Saga</a>, <a href="https://microservices.io/patterns/data/transactional-outbox.html" target="_blank" rel="noopener">Transactional Outbox</a>, <a href="https://microservices.io/patterns/data/cqrs.html" target="_blank" rel="noopener">CQRS</a>. Maps to DR-1, DR-3, DR-4.</li>
+        <li><b>The deployment and architecture articles.</b> Fowler's bliki: <a href="https://martinfowler.com/bliki/CQRS.html" target="_blank" rel="noopener">CQRS</a>, <a href="https://martinfowler.com/eaaDev/EventSourcing.html" target="_blank" rel="noopener">Event Sourcing</a>, <a href="https://martinfowler.com/bliki/CircuitBreaker.html" target="_blank" rel="noopener">Circuit Breaker</a>, <a href="https://martinfowler.com/bliki/StranglerFigApplication.html" target="_blank" rel="noopener">Strangler Fig</a>, <a href="https://martinfowler.com/bliki/CanaryRelease.html" target="_blank" rel="noopener">Canary Release</a>, <a href="https://martinfowler.com/bliki/BlueGreenDeployment.html" target="_blank" rel="noopener">Blue-Green Deployment</a>, <a href="https://martinfowler.com/articles/microservices.html" target="_blank" rel="noopener">Microservices</a>. Quick reads, one per DR-3/DR-4/DR-5/DR-8/DR-11.</li>
+        <li><b>The multi-step / saga deep-dive.</b> HelloInterview, <a href="https://hellointerview.com/learn/system-design/patterns/multi-step-processes" target="_blank" rel="noopener">"Multi-step Processes"</a> and the <a href="https://hellointerview.com/blog/patterns" target="_blank" rel="noopener">"7 must-know patterns"</a> blog, plus <a href="https://hellointerview.com/learn/system-design/core-concepts/api-design" target="_blank" rel="noopener">API Design</a>. Read before the promotion-saga deep dive (DR-3, DR-15).</li>
+        <li><b>Reliability operations.</b> <a href="https://sre.google/books" target="_blank" rel="noopener">Google SRE Book</a>: the SLO chapter and "Alerting on SLOs" / burn-rate (DR-13). Read for the error-budget and burn-rate mechanics behind canary auto-rollback.</li>
+      </ol>
+      <div class="callout"><b>A final honesty note,</b> consistent with <code>docs/HONESTY.md</code>: this document explains the design and the patterns it instantiates. Several Harbormaster components are planned phases, and several war stories are anticipated rather than already hit. The patterns and the reasoning are real and defensible; the claim is "this is how it is designed and why," not "every line is already running in production."</div>
+    </section>
+
+    <!-- GLOSSARY -->
+    <section class="page" id="glossary">
+      <h1>Glossary</h1>
+      <p class="lede">The same definitions power the click-to-define popovers throughout. Click any dotted term anywhere in the doc.</p>
+      <div id="glossarylist"></div>
+    </section>
+
+    <div class="pager">
+      <a id="prev">&larr; Prev</a>
+      <a id="next">Next &rarr;</a>
+    </div>
+  </main>
+</div>
+<div class="pop" id="pop"></div>
+
+<script>
+(function(){
+  "use strict";
+  var pages=["overview","why-patterns","dr1","dr2","dr4","dr5","dr10","dr16","dr6","dr8","dr9","dr12","dr15","dr3","dr7","dr11","dr13","dr14","saga","sizing","interview","catalog","reading","glossary"];
+  var titles={
+    overview:"Start / Overview",
+    "why-patterns":"Start / Why patterns matter",
+    dr1:"Data & CDC / DR-1 CDC pipeline",
+    dr2:"Data & CDC / DR-2 Idempotent consumer",
+    dr4:"Data & CDC / DR-4 Read vs write model (CQRS)",
+    dr5:"Data & CDC / DR-5 Event sourcing audit log",
+    dr10:"Data & CDC / DR-10 CDC schema evolution",
+    dr16:"Data & CDC / DR-16 Consistency (PACELC)",
+    dr6:"Streaming & serving / DR-6 Flink backpressure + P_phys",
+    dr8:"Streaming & serving / DR-8 Async model call",
+    dr9:"Streaming & serving / DR-9 Shard / partition design",
+    dr12:"Streaming & serving / DR-12 Lambda vs kappa",
+    dr15:"Streaming & serving / DR-15 Serving API design",
+    dr3:"Lifecycle & ops / DR-3 Model-promotion pipeline",
+    dr7:"Lifecycle & ops / DR-7 Multi-tenant isolation",
+    dr11:"Lifecycle & ops / DR-11 Strangler fig rebuild",
+    dr13:"Lifecycle & ops / DR-13 SLOs & burn-rate",
+    dr14:"Lifecycle & ops / DR-14 Capacity sizing",
+    saga:"Deep dive / The promotion saga",
+    sizing:"Deep dive / Capacity worked example",
+    interview:"Deep dive / 45-minute interview",
+    catalog:"Reference / Patterns catalog",
+    reading:"Reference / Curated reading path",
+    glossary:"Reference / Glossary"
+  };
+  var GLOSSARY={
+    "dr":["Decision Record (DR)","A fixed-shape entry capturing one Harbormaster design choice: decision, pattern and source, staff-level reasoning, tradeoffs, instantiation, and a one-line interview soundbite."],
+    "cdc":["Change Data Capture (CDC)","Capturing a database's commit log (here Postgres logical decoding via Debezium) as an ordered change stream so every derived store is a deterministic projection of the log. Removes the dual write."],
+    "dual-write":["Dual-write problem","Updating two systems (e.g. Postgres and a cache) with two separate operations and no shared transaction. A crash between them leaves the stores inconsistent with no retry that fixes it. CDC and the outbox both avoid it."],
+    "outbox":["Transactional Outbox","Write the business row and an outbox row in one local transaction, then relay the outbox to the broker. An alternative to log-based CDC when you control the write path and want application-level events."],
+    "unbundling":["Unbundling the database","Kleppmann's framing: the storage engine, index, and cache are separated and re-synchronized through a log rather than coupled through synchronous writes."],
+    "idempotent-receiver":["Idempotent Receiver","A consumer designed so that re-processing a redelivered message has the same effect as processing it once. Achieved via upsert-by-key plus a high-water-mark guard."],
+    "high-water-mark":["High-Water Mark","A monotonically increasing marker (here last_applied_lsn) over a log; the receiver rejects any record not strictly newer than the mark, making stale or out-of-order redeliveries safe."],
+    "versioned-value":["Versioned Value","Storing values tagged with a version (an LSN here) so the system can reason about which write is newer and ignore stale ones."],
+    "at-least-once":["At-least-once delivery","The delivery guarantee of a log-based broker like Kinesis: a record is delivered one or more times, so consumers will sometimes re-read records they already processed."],
+    "effectively-once":["Effectively-once","The honest target above at-least-once delivery: at-least-once delivery plus idempotent application yields the same end state no matter how many times a record is redelivered. True exactly-once across a network and an external sink is not generally achievable."],
+    "cqrs":["CQRS","Command Query Responsibility Segregation: separate the write model (optimized for transactional integrity) from one or more read models (optimized for fast lookups), connected by a synchronization mechanism such as CDC."],
+    "materialized-view":["Materialized view","A precomputed, denormalized read model derived from a source of truth and kept fresh as the source changes. The online feature store is one, maintained by the CDC stream."],
+    "read-your-writes":["Read-your-writes consistency","A guarantee that a client always sees its own writes immediately. Hard under an eventually-consistent read model; Harbormaster reserves it for control-plane reads by going to Postgres directly."],
+    "event-sourcing":["Event Sourcing","Persisting the full ordered history of changes as immutable facts rather than only current state. Current state becomes a fold over the log, and any derived view can be rebuilt by replaying."],
+    "encoding-evolution":["Encoding and Evolution","Kleppmann ch 4: how data formats change over time. A versioned schema with enforced compatibility lets producers and consumers running different code versions interoperate."],
+    "backward-compat":["Backward compatibility","New consumer code can read data written by old producer code, so you can deploy the consumer first."],
+    "forward-compat":["Forward compatibility","Old consumer code can read data written by new producer code, so a producer can add a field before all consumers know about it."],
+    "pacelc":["PACELC","An extension of CAP: if there is a Partition, trade Availability against Consistency; Else (the normal case) trade Latency against Consistency. The 'else' clause governs most operating days."],
+    "linearizability":["Linearizability","The strong consistency model where every operation appears to take effect atomically at some point between its start and end, consistent with real-time order. Costs coordination latency."],
+    "event-time":["Event-time windows","Windowing stream computations by the time an event actually occurred (its timestamp) rather than when it was processed, so results are correct under out-of-order and late data."],
+    "watermark":["Watermark","A marker asserting that no events older than a given timestamp are expected, so a window can close. Adversarial timestamps can stall watermarks, so they need bounded out-of-orderness and an idleness timeout."],
+    "backpressure":["Backpressure","Flow control that propagates a slow consumer's slowness upstream (via bounded buffers) so the producer is throttled rather than the system dropping data or running out of memory."],
+    "load-shedding":["Load Shedding","Deliberately dropping work to protect the system when even backpressure is not enough. The senior move is to drop the cheapest-to-drop, least-valuable work first (here, via the P_phys gate)."],
+    "steady-state":["Steady State","Nygard's stability pattern: design so the system can run indefinitely without human intervention, cleaning up its own accumulations (logs, data, caches)."],
+    "circuit-breaker":["Circuit Breaker","A resilience pattern that, after a threshold of failures, opens and fails fast for a cooldown so a caller stops hammering a sick dependency, then half-opens to test recovery."],
+    "timeout-retry":["Timeout and Retry","Bounding how long a cross-boundary call may wait, and retrying transient failures. Combined with backoff and jitter to avoid a thundering herd on the dependency's recovery."],
+    "jitter":["Backoff with jitter","Spacing retries out with exponentially growing, randomized delays so many clients do not synchronize their retries and all hit the recovering dependency at once."],
+    "partitioning":["Partitioning / skew / hot spots","Spreading load across shards by key. A low-cardinality or skewed key maps disproportionate load onto one shard (a hot spot) that throttles while siblings idle. Key cardinality, not shard count, is the cure."],
+    "kappa":["Kappa architecture","Reprocess data by replaying one log through the same streaming code, rather than maintaining a separate batch layer. Requires a replayable log as the source of truth."],
+    "lambda-kappa":["Lambda vs Kappa","Lambda runs a batch layer and a speed layer and merges them, duplicating logic. Kappa collapses to one replayable log and one codebase. Harbormaster leans kappa with a pragmatic EMR batch backfill."],
+    "saga":["Saga","A sequence of local transactions, each with a compensating transaction that semantically undoes it. There is no global rollback; a failure at step N runs the compensations for steps N-1 back to the start."],
+    "compensating-transaction":["Compensating transaction","The action that semantically undoes a completed saga step (e.g. 'shift 25% of traffic back'). Defining one per step up front makes auto-rollback a tested path, not an incident-time scramble."],
+    "orchestration":["Orchestration","A central coordinator explicitly invokes each saga step and decides what to compensate on failure. Easier to audit and visualize, at the cost of coupling everything to the coordinator."],
+    "choreography":["Choreography","Each service emits events and the next reacts; there is no central brain. Loosely coupled but scatters the workflow logic, so no single place tells you where the saga is and why it stopped."],
+    "durable-execution":["Durable execution","A workflow engine (Temporal is canonical) that persists workflow state and history so it survives process restarts, retries each step, and can wait durably on a human signal without burning resources."],
+    "two-phase-commit":["Two-phase commit (2PC)","An atomic-commit protocol: a coordinator runs a prepare phase (durable promises) then a commit phase. Blocks on held locks and risks an in-doubt window if the coordinator dies after prepare. Avoided here in favor of a saga."],
+    "shadow":["Shadow / parallel run","Running a candidate model against live traffic with its output discarded, to observe behavior under real load before exposing it to users."],
+    "canary":["Canary Release","Exposing a new version to a small percentage of traffic first and ramping (5/25/50), so traffic-dependent regressions are caught before full rollout."],
+    "parallel-run":["Parallel Run","Newman's deployment pattern: run old and new side by side on the same inputs and compare, before trusting the new one. Harbormaster's shadow stage."],
+    "blue-green":["Blue-Green Deployment","Two identical environments; flip all traffic at once between them. Fast rollback, but no graduated exposure and double resources during the flip. Reserved here for stateless infra swaps."],
+    "bulkhead":["Bulkhead","Named for a ship's watertight compartment: isolate resources (per-tenant pools and models) so one tenant's overload or failure cannot starve the others or sink the whole platform."],
+    "cell-based":["Cell-based / shuffle sharding","Partitioning the blast radius by giving tenants their own stacks or shuffled subsets of capacity. The strongest isolation form, and the most expensive."],
+    "default-deny":["Default-deny / fail-closed","The safe security default: when a tenant grant is missing or ambiguous, refuse rather than serve, because a fail-open default leaks data across the tenant boundary."],
+    "strangler-fig":["Strangler Fig Application","Named for the vine that grows around a tree and gradually replaces it: build the new system alongside the old, move one capability at a time, keep both running until the new one has fully taken over. Avoids a big-bang cutover."],
+    "slo":["SLO","Service Level Objective: a target like 99.9% of inference requests under the latency budget over 30 days. Turns 'is the service healthy' into a number you can act on."],
+    "error-budget":["Error budget","The complement of the SLO (0.1% for a 99.9% target): the amount of unreliability you are allowed to spend. Reframes reliability from 'never fail' to 'fail within budget.'"],
+    "burn-rate":["Burn-rate","How fast the current error rate is consuming the error budget. Fast-burn pages immediately; slow-burn is a ticket. Wiring canary auto-rollback to burn-rate makes the rollback objective."],
+    "back-of-envelope":["Back-of-envelope estimation","Sizing from stated assumptions: derive one rate (messages/second), then size each resource from it (shards, storage, cost), with burst headroom. Reasoning in orders of magnitude, not false precision."],
+    "idempotency-key":["Idempotency key","A client-supplied key on a write so the server can deduplicate retries and return the original result, turning at-least-once client behavior into effectively-once at the API boundary."],
+    "cursor-pagination":["Cursor pagination","Paginating by an opaque cursor anchored to a stable position, correct under a live changing dataset. Offset pagination skips or repeats rows when the data shifts between pages."],
+    "request-pipeline":["Request Pipeline","Fowler and Joshi's pattern: send multiple requests over a connection without waiting for each response, avoiding head-of-line blocking while preserving ordering."]
+  };
+
+  function $(id){return document.getElementById(id);}
+  var pop=$("pop");
+
+  function renderGlossary(){
+    var keys=Object.keys(GLOSSARY).sort(function(a,b){return GLOSSARY[a][0].localeCompare(GLOSSARY[b][0]);});
+    var html="";
+    keys.forEach(function(k){html+='<div class="card" style="padding:12px 16px;margin:10px 0"><b style="color:var(--accent-dk)">'+GLOSSARY[k][0]+'</b><br>'+GLOSSARY[k][1]+'</div>';});
+    var el=$("glossarylist"); if(el) el.innerHTML=html;
+  }
+
+  function show(id,push){
+    if(pages.indexOf(id)<0) id="overview";
+    pages.forEach(function(p){var el=$(p); if(el) el.classList.toggle("active",p===id);});
+    var links=document.querySelectorAll("nav.side a.lnk");
+    links.forEach(function(a){a.classList.toggle("active",a.getAttribute("data-p")===id);});
+    var cr=$("crumbs"); if(cr) cr.textContent=titles[id]||id;
+    var i=pages.indexOf(id);
+    var prev=$("prev"), next=$("next");
+    if(prev) prev.style.visibility = i>0 ? "visible":"hidden";
+    if(next) next.style.visibility = i<pages.length-1 ? "visible":"hidden";
+    window.scrollTo(0,0);
+    hidePop();
+    if(push){ try{ history.replaceState(null,"","#"+id); }catch(e){} }
+  }
+  function go(delta){ var i=pages.indexOf(current()); var j=Math.min(pages.length-1,Math.max(0,i+delta)); show(pages[j],true); }
+  function current(){ for(var k=0;k<pages.length;k++){var el=$(pages[k]); if(el&&el.classList.contains("active")) return pages[k];} return "overview"; }
+
+  // popover
+  function showPop(term,x,y){
+    var g=GLOSSARY[term]; if(!g){return;}
+    pop.innerHTML="<b>"+g[0]+"</b><br>"+g[1];
+    pop.style.display="block";
+    var w=pop.offsetWidth, h=pop.offsetHeight;
+    var left=Math.min(x, (window.scrollX+document.documentElement.clientWidth)-w-14);
+    var top=y+16;
+    if(top+h > window.scrollY+document.documentElement.clientHeight){ top=y-h-12; }
+    pop.style.left=Math.max(8,left)+"px";
+    pop.style.top=Math.max(8,top)+"px";
+  }
+  function hidePop(){ pop.style.display="none"; }
+
+  document.addEventListener("click",function(e){
+    var t=e.target.closest ? e.target.closest(".term") : null;
+    if(t){ e.preventDefault(); showPop(t.getAttribute("data-term"), e.pageX, e.pageY); return; }
+    if(!e.target.closest || !e.target.closest("#pop")){ hidePop(); }
+    var j=e.target.closest ? e.target.closest("[data-jump]") : null;
+    if(j){ e.preventDefault(); show(j.getAttribute("data-jump"),true); }
+    var lnk=e.target.closest ? e.target.closest("a.lnk") : null;
+    if(lnk){ e.preventDefault(); show(lnk.getAttribute("data-p"),true); }
+  });
+  var pv=$("prev"), nx=$("next");
+  if(pv) pv.addEventListener("click",function(e){e.preventDefault();go(-1);});
+  if(nx) nx.addEventListener("click",function(e){e.preventDefault();go(1);});
+
+  document.addEventListener("keydown",function(e){
+    var tag=(e.target&&e.target.tagName)||"";
+    if(tag==="INPUT"||tag==="TEXTAREA") return;
+    if(e.key==="ArrowDown"||e.key==="j"){ e.preventDefault(); go(1); }
+    else if(e.key==="ArrowUp"||e.key==="k"){ e.preventDefault(); go(-1); }
+    else if(e.key==="Escape"){ hidePop(); }
+  });
+
+  // theme
+  var root=document.documentElement;
+  function loadTheme(){ try{ return localStorage.getItem("hm_theme"); }catch(e){ return null; } }
+  function saveTheme(v){ try{ localStorage.setItem("hm_theme",v); }catch(e){} }
+  var saved=loadTheme(); if(saved){ root.setAttribute("data-theme",saved); }
+  var tb=$("themebtn");
+  if(tb) tb.addEventListener("click",function(){
+    var cur=root.getAttribute("data-theme");
+    var sysDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+    var nowDark = cur ? cur==="dark" : sysDark;
+    var nv = nowDark ? "light":"dark";
+    root.setAttribute("data-theme",nv); saveTheme(nv);
+  });
+
+  // init
+  renderGlossary();
+  var start="overview";
+  try{ if(location.hash){ var h=location.hash.replace("#",""); if(pages.indexOf(h)>=0) start=h; } }catch(e){}
+  show(start,false);
+})();
+</script>
+</body>
+</html>

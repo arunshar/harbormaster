@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Harbormaster: Corridor / Route-Graph Preprocessing</title>
+<style>
+  :root{
+    --accent:#1565c0; --accent-dk:#0d47a1; --accent-soft:rgba(21,101,192,.12);
+    --bg:#ffffff; --bg-2:#f4f7fb; --bg-3:#e9eff7; --fg:#15212e; --fg-2:#4a5868;
+    --line:#dbe4ee; --card:#ffffff; --code:#eef3f9; --ok:#0a8a4a; --warn:#b9822a; --bad:#d0494a;
+    --shadow:0 1px 3px rgba(0,0,0,.07),0 6px 24px rgba(0,0,0,.05);
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#0e1722; --bg-2:#14202e; --bg-3:#1c2c3d; --fg:#e6edf5; --fg-2:#9db0c4;
+      --line:#25364a; --card:#14202e; --code:#0a1019; --ok:#3fce8e; --warn:#e0a83e; --bad:#e56767;
+      --shadow:0 1px 3px rgba(0,0,0,.4),0 8px 30px rgba(0,0,0,.35);
+    }
+  }
+  html[data-theme="light"]{ --bg:#fff; --bg-2:#f4f7fb; --bg-3:#e9eff7; --fg:#15212e; --fg-2:#4a5868; --line:#dbe4ee; --card:#fff; --code:#eef3f9; }
+  html[data-theme="dark"]{ --bg:#0e1722; --bg-2:#14202e; --bg-3:#1c2c3d; --fg:#e6edf5; --fg-2:#9db0c4; --line:#25364a; --card:#14202e; --code:#0a1019; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+  a{color:var(--accent-dk);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .layout{display:flex;min-height:100vh}
+  nav.side{width:300px;flex:0 0 300px;background:var(--bg-2);border-right:1px solid var(--line);padding:22px 16px 60px;position:sticky;top:0;height:100vh;overflow-y:auto}
+  .brand{display:flex;align-items:center;gap:10px;margin:0 6px 16px}
+  .dot{width:11px;height:11px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
+  .brand b{font-size:14px;letter-spacing:.2px}
+  .brand span{display:block;font-size:11.5px;color:var(--fg-2);font-weight:400}
+  .navgroup{margin:14px 6px 4px;font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--fg-2);font-weight:700}
+  nav.side a.lnk{display:flex;gap:9px;align-items:baseline;padding:7px 10px;border-radius:8px;color:var(--fg);font-size:14px;cursor:pointer;line-height:1.35}
+  nav.side a.lnk .n{color:var(--fg-2);font-size:12px;min-width:16px}
+  nav.side a.lnk:hover{background:var(--bg-3);text-decoration:none}
+  nav.side a.lnk.active{background:var(--accent-soft);color:var(--accent-dk);font-weight:600}
+  main{flex:1;min-width:0;max-width:900px;margin:0 auto;padding:36px 40px 120px}
+  .topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:8px}
+  .crumbs{font-size:12.5px;color:var(--fg-2)}
+  .tools{display:flex;gap:8px}
+  .btn{border:1px solid var(--line);background:var(--card);color:var(--fg-2);border-radius:8px;padding:6px 11px;font-size:12.5px;cursor:pointer}
+  .btn:hover{border-color:var(--accent);color:var(--accent-dk)}
+  .page{display:none;animation:fade .25s ease}
+  .page.active{display:block}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  h1{font-size:26px;line-height:1.22;margin:6px 0 4px}
+  h2{font-size:18px;margin:26px 0 8px}
+  h3{font-size:14px;margin:18px 0 6px;color:var(--accent-dk);text-transform:uppercase;letter-spacing:.05em}
+  .lede{font-size:16px;color:var(--fg-2);margin:8px 0 18px}
+  ul,ol{padding-left:22px}
+  li{margin:5px 0}
+  code{background:var(--code);padding:1.5px 6px;border-radius:5px;font:13px/1.5 "SF Mono",ui-monospace,Menlo,Consolas,monospace}
+  pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto;border:1px solid var(--line)}
+  pre code{background:none;padding:0;font-size:12.5px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:14px 0;box-shadow:var(--shadow)}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:760px){.grid{grid-template-columns:1fr}}
+  .callout{border-left:3px solid var(--accent);background:var(--accent-soft);border-radius:0 10px 10px 0;padding:12px 16px;margin:14px 0}
+  .warn{border-left:3px solid var(--warn);background:rgba(185,130,42,.12);border-radius:0 10px 10px 0;padding:12px 16px;margin:14px 0}
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:13.5px}
+  th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+  th{background:var(--bg-3);font-weight:600}
+  .term{border-bottom:1.5px dotted var(--accent-dk);cursor:help}
+  .tag{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:20px;letter-spacing:.03em;vertical-align:middle}
+  .tag.esri{background:rgba(185,130,42,.16);color:var(--warn)}
+  .tag.pers{background:rgba(21,101,192,.16);color:var(--accent-dk)}
+  .tag.paper{background:rgba(10,138,74,.16);color:var(--ok)}
+  .kbd{font:11px ui-monospace,monospace;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 6px;background:var(--bg-3)}
+  .diagram{font:12px/1.5 ui-monospace,Menlo,monospace;white-space:pre;overflow-x:auto;background:var(--code);border:1px solid var(--line);border-radius:10px;padding:14px 16px;color:var(--fg)}
+  .pager{display:flex;justify-content:space-between;margin-top:36px;padding-top:18px;border-top:1px solid var(--line);font-size:13.5px}
+  .pager a{cursor:pointer}
+  .pop{position:absolute;z-index:50;max-width:320px;background:var(--card);border:1px solid var(--accent);border-radius:10px;padding:11px 13px;box-shadow:var(--shadow);font-size:13px;color:var(--fg);display:none}
+  .pop b{color:var(--accent-dk)}
+  footer{color:var(--fg-2);font-size:12px;margin-top:28px}
+  @media print{nav.side,.tools,.pager{display:none}.page{display:block!important}main{max-width:none}}
+  @media(max-width:760px){nav.side{display:none}main{padding:20px}}
+</style>
+</head>
+<body>
+<div class="layout">
+  <nav class="side" id="side">
+    <div class="brand"><span class="dot"></span><div><b>Corridor Preprocessing</b><span>Harbormaster route-graph stage</span></div></div>
+    <div class="navgroup">Start</div>
+    <a class="lnk" data-p="overview"><span class="n">1</span><span>Overview</span></a>
+    <a class="lnk" data-p="grounding"><span class="n">2</span><span>The real internship work</span></a>
+    <div class="navgroup">The graph</div>
+    <a class="lnk" data-p="graph"><span class="n">3</span><span>The GTRA corridor graph</span></a>
+    <a class="lnk" data-p="modes"><span class="n">4</span><span>Static and learned modes</span></a>
+    <div class="navgroup">In the platform</div>
+    <a class="lnk" data-p="detector"><span class="n">5</span><span>Corridor deviation detector</span></a>
+    <a class="lnk" data-p="feeds"><span class="n">6</span><span>How it feeds the platform</span></a>
+    <div class="navgroup">Context layers</div>
+    <a class="lnk" data-p="bathymetry"><span class="n">7</span><span>Bathymetry (seabed depth)</span></a>
+    <a class="lnk" data-p="weather"><span class="n">8</span><span>Weather and seasonal ice</span></a>
+    <div class="navgroup">Reference</div>
+    <a class="lnk" data-p="data"><span class="n">9</span><span>Data sources</span></a>
+    <a class="lnk" data-p="honesty"><span class="n">10</span><span>Honesty boundary</span></a>
+    <a class="lnk" data-p="glossary"><span class="n">11</span><span>Glossary</span></a>
+    <a class="lnk" data-p="resources"><span class="n">12</span><span>Resources</span></a>
+  </nav>
+
+  <main>
+    <div class="topbar">
+      <div class="crumbs" id="crumbs">Start / Overview</div>
+      <div class="tools">
+        <button class="btn" id="themebtn">Theme</button>
+        <button class="btn" onclick="window.print()">Print</button>
+      </div>
+    </div>
+
+    <!-- overview -->
+    <section class="page" id="overview">
+      <h1>Corridor / Route-Graph Preprocessing</h1>
+      <p class="lede">A preprocessing stage that turns the sea into a graph: <span class="term" data-term="waypoint">waypoint</span> nodes where ships change course and <span class="term" data-term="sealane">sea-lane</span> edges between them. That <span class="term" data-term="gtra">GTRA</span>-style corridor graph becomes a prior for anomaly detection and routing across the Harbormaster platform.</p>
+
+      <div class="card">
+        <h3 style="margin-top:0">In one paragraph</h3>
+        <p>Vessels do not move randomly; they follow established corridors. If you know the corridors, an off-corridor track, a course change in open water far from any known waypoint, or a vessel in a lane it cannot physically use becomes a strong, explainable anomaly signal. This stage builds the corridor graph from public AIS (via <span class="term" data-term="rdp">RDP</span> line simplification and <span class="term" data-term="hdbscan">HDBSCAN</span>) and from <span class="term" data-term="enc">NOAA nautical charts</span>, then enriches it with <span class="term" data-term="bathymetry">seabed depth</span> and <span class="term" data-term="seaice">seasonal ice</span>.</p>
+      </div>
+
+      <div class="callout"><b>Provenance, stated up front.</b> The waypoint-detection method here is grounded in Arun's real ESRI 2023 internship work <span class="tag esri">ESRI</span> and the Singh et al. GTRA paper <span class="tag paper">paper</span>. This Harbormaster stage is an original re-implementation on public data <span class="tag pers">personal</span>. The two are kept separate throughout. See the <a data-jump="honesty">Honesty boundary</a> page.</p></div>
+
+      <h2>What this page covers</h2>
+      <ul>
+        <li>The real internship work it is grounded in (the shareable waypoint detection, with results).</li>
+        <li>The corridor graph: nodes, edges, and how it is built two ways.</li>
+        <li>The deviation detector and how the graph feeds anomaly scoring, the space-time prisms, and route optimization.</li>
+        <li>The two context layers Arun identified during the internship but could not model then: bathymetry and weather.</li>
+      </ul>
+      <p style="color:var(--fg-2);font-size:13.5px">Navigate with the sidebar or <span class="kbd">&darr;</span> / <span class="kbd">&uarr;</span>. Click any <span class="term" data-term="gtra">dotted term</span> for a definition.</p>
+    </section>
+
+    <!-- grounding -->
+    <section class="page" id="grounding">
+      <h1>The real internship work <span class="tag esri">ESRI</span></h1>
+      <p class="lede">The shareable half of Arun's ESRI 2023 internship: waypoint detection in maritime trajectories. This is the documented, reproducible foundation the corridor stage rebuilds.</p>
+
+      <h2>The method</h2>
+      <ul>
+        <li><b>Waypoint definition:</b> a geographic location where a vessel maneuvers or changes course en route from source to destination.</li>
+        <li><b>Detection:</b> per-track turning-point extraction, then <span class="term" data-term="hdbscan">HDBSCAN</span> clustering of candidates, then the mean center of each cluster as the final waypoint.</li>
+        <li><b>The lead method, <span class="term" data-term="rdp">Ramer-Douglas-Peucker</span> line simplification, with a real twist:</b> instead of a fixed global tolerance, the tolerance is set per track to the standard deviation of that track's perpendicular distances from its start-end chord. An adaptive, per-track epsilon. This is a genuine contribution beyond the reference paper.</li>
+        <li><b>Compared against:</b> change-in-bearing (atan2 threshold), CUSUM on bearing, and Mahalanobis distance over joint bearing and speed change.</li>
+      </ul>
+
+      <h2>Ground truth from NOAA charts (the distinctive idea)</h2>
+      <p>Because there is no public dataset of maritime waypoints, ground truth was manufactured from <span class="term" data-term="enc">NOAA Electronic Navigational Charts</span>: shipping-lane polygons run through a <span class="term" data-term="centerline">polygon-to-centerline</span> operation, and the bends and intersections of those centerlines are labeled as ground-truth waypoints. AIS-derived detections are then scored against them. Charts used included 1117A, 11340, 11360, 411, 25671 LE, 11328, 11330, 18740, and 530.</p>
+
+      <h2>The results (the numbers that are shareable)</h2>
+      <div class="card">
+        <table>
+          <tr><th>Result</th><th>Value</th></tr>
+          <tr><td>Chart ground-truth waypoints recovered (Line Simplification + HDBSCAN)</td><td><b>31 of 41</b> (3 misses had no AIS data)</td></tr>
+          <tr><td>RDP recall, best (1-std adaptive tolerance)</td><td><b>~0.99</b></td></tr>
+          <tr><td>Change-in-bearing recall (same setting)</td><td>&lt;= 0.60</td></tr>
+          <tr><td>Regions validated</td><td>Gulf of Mexico (2153 cargo tracks, Jan 2022), San Diego Bay, LA / Long Beach (1340 vessels), Houston ship channel, Puerto Rico</td></tr>
+          <tr><td>Data</td><td>MarineCadastre US AIS (NOAA), ~150K objects, 2009-2017 archive</td></tr>
+        </table>
+      </div>
+      <p>Across five parameter sweeps (track count, distance, neighbors, std-dev threshold, cluster size) RDP beat change-in-bearing in every case. The graph-network anomaly detector and a novel non-threshold waypoint method were written up as future work, not benchmarked.</p>
+      <div class="warn">These waypoint results are the shareable, reproducible part of the internship and the only ESRI numbers quoted in Harbormaster artifacts. The internship's anomaly-detector results were a separate, restricted deliverable and are not used here. See the <a data-jump="honesty">Honesty boundary</a>.</div>
+    </section>
+
+    <!-- graph -->
+    <section class="page" id="graph">
+      <h1>The GTRA corridor graph <span class="tag pers">personal</span></h1>
+      <p class="lede">A graph <code>G(V, E)</code>: waypoint nodes and sea-lane edges, built from two complementary sources.</p>
+
+      <div class="diagram">  AIS tracks            NOAA ENC charts
+       |                      |
+   RDP (adaptive eps)    polygon-to-centerline
+       |                      |
+   turning points        lane bends / intersections
+       |                      |
+   HDBSCAN + centroid    charted waypoints
+       \\                    /
+        \\                  /
+         v                v
+   ===========  WAYPOINT NODES V  ===========
+   node = (centroid lon/lat, covariance, degree, source in {AIS, ENC})
+                     |
+              join consecutive nodes
+                     |
+   ===========  SEA-LANE EDGES E  ===========
+   edge = (node_u, node_v, geometry, visit_weight, source)
+   degree-2 node = straight lane ; degree>2 = intersection/waypoint</div>
+
+      <h2>Nodes V</h2>
+      <ul>
+        <li><b>AIS-derived:</b> RDP per-vessel waypoint reduction (the adaptive per-track tolerance) then HDBSCAN cluster then mean center. The personal re-implementation of the ESRI and paper pipeline on public AIS.</li>
+        <li><b>ENC-derived:</b> NOAA chart shipping-lane polygons to centerlines; bends and intersections become charted waypoints. The personal re-implementation of the distinctive ESRI ground-truth idea, from public NOAA ENC data.</li>
+        <li>Each node carries a covariance (the cluster spread, used later as a Mahalanobis gate), a <b>degree</b> (degree-2 means a straight lane passing through; degree greater than 2 means a real intersection or decision point), and its source.</li>
+      </ul>
+
+      <h2>Edges E (the sea-lanes)</h2>
+      <ul>
+        <li>Route segments joining consecutive nodes, formed two ways: from RDP-simplified AIS tracks (with a normalized visit-count threshold, per GTRA edge selection) and from charted lane centerlines.</li>
+        <li>Each edge carries geometry, a visit weight (how heavily trafficked), and its source. Edges are where the later context layers attach: depth, expected speed, and time-varying availability.</li>
+      </ul>
+      <div class="callout">This matches the reference paper's GTRA construction (RDP for waypoint reduction, DBSCAN to cluster waypoints into nodes, visit-threshold edge selection) and extends it with the adaptive tolerance and the NOAA-chart node seeding.</div>
+    </section>
+
+    <!-- modes -->
+    <section class="page" id="modes">
+      <h1>Static and learned build modes</h1>
+      <p class="lede">Usable cheaply and early, rich and distributed later.</p>
+      <div class="grid">
+        <div class="card">
+          <h3 style="margin-top:0">Static corridor (Phase 1)</h3>
+          <p>A precomputed, versioned graph built offline from the NOAA ENC charts plus a one-time MarineCadastre extract for the demo regions (Gulf of Mexico, San Diego / LA, Houston). Stored as an Iceberg table plus a compact serialized artifact in the S3 model bucket, loaded read-only by the ECS Fargate serving container at startup.</p>
+          <p><b>Cost:</b> ~$0 (artifact load). No streaming dependency. Analyst-editable. Unblocks the deviation signal in the Phase 1 slice with a frozen graph.</p>
+        </div>
+        <div class="card">
+          <h3 style="margin-top:0">Learned corridor (Phase 3)</h3>
+          <p>The same graph rebuilt periodically by the EMR <span class="term" data-term="pyspark">PySpark</span> batch job over the 600 GB MarineCadastre Iceberg lake, versioned per region per run, promoted through the same boundary as the Pi-DPM model (S3 to registry to serving load).</p>
+          <p><b>Cost:</b> rides the Phase 3 backfill that already exists; auto-terminating EMR. This is where the distributed-rebuild skill is demonstrated honestly as personal work.</p>
+        </div>
+      </div>
+      <h2>Storage</h2>
+      <p>Iceberg tables <code>corridor_graph_nodes</code> and <code>corridor_graph_edges</code> in the existing S3 lakehouse (Glue catalog, Athena-queryable, time-travel for versioning), plus the serialized artifact for fast serving load. No new always-on service, no GPU, no ALB.</p>
+    </section>
+
+    <!-- detector -->
+    <section class="page" id="detector">
+      <h1>The corridor deviation detector <span class="tag pers">personal</span></h1>
+      <p class="lede">A new deterministic agent in the ECS Fargate front door, next to the gap and rendezvous detectors.</p>
+
+      <h2>What it computes</h2>
+      <p>It implements the GTRA <span class="term" data-term="association">association test</span>: the perpendicular distance of each AIS point to the nearest <span class="term" data-term="sealane">sea-lane</span> edge, with a slope-match check on intermediate samples. It emits two deterministic reasons into the same fusion and HITL path the front door already produces:</p>
+      <table>
+        <tr><th>Reason</th><th>Meaning</th><th>ESRI framing</th></tr>
+        <tr><td><code>off_corridor</code></td><td>The track's perpendicular distance to the nearest sea-lane exceeds <code>d_max</code>: positional deviation from the known lane.</td><td>"Anomalous Route"</td></tr>
+        <tr><td><code>unexpected_node</code></td><td>A course change occurred far from any known <span class="term" data-term="waypoint">waypoint</span> node: a maneuver where vessels do not normally turn.</td><td>"Anomalous Waypoint"</td></tr>
+      </table>
+
+      <h2>Why it sits where it sits</h2>
+      <ul>
+        <li>The test is geometric and cheap, so it runs inline on CPU, consistent with the platform's CPU-kernel serving assumption. No new always-on cost.</li>
+        <li>It is a third deterministic signal alongside <span class="term" data-term="stagd">STAGD</span> gap detection and <span class="term" data-term="tgard">TGARD</span> rendezvous, not a replacement. The heavy <span class="term" data-term="pidpm">Pi-DPM</span> head remains the async learned signal.</li>
+        <li>Its reasons fold into the same anomaly score, reason strings, and human-review enqueue the other agents already use, so it needs no new serving surface.</li>
+      </ul>
+      <div class="callout">Honest tie-back: this is exactly the internship's "Anomalous Route / Anomalous Waypoint" framing, which was problem-formulated but not benchmarked at ESRI. Harbormaster implements it on the public corridor graph.</div>
+    </section>
+
+    <!-- feeds -->
+    <section class="page" id="feeds">
+      <h1>How it feeds the platform</h1>
+      <p class="lede">One graph, three consumers.</p>
+
+      <h2>1. An additional anomaly signal</h2>
+      <p>The <span class="term" data-term="cdd">CorridorDeviationDetector</span> adds <code>off_corridor</code> and <code>unexpected_node</code> to the deterministic signals that fuse into the anomaly score. A vessel that leaves its lane, or turns where no one turns, is flagged with an explainable reason an operator can act on.</p>
+
+      <h2>2. Priors for the space-time prisms</h2>
+      <p>The <span class="term" data-term="prism">space-time prism</span> bounds where a vessel could plausibly be during an AIS gap. Today it is a kinematic ellipse (gap endpoints as foci, a speed cap). The corridor graph sharpens it: intersect the prism with the nearest sea-lane edges so the feasible region is the prism <b>restricted to navigable corridors</b> rather than open water. A gap that resumes off-corridor is more suspicious, which directly improves gap-anomaly precision. Edge visit statistics also give a per-edge expected-speed prior that tightens the ellipse.</p>
+
+      <h2>3. The action space for route optimization</h2>
+      <p>The Phase 5 route-optimization policy consumes the corridor graph as its action space: feasible patrol or coverage routing is restricted to sea-lane edges and waypoint nodes, under the physical feasibility constraints. This is the honest, personal re-creation of "route optimization over a maritime graph," labeled a stretch goal.</p>
+
+      <h2>Where it lands in AWS</h2>
+      <p>Graph in Iceberg + a serialized artifact in S3; the detector runs in the existing ECS Fargate front door; the Flink job optionally pre-joins each AIS event to its nearest edge id (a cheap spatial lookup against the broadcast static graph) so <code>edge</code> becomes a streaming feature in DynamoDB. Promotion of the learned graph rides the same model-promotion boundary. Static mode adds ~$0; learned mode rides the existing backfill.</p>
+    </section>
+
+    <!-- bathymetry -->
+    <section class="page" id="bathymetry">
+      <h1>Bathymetry: seabed depth as navigability <span class="tag pers">personal</span></h1>
+      <p class="lede">Arun's insight from the internship, now modeled: the deeper and more stable the seabed corridor, the more a deep-draft vessel can use it. Recognized then as a driver of route choice, never modeled within the timeline.</p>
+
+      <h2>Origin in the materials <span class="tag esri">ESRI</span></h2>
+      <p>In mentor feedback, route density was explained by "Geographic Islands, Oceanic Depth": shallow seabed governs which lanes deep-draft vessels can use. It was treated as explanatory GIS context, not a trained model.</p>
+
+      <h2>How it enters the graph</h2>
+      <ul>
+        <li><b>Data:</b> NOAA bathymetric soundings (the same ENC S-57 soundings already read via the maritime toolbox) and <span class="term" data-term="gebco">GEBCO</span> global gridded bathymetry. Both public.</li>
+        <li><b>Per-edge navigability weight:</b> sample the minimum charted depth along each sea-lane centerline; combine with the vessel's <span class="term" data-term="draught">draught</span> (an AIS attribute) to compute an <span class="term" data-term="ukc">under-keel-clearance</span> feasibility weight.</li>
+        <li><b>Per-node clearance attribute:</b> the shallowest safe passage near each waypoint.</li>
+      </ul>
+
+      <h2>What it buys</h2>
+      <ol>
+        <li>Prunes or down-weights edges a given vessel cannot physically use.</li>
+        <li>Sharpens the physical-feasibility gate: a deep-draft vessel "transiting" a sub-draught corridor is implausible, a real anomaly.</li>
+        <li>Restricts the space-time prism to navigable-depth corridors, tightening the feasible region further.</li>
+      </ol>
+      <p>Stored as extra columns on <code>corridor_graph_edges</code>; static, recomputed only when charts update. Added in Phase 3.</p>
+    </section>
+
+    <!-- weather -->
+    <section class="page" id="weather">
+      <h1>Weather and seasonal ice: time-varying corridors <span class="tag pers">personal</span></h1>
+      <p class="lede">Arun's Arctic insight, now modeled: many routes open only in summer when the ice melts, and it is safer to navigate there then. The corridor graph becomes time-varying.</p>
+
+      <h2>Origin in the materials <span class="tag esri">ESRI</span></h2>
+      <p>Weather appears in the internship materials only as benign noise to filter (an AIS gap "due to weather conditions") and as a future "Out of Seasonal Activity" anomaly use case. The seasonal-route-opening framing was a motivating direction, not implemented. Harbormaster makes it a model.</p>
+
+      <h2>How it enters the graph</h2>
+      <ul>
+        <li><b>Data:</b> NOAA marine weather forecasts and NOAA / <span class="term" data-term="nsidc">NSIDC</span> sea-ice extent products. Public.</li>
+        <li><b>Time-varying edges:</b> each sea-lane edge gets a validity window and an availability weight keyed by time. The graph becomes <code>G(V, E_t)</code>, where edge availability is a function of time.</li>
+        <li>An Arctic corridor edge is active only in the open-water season and inactive (or heavily penalized) under ice. Storm-impacted edges get a transient down-weight.</li>
+      </ul>
+
+      <h2>What it buys</h2>
+      <ol>
+        <li><b>Suppresses false alarms:</b> a vessel absent from an ice-closed lane is not anomalous. This is exactly the benign-noise filtering the ESRI materials asked for.</li>
+        <li><b>Surfaces real anomalies:</b> a vessel transiting a corridor that should be ice-closed is genuinely suspicious.</li>
+      </ol>
+      <p>Time-varying weights are a temporal dimension on the Iceberg edge table, refreshed by a scheduled lightweight job. No GPU. Added in Phase 5.</p>
+      <div class="callout">Both context layers are contextual GIS-layer joins onto the graph, not a multi-modal neural model, consistent with how the internship itself treated bathymetry and weather: explanatory context, never a trained model.</div>
+    </section>
+
+    <!-- data -->
+    <section class="page" id="data">
+      <h1>Data sources</h1>
+      <p class="lede">All public. No ESRI data, code, or infrastructure is used.</p>
+      <table>
+        <tr><th>Layer</th><th>Source</th><th>Role</th></tr>
+        <tr><td>Historical AIS</td><td>MarineCadastre (NOAA / BOEM), ~150K objects, 2009-2017</td><td>AIS-derived waypoints and sea-lane edges; the learned-corridor rebuild</td></tr>
+        <tr><td>Live AIS</td><td>AISStream.io websocket</td><td>The streaming events scored against the corridor graph</td></tr>
+        <tr><td>Nautical charts</td><td>NOAA Electronic Navigational Charts (ENC, S-57)</td><td>ENC-derived charted waypoints (polygon-to-centerline); soundings for depth</td></tr>
+        <tr><td>Bathymetry</td><td>NOAA soundings + GEBCO global gridded bathymetry</td><td>Per-edge navigability / under-keel-clearance weights</td></tr>
+        <tr><td>Weather and ice</td><td>NOAA marine forecasts + NOAA / NSIDC sea-ice extent</td><td>Time-varying edge availability (seasonal, storm)</td></tr>
+        <tr><td>Lane priors (optional)</td><td>CIA global shipping lanes, US DOT marine highway routes, NCEAS commercial-traffic density</td><td>Known-lane priors overlaid on the graph (as in the internship)</td></tr>
+      </table>
+    </section>
+
+    <!-- honesty -->
+    <section class="page" id="honesty">
+      <h1>Honesty boundary</h1>
+      <p class="lede">What is ESRI inspiration, what is the public paper, and what is original personal work. The reader never has to guess.</p>
+
+      <table>
+        <tr><th>Element</th><th>Status</th></tr>
+        <tr><td>The GTRA corridor idea (waypoint nodes, sea-lane edges), the RDP + DBSCAN approach, the AT / OOS / UT anomaly framing</td><td><span class="tag paper">paper</span> Singh, Fowdur, Gawlikowski, Medina, arXiv 2107.01557 (public)</td></tr>
+        <tr><td>The waypoint-detection method, the adaptive RDP tolerance, the NOAA-chart ground-truth idea, the 31/41 result</td><td><span class="tag esri">ESRI</span> real internship work, shareable, describe-and-reproduce</td></tr>
+        <tr><td>This corridor preprocessing stage, the deviation detector, the bathymetry and weather layers, all code</td><td><span class="tag pers">personal</span> original re-implementation on public data</td></tr>
+        <tr><td>The full GTRA + Transformer / EDL anomaly detector and its figures (54.76% to 73.02%, 40% faster, ~500M records)</td><td><span class="tag esri">ESRI</span> restricted, not shareable, no artifact; described at architecture level only, never quoted here; re-created personally as Pi-DPM</td></tr>
+      </table>
+
+      <div class="warn"><b>The rule.</b> ESRI and Harbormaster are never merged. The corridor stage is presented as a personal re-implementation inspired by real internship work, not as a continuation of an ESRI product. The only ESRI numbers used anywhere in Harbormaster are the shareable waypoint results.</div>
+
+      <p>This page mirrors <code>docs/HONESTY.md</code>, the locked source of truth. The full grounded analysis, with per-claim file citations, is in <code>docs/internship/</code>.</p>
+    </section>
+
+    <!-- glossary -->
+    <section class="page" id="glossary">
+      <h1>Glossary</h1>
+      <p class="lede">The same definitions power the click-to-define popovers. Click any dotted term anywhere in the doc.</p>
+      <div id="glossarylist"></div>
+    </section>
+
+    <!-- resources -->
+    <section class="page" id="resources">
+      <h1>Resources</h1>
+      <ul>
+        <li><a href="https://arxiv.org/abs/2107.01557" target="_blank" rel="noopener">Singh, Fowdur, Gawlikowski, Medina, "Leveraging Graph and Deep Learning Uncertainties to Detect Anomalous Trajectories"</a> (arXiv 2107.01557), the GTRA reference paper.</li>
+        <li><a href="https://marinecadastre.gov/ais/" target="_blank" rel="noopener">MarineCadastre AIS</a> (NOAA / BOEM historical AIS).</li>
+        <li><a href="https://www.nauticalcharts.noaa.gov/" target="_blank" rel="noopener">NOAA Office of Coast Survey</a> (Electronic Navigational Charts, S-57).</li>
+        <li><a href="https://www.gebco.net/" target="_blank" rel="noopener">GEBCO</a> (global gridded bathymetry).</li>
+        <li><a href="https://nsidc.org/data/seaice_index" target="_blank" rel="noopener">NSIDC Sea Ice Index</a> (sea-ice extent).</li>
+        <li><a href="https://aisstream.io/" target="_blank" rel="noopener">AISStream.io</a> (live AIS websocket).</li>
+      </ul>
+      <footer>Harbormaster corridor preprocessing design. Grounded in docs/internship/ (INTEGRATION.md and the five findings files). Honesty boundary in docs/HONESTY.md. Personal re-implementation on public data; not an ESRI product.</footer>
+    </section>
+
+    <div class="pager">
+      <a id="prev">&larr; Prev</a>
+      <a id="next">Next &rarr;</a>
+    </div>
+  </main>
+</div>
+<div class="pop" id="pop"></div>
+
+<script>
+(function(){
+  "use strict";
+  var pages=["overview","grounding","graph","modes","detector","feeds","bathymetry","weather","data","honesty","glossary","resources"];
+  var titles={overview:"Start / Overview",grounding:"Start / The real internship work",graph:"The graph / GTRA corridor graph",modes:"The graph / Static and learned modes",detector:"In the platform / Deviation detector",feeds:"In the platform / How it feeds",bathymetry:"Context / Bathymetry",weather:"Context / Weather and ice",data:"Reference / Data sources",honesty:"Reference / Honesty boundary",glossary:"Reference / Glossary",resources:"Reference / Resources"};
+  var GLOSSARY={
+    gtra:["GTRA (Graph-based Traffic Representation and Association)","From Singh et al. 2022: build a graph from AIS where nodes are clusters of waypoints (course-change points, via RDP + DBSCAN/HDBSCAN) and edges are sea-lanes, then associate new AIS to the graph. Harbormaster re-implements the corridor-graph half on public data."],
+    waypoint:["Waypoint","A geographic point where a vessel maneuvers or changes course. Detected from AIS turning points (RDP line simplification + HDBSCAN clustering, mean center) and from NOAA chart shipping-lane bends. The core of Arun's real ESRI internship deliverable."],
+    sealane:["Sea-lane (edge)","A route segment between two waypoint nodes, formed from RDP-simplified AIS tracks (visit-weighted) and from charted lane centerlines. The edges of the corridor graph, where depth, expected speed, and time-varying availability attach."],
+    rdp:["Ramer-Douglas-Peucker (RDP)","A line-simplification algorithm that keeps only the points whose perpendicular distance to the chord exceeds a tolerance. Here the tolerance is adaptive per track (the std-dev of that track's perpendicular distances), Arun's twist beyond the paper's fixed epsilon."],
+    hdbscan:["HDBSCAN","A hierarchical density-based clustering algorithm. Used to cluster candidate turning points into waypoint groups; the mean center of each cluster is the final waypoint. More robust than DBSCAN to varying density."],
+    enc:["NOAA ENC (Electronic Navigational Chart)","Official NOAA vector charts (S-57 format) containing shipping lanes, routes, and depth soundings. ENCs hold lanes but no explicit waypoints, so waypoints are derived from lane bends via polygon-to-centerline."],
+    centerline:["Polygon-to-centerline","A GIS operation that reduces a shipping-lane polygon to its center path. The bends and intersections of that centerline become charted waypoints used as ground truth."],
+    association:["GTRA association test","Assigning a new AIS track to the graph: compute the perpendicular distance of each point to the nearest sea-lane edge (outlier if beyond d_max), with a slope-match check on intermediate samples. The basis of the corridor deviation detector."],
+    prism:["Space-time prism","The set of locations a vessel could plausibly occupy during an AIS gap, bounded by the gap endpoints and a speed cap. The corridor graph restricts the prism to navigable sea-lanes, sharpening gap-anomaly precision."],
+    stagd:["STAGD / AGM","Space-Time Abnormal Gap Detection and the Abnormal Gap Measure, the dissertation kernel that scores an AIS gap (dark-vessel behavior). A deterministic signal next to the corridor deviation detector."],
+    tgard:["TGARD","Time-slicing Gap-Aware Rendezvous Detection: finds tight windows where two tracks could have met by intersecting their space-time prisms. A deterministic rendezvous signal."],
+    pidpm:["Pi-DPM","Arun's physics-informed diffusion anomaly model. The heavy learned (async) anomaly signal, and the personal re-creation of the restricted internship EDL detector. Runs off the request path."],
+    cdd:["CorridorDeviationDetector","The deterministic serving agent that runs the GTRA association test and emits off_corridor and unexpected_node reasons into the fusion and human-review path, next to STAGD, TGARD, and Pi-DPM."],
+    bathymetry:["Bathymetry","Seabed depth. Governs which lanes deep-draft vessels can use and how stable a passage is. Enters the graph as a per-edge navigability weight from NOAA soundings and GEBCO."],
+    gebco:["GEBCO","The General Bathymetric Chart of the Oceans, a public global gridded seabed-depth dataset. A source for per-edge depth where chart soundings are sparse."],
+    draught:["Draught","How deep a vessel sits in the water, broadcast as an AIS attribute. Combined with charted depth it gives under-keel clearance, the feasibility of a vessel using a given lane."],
+    ukc:["Under-keel clearance","The gap between the bottom of a vessel's keel and the seabed (charted depth minus draught, with margins). A negative or small clearance means the lane is unusable for that vessel."],
+    seaice:["Seasonal sea ice","Ice cover that opens and closes shipping routes by season. Modeled as time-varying edge availability: an Arctic corridor is active only in the open-water season, inactive under ice."],
+    nsidc:["NSIDC","The National Snow and Ice Data Center. Provides public sea-ice extent products used to set the time-varying availability of high-latitude corridor edges."],
+    pyspark:["PySpark","Spark's Python API for distributed data processing. Used (on EMR) to rebuild the corridor graph over the 600 GB MarineCadastre lake in the learned-corridor mode."]
+  };
+
+  function $(id){return document.getElementById(id);}
+  var pop=$("pop");
+  function renderGlossary(){
+    var keys=Object.keys(GLOSSARY).sort(function(a,b){return GLOSSARY[a][0].localeCompare(GLOSSARY[b][0]);});
+    var html=""; keys.forEach(function(k){html+='<div class="card" style="padding:12px 16px;margin:10px 0"><b style="color:var(--accent-dk)">'+GLOSSARY[k][0]+'</b><br>'+GLOSSARY[k][1]+'</div>';});
+    var el=$("glossarylist"); if(el) el.innerHTML=html;
+  }
+  function show(id,push){
+    if(pages.indexOf(id)<0) id="overview";
+    pages.forEach(function(p){var el=$(p); if(el) el.classList.toggle("active",p===id);});
+    document.querySelectorAll("nav.side a.lnk").forEach(function(a){a.classList.toggle("active",a.getAttribute("data-p")===id);});
+    var cr=$("crumbs"); if(cr) cr.textContent=titles[id]||id;
+    var i=pages.indexOf(id), prev=$("prev"), next=$("next");
+    if(prev) prev.style.visibility=i>0?"visible":"hidden";
+    if(next) next.style.visibility=i<pages.length-1?"visible":"hidden";
+    window.scrollTo(0,0); hidePop();
+    if(push){ try{ history.replaceState(null,"","#"+id); }catch(e){} }
+  }
+  function go(d){ var i=pages.indexOf(current()); show(pages[Math.min(pages.length-1,Math.max(0,i+d))],true); }
+  function current(){ for(var k=0;k<pages.length;k++){var el=$(pages[k]); if(el&&el.classList.contains("active")) return pages[k];} return "overview"; }
+  function showPop(term,x,y){
+    var g=GLOSSARY[term]; if(!g) return;
+    pop.innerHTML="<b>"+g[0]+"</b><br>"+g[1]; pop.style.display="block";
+    var w=pop.offsetWidth,h=pop.offsetHeight;
+    var left=Math.min(x,(window.scrollX+document.documentElement.clientWidth)-w-14);
+    var top=y+16; if(top+h>window.scrollY+document.documentElement.clientHeight) top=y-h-12;
+    pop.style.left=Math.max(8,left)+"px"; pop.style.top=Math.max(8,top)+"px";
+  }
+  function hidePop(){ pop.style.display="none"; }
+  document.addEventListener("click",function(e){
+    var t=e.target.closest?e.target.closest(".term"):null;
+    if(t){ e.preventDefault(); showPop(t.getAttribute("data-term"),e.pageX,e.pageY); return; }
+    if(!e.target.closest||!e.target.closest("#pop")) hidePop();
+    var j=e.target.closest?e.target.closest("[data-jump]"):null;
+    if(j){ e.preventDefault(); show(j.getAttribute("data-jump"),true); }
+    var lnk=e.target.closest?e.target.closest("a.lnk"):null;
+    if(lnk){ e.preventDefault(); show(lnk.getAttribute("data-p"),true); }
+  });
+  var pv=$("prev"),nx=$("next");
+  if(pv) pv.addEventListener("click",function(e){e.preventDefault();go(-1);});
+  if(nx) nx.addEventListener("click",function(e){e.preventDefault();go(1);});
+  document.addEventListener("keydown",function(e){
+    var tag=(e.target&&e.target.tagName)||""; if(tag==="INPUT"||tag==="TEXTAREA") return;
+    if(e.key==="ArrowDown"||e.key==="j"){ e.preventDefault(); go(1); }
+    else if(e.key==="ArrowUp"||e.key==="k"){ e.preventDefault(); go(-1); }
+    else if(e.key==="Escape"){ hidePop(); }
+  });
+  var root=document.documentElement;
+  function loadTheme(){ try{ return localStorage.getItem("hm_corridor_theme"); }catch(e){ return null; } }
+  function saveTheme(v){ try{ localStorage.setItem("hm_corridor_theme",v); }catch(e){} }
+  var saved=loadTheme(); if(saved) root.setAttribute("data-theme",saved);
+  var tb=$("themebtn");
+  if(tb) tb.addEventListener("click",function(){
+    var cur=root.getAttribute("data-theme");
+    var sysDark=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches;
+    var nowDark=cur?cur==="dark":sysDark; var nv=nowDark?"light":"dark";
+    root.setAttribute("data-theme",nv); saveTheme(nv);
+  });
+  renderGlossary();
+  var start="overview";
+  try{ if(location.hash){ var h=location.hash.replace("#",""); if(pages.indexOf(h)>=0) start=h; } }catch(e){}
+  show(start,false);
+})();
+</script>
+</body>
+</html>
