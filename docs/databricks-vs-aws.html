@@ -1,0 +1,610 @@
+<!doctype html>
+<html lang="en" data-theme="auto">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Harbormaster: Databricks vs AWS, phase by phase</title>
+<style>
+  :root{
+    --bg:#ffffff; --panel:#f6f7f9; --panel2:#eef1f5; --ink:#15181d; --muted:#5b6470;
+    --line:#dfe3ea; --accent:#0a6cff; --accent2:#0a8a5f; --warn:#b25e00;
+    --dbx:#ff5f46; --aws:#1f8a4c; --code:#0b1020; --codetxt:#d6e2ff;
+    --shadow:0 1px 2px rgba(20,30,50,.06),0 8px 24px rgba(20,30,50,.08);
+  }
+  @media (prefers-color-scheme: dark){
+    :root[data-theme="auto"]{
+      --bg:#0e1116; --panel:#161b22; --panel2:#1c232d; --ink:#e7edf5; --muted:#9aa6b2;
+      --line:#2a323d; --accent:#5aa2ff; --accent2:#4cc38a; --warn:#e0a458;
+      --dbx:#ff7a64; --aws:#4cc38a; --code:#080b12; --codetxt:#cfe0ff;
+      --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.45);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0e1116; --panel:#161b22; --panel2:#1c232d; --ink:#e7edf5; --muted:#9aa6b2;
+    --line:#2a323d; --accent:#5aa2ff; --accent2:#4cc38a; --warn:#e0a458;
+    --dbx:#ff7a64; --aws:#4cc38a; --code:#080b12; --codetxt:#cfe0ff;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.45);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+  a{color:var(--accent);text-decoration:none}
+  .wrap{display:grid;grid-template-columns:280px 1fr;min-height:100vh}
+  /* sidebar */
+  aside{position:sticky;top:0;height:100vh;overflow:auto;border-right:1px solid var(--line);background:var(--panel);padding:18px 14px}
+  .brand{font-weight:700;font-size:15px;letter-spacing:.2px;margin:4px 6px 2px}
+  .brand small{display:block;font-weight:500;color:var(--muted);font-size:12px;margin-top:3px}
+  nav{margin-top:14px;display:flex;flex-direction:column;gap:2px}
+  nav button{all:unset;cursor:pointer;display:flex;gap:8px;align-items:center;padding:8px 10px;border-radius:8px;color:var(--ink);font-size:14px}
+  nav button:hover{background:var(--panel2)}
+  nav button.active{background:var(--accent);color:#fff}
+  nav .grp{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:12px 8px 4px}
+  nav .num{font-variant-numeric:tabular-nums;font-size:12px;color:var(--muted);min-width:14px}
+  nav button.active .num{color:#fff}
+  .toolbar{display:flex;gap:8px;align-items:center;margin:14px 6px 0}
+  .toolbar button{all:unset;cursor:pointer;font-size:12px;color:var(--muted);border:1px solid var(--line);padding:5px 9px;border-radius:7px}
+  .toolbar button:hover{color:var(--ink);border-color:var(--accent)}
+  /* main */
+  main{padding:42px 48px 96px;max-width:1080px}
+  .page{display:none;animation:fade .25s ease}
+  .page.active{display:block}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  h1{font-size:30px;line-height:1.2;margin:0 0 6px}
+  h2{font-size:21px;margin:30px 0 10px}
+  h3{font-size:16px;margin:20px 0 8px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+  p{margin:10px 0}
+  .lead{font-size:17px;color:var(--muted);margin:6px 0 18px}
+  .kicker{display:inline-block;font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin-bottom:6px}
+  .pill{display:inline-block;font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+  .pill.dbx{color:var(--dbx);border-color:var(--dbx)}
+  .pill.aws{color:var(--aws);border-color:var(--aws)}
+  .pill.built{color:#fff;background:var(--accent2);border-color:var(--accent2)}
+  ul{margin:8px 0 8px 2px;padding-left:18px}
+  li{margin:5px 0}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;background:var(--panel2);padding:1px 5px;border-radius:5px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px 20px;box-shadow:var(--shadow);margin:16px 0}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .col{background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .col h4{margin:0 0 8px;font-size:14px;display:flex;align-items:center;gap:8px}
+  .dot{width:9px;height:9px;border-radius:50%}
+  .dot.dbx{background:var(--dbx)} .dot.aws{background:var(--aws)}
+  table{border-collapse:collapse;width:100%;margin:12px 0;font-size:14px}
+  th,td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+  tbody tr:hover{background:var(--panel)}
+  .col-dbx{color:var(--dbx)} .col-aws{color:var(--aws)}
+  .note{border-left:3px solid var(--accent);background:var(--panel);padding:10px 14px;border-radius:0 10px 10px 0;margin:14px 0;font-size:14px}
+  .note.warn{border-left-color:var(--warn)}
+  .note.honest{border-left-color:var(--accent2)}
+  .t{border-bottom:1px dotted var(--accent);cursor:help}
+  .meta{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 4px}
+  .grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .stat b{display:block;font-size:22px}
+  .stat span{color:var(--muted);font-size:13px}
+  footer{color:var(--muted);font-size:12px;margin-top:40px;border-top:1px solid var(--line);padding-top:14px}
+  /* popover */
+  #pop{position:fixed;z-index:50;max-width:320px;background:var(--code);color:var(--codetxt);border-radius:10px;padding:11px 13px;font-size:13px;line-height:1.5;box-shadow:0 12px 40px rgba(0,0,0,.45);display:none}
+  #pop b{color:#fff}
+  .hamb{display:none}
+  @media (max-width:860px){
+    .wrap{grid-template-columns:1fr}
+    aside{position:fixed;left:0;top:0;width:84%;max-width:320px;transform:translateX(-102%);transition:transform .2s;z-index:40}
+    aside.open{transform:none}
+    main{padding:64px 20px 80px}
+    .two{grid-template-columns:1fr}
+    .hamb{display:inline-flex;position:fixed;top:12px;left:12px;z-index:45;background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:8px 11px;cursor:pointer}
+  }
+</style>
+</head>
+<body>
+<button class="hamb" id="hamb" aria-label="menu">☰ Menu</button>
+<div class="wrap">
+  <aside id="side">
+    <div class="brand">Harbormaster<small>Databricks (managed) vs AWS-native, phase by phase</small></div>
+    <div class="toolbar">
+      <button id="theme">◐ Theme</button>
+      <button id="expand">⤢ Expand all stacks</button>
+    </div>
+    <nav id="nav">
+      <div class="grp">Frame</div>
+      <button data-p="overview"><span class="num">·</span> Overview &amp; the thesis</button>
+      <div class="grp">Phase-by-phase stacks</div>
+      <button data-p="p0"><span class="num">0</span> Foundations &amp; FinOps</button>
+      <button data-p="p1"><span class="num">1</span> Vertical slice <span class="pill built" style="margin-left:auto">built</span></button>
+      <button data-p="p2"><span class="num">2</span> CDC</button>
+      <button data-p="p3"><span class="num">3</span> Lake &amp; promotion</button>
+      <button data-p="p4"><span class="num">4</span> Drift → HITL → RL</button>
+      <button data-p="p5"><span class="num">5</span> Multi-tenant &amp; FDE</button>
+      <div class="grp">Synthesis</div>
+      <button data-p="rosetta"><span class="num">·</span> Rosetta table</button>
+      <button data-p="diverge"><span class="num">·</span> Deliberate divergences</button>
+      <button data-p="built"><span class="num">·</span> What is built today</button>
+      <button data-p="glossary"><span class="num">·</span> Glossary</button>
+    </nav>
+    <footer>Generated for Arun Sharma · grounded in <code>docs/DATABRICKS_MAP.md</code> + <code>docs/ARCHITECTURE.md</code>. Harbormaster is AWS-native and never runs on Databricks.</footer>
+  </aside>
+
+  <main id="main">
+    <!-- OVERVIEW -->
+    <section class="page" id="overview">
+      <span class="kicker">Study-to-build bridge</span>
+      <h1>The same platform, two ways: managed Databricks vs hand-built AWS</h1>
+      <p class="lead">I studied the production-ML/GenAI lifecycle on managed Databricks, then built the same capabilities AWS-native in Harbormaster. Every managed button in Databricks corresponds to something assembled by hand on AWS. Knowing both is the point.</p>
+
+      <div class="grid3">
+        <div class="stat"><b class="col-dbx">1 platform</b><span>Databricks: one workspace, every step a managed service or button</span></div>
+        <div class="stat"><b class="col-aws">~15 services</b><span>AWS-native: best-of-breed services wired together under IaC</span></div>
+        <div class="stat"><b>$75/mo</b><span>hard cap that drives most AWS-native choices</span></div>
+      </div>
+
+      <h2>The two arcs in one line each</h2>
+      <div class="two">
+        <div class="col"><h4><span class="dot dbx"></span> Databricks production arc</h4>
+          <p>train + register → build agent → RAG → evaluate → serve → monitor, all on the managed platform: <span class="t" data-k="mlflow">MLflow Registry</span>, <span class="t" data-k="uc">Unity Catalog</span>, <span class="t" data-k="delta">Delta</span>, <span class="t" data-k="serving">Model Serving</span>, <span class="t" data-k="lhm">Lakehouse Monitoring</span>, <span class="t" data-k="genaijudge">mlflow.genai judges</span>.</p></div>
+        <div class="col"><h4><span class="dot aws"></span> Harbormaster (AWS-native)</h4>
+          <p>hybrid <span class="t" data-k="msi">train-on-MSI</span> / serve-on-AWS, under a $75/mo cap, in six phases: <b>0</b> FinOps guardrails, <b>1</b> production vertical slice, <b>2</b> <span class="t" data-k="cdc">CDC</span>, <b>3</b> lake + promotion, <b>4</b> drift → <span class="t" data-k="hitl">HITL</span> → RL flywheel, <b>5</b> multi-tenant + <span class="t" data-k="fde">FDE</span>.</p></div>
+      </div>
+
+      <div class="note honest"><b>Honest framing.</b> Harbormaster does not run on Databricks. This is a learning-to-building bridge, not a claim of Databricks production experience. ESRI (company work) and Harbormaster (personal) never merge.</div>
+
+      <h2>The core difference</h2>
+      <p>Databricks gives you the <b>whole lifecycle as one opinionated, governed platform</b>: the registry, the catalog, the lakehouse, serving, monitoring, and the eval/judge tooling are all integrated and managed. You move fast and you do not run the plumbing.</p>
+      <p>Harbormaster <b>assembles the same lifecycle from individual AWS services</b> plus an off-cloud GPU plane on MSI. You own the plumbing, but you control cost, you keep the scoring path deterministic and auditable, and you pick the right tool per job. The senior signal is being able to say: <i>"I evaluated the managed pattern and chose the self-hosted equivalent because X."</i></p>
+      <p>The five places where I deliberately diverged from the managed default are on the <a href="#" data-go="diverge">Deliberate divergences</a> page. The per-phase stacks are next.</p>
+    </section>
+
+    <!-- PHASE 0 -->
+    <section class="page" id="p0">
+      <span class="kicker">Phase 0</span>
+      <h1>Foundations &amp; FinOps guardrails</h1>
+      <p class="lead">Provision the cost guardrails and infrastructure-as-code substrate before any spend. In Databricks this is account/workspace config; in Harbormaster it is Terraform plus AWS Budgets with a hard deny.</p>
+      <div class="meta"><span class="pill dbx">Databricks course: Advanced ML Operations</span><span class="pill">Concept: IaC, CI/CD, governance, budgets</span></div>
+
+      <div class="two">
+        <div class="col"><h4><span class="dot dbx"></span> Databricks (managed)</h4>
+          <ul>
+            <li><span class="t" data-k="dabs">Databricks Asset Bundles (DABs)</span> for IaC</li>
+            <li><span class="t" data-k="workflows">Workflows</span> for orchestration</li>
+            <li><span class="t" data-k="uc">Unity Catalog</span> for governance + lineage</li>
+            <li>Cluster / workspace policies; account-level budgets</li>
+          </ul></div>
+        <div class="col"><h4><span class="dot aws"></span> Harbormaster (AWS-native)</h4>
+          <ul>
+            <li><span class="t" data-k="terraform">Terraform</span> modules: <code>network</code> (VPC), <code>state_stores</code> (S3+DynamoDB), <code>finops</code></li>
+            <li><span class="t" data-k="budgets">AWS Budgets</span>: $30 soft (SNS at $5/$15/$25), <b>$75 hard</b> = budget-action attaches an <span class="t" data-k="denypolicy">IAM deny policy</span> to the platform role</li>
+            <li>Cost-anomaly monitor + a teardown Lambda</li>
+            <li><span class="t" data-k="gha">GitHub Actions</span> for <code>plan</code>/<code>apply</code>; providers pinned (<code>aws ~&gt; 5.x</code>)</li>
+          </ul></div>
+      </div>
+
+      <h3>Side-by-side stack</h3>
+      <table><thead><tr><th>Capability</th><th class="col-dbx">Databricks</th><th class="col-aws">Harbormaster (AWS)</th></tr></thead><tbody>
+        <tr><td>IaC</td><td>DABs</td><td>Terraform + GitHub Actions + GHCR</td></tr>
+        <tr><td>Orchestration</td><td>Workflows</td><td>Terraform/Helm + <span class="t" data-k="argo">Argo CD</span> (later phases)</td></tr>
+        <tr><td>Governance</td><td>Unity Catalog</td><td>IAM + <span class="t" data-k="glue">Glue Catalog</span> + Iceberg</td></tr>
+        <tr><td>Cost control</td><td>Account budgets (advisory)</td><td>AWS Budgets + hard IAM-deny action + teardown Lambda</td></tr>
+      </tbody></table>
+      <div class="note"><b>Why it matters.</b> The FinOps module is provisioned first and gates everything else. The $75 hard cap is the single biggest driver of later AWS-native choices (Fargate over EKS, no GPU on AWS, Kinesis over MSK).</div>
+    </section>
+
+    <!-- PHASE 1 -->
+    <section class="page" id="p1">
+      <span class="kicker">Phase 1</span>
+      <h1>Production vertical slice: streaming + serving <span class="pill built">built locally</span></h1>
+      <p class="lead">One genuinely production-grade path: recorded AIS replay → stream → features + physics gate → deterministic scoring front door → anomaly to a human-review console, every event landing in the lakehouse. This is the phase whose no-AWS core I built and tested.</p>
+      <div class="meta"><span class="pill dbx">Databricks courses: Single-Agent Apps (02) + GenAI Deployment &amp; Monitoring (05)</span></div>
+
+      <div class="two">
+        <div class="col"><h4><span class="dot dbx"></span> Databricks (managed)</h4>
+          <ul>
+            <li>Ingestion + features: <span class="t" data-k="dlt">Delta Live Tables</span> / <span class="t" data-k="sss">Spark Structured Streaming</span> + <span class="t" data-k="autoloader">Auto Loader</span></li>
+            <li>Online features: Databricks Feature Store</li>
+            <li>Agent: single-agent app, <span class="t" data-k="ucfn">UC functions as tools</span>, <span class="t" data-k="modelsfromcode">models-from-code</span>, <span class="t" data-k="mlflowtrace">MLflow tracing</span></li>
+            <li>Serving: <span class="t" data-k="serving">Model Serving endpoint</span></li>
+            <li>Observability: <span class="t" data-k="inftable">inference tables</span> + <span class="t" data-k="lhm">Lakehouse Monitoring</span></li>
+          </ul></div>
+        <div class="col"><h4><span class="dot aws"></span> Harbormaster (AWS-native)</h4>
+          <ul>
+            <li>Ingest: AISStream / replay → <span class="t" data-k="fargate">Fargate</span> ingestor → <span class="t" data-k="kinesis">Kinesis Data Streams</span></li>
+            <li>Features: <span class="t" data-k="kda">Managed Flink (KDA)</span> keyed windows → <span class="t" data-k="feast">Feast / DynamoDB</span>; <span class="t" data-k="firehose">Firehose</span> → <span class="t" data-k="iceberg">S3/Iceberg</span></li>
+            <li>Front door: <span class="t" data-k="ecs">ECS Fargate</span> GeoTrace, deterministic <span class="t" data-k="detectors">STAGD/TGARD/S-KBM</span> + a <span class="t" data-k="heuristic">HeuristicPlanner</span> (no LLM), <code>POST /v1/score-ais</code></li>
+            <li>HITL: Postgres review queue + Streamlit console</li>
+            <li>Observability: Prometheus <code>/metrics</code> + <code>cost_tracker</code> + <span class="t" data-k="otel">OTel</span>/X-Ray; Iceberg event landing = the inference table</li>
+          </ul></div>
+      </div>
+
+      <h3>Side-by-side stack</h3>
+      <table><thead><tr><th>Layer</th><th class="col-dbx">Databricks</th><th class="col-aws">Harbormaster (AWS)</th></tr></thead><tbody>
+        <tr><td>Transport</td><td>(implicit in DLT)</td><td>Kinesis Data Streams (1 shard)</td></tr>
+        <tr><td>Stream features</td><td>DLT / Spark Structured Streaming</td><td>Managed Flink (event-time, watermarks, keyed state)</td></tr>
+        <tr><td>Online store</td><td>Databricks Feature Store</td><td>Feast on DynamoDB</td></tr>
+        <tr><td>Lakehouse</td><td>Delta tables</td><td>S3 + Apache Iceberg (via Firehose)</td></tr>
+        <tr><td>Serving</td><td>Model Serving endpoint</td><td>ECS Fargate (scale-to-zero, ~$5/mo)</td></tr>
+        <tr><td>"Agent"</td><td>LLM agent + UC tools + tracing</td><td>Deterministic kernels + HeuristicPlanner (zero tokens)</td></tr>
+        <tr><td>Inference table</td><td>Managed inference tables</td><td>Firehose → Iceberg + <code>cost_tracker</code></td></tr>
+        <tr><td>Monitoring</td><td>Lakehouse Monitoring</td><td>Prometheus + Grafana SLOs + off-corridor/reason-miss metric</td></tr>
+      </tbody></table>
+      <div class="note honest"><b>Built today (local, no-AWS, zero-cost).</b> The deterministic scorer (<code>POST /v1/score-ais</code>), the HeuristicPlanner, the vendored STAGD/TGARD/S-KBM agents + a corridor-deviation detector, the Postgres HITL backend, Prometheus metrics, the recorded AIS replay fixture, and the Flink feature functions (as a unit-tested library) all run offline. The AWS wiring (Kinesis/Flink/Fargate deploy) is gated on the AWS account. See <a href="#" data-go="built">What is built today</a>.</div>
+    </section>
+
+    <!-- PHASE 2 -->
+    <section class="page" id="p2">
+      <span class="kicker">Phase 2</span>
+      <h1>Change Data Capture (CDC)</h1>
+      <p class="lead">Stream operational-database changes into the lakehouse so the system of record stays consistent. Databricks reads its own Change Data Feed; Harbormaster captures Postgres changes with Debezium.</p>
+      <div class="meta"><span class="pill dbx">Databricks concept: CDF + Auto Loader + apply_changes</span></div>
+
+      <div class="two">
+        <div class="col"><h4><span class="dot dbx"></span> Databricks (managed)</h4>
+          <ul>
+            <li><span class="t" data-k="cdf">Delta Change Data Feed (CDF)</span></li>
+            <li><span class="t" data-k="autoloader">Auto Loader</span> for incremental ingest</li>
+            <li>DLT <span class="t" data-k="applychanges">apply_changes</span> for <span class="t" data-k="scd">SCD</span> upserts</li>
+            <li>Unity Catalog lineage across the change stream</li>
+          </ul></div>
+        <div class="col"><h4><span class="dot aws"></span> Harbormaster (AWS-native)</h4>
+          <ul>
+            <li><span class="t" data-k="rds">RDS Postgres</span> → <span class="t" data-k="debezium">Debezium</span> CDC → Kinesis</li>
+            <li>Firehose → S3/Iceberg as the change sink</li>
+            <li><span class="t" data-k="icebergmerge">Iceberg MERGE</span> for SCD-style upserts</li>
+            <li>Glue Catalog lineage; lakehouse is the system of record</li>
+          </ul></div>
+      </div>
+
+      <h3>Side-by-side stack</h3>
+      <table><thead><tr><th>Capability</th><th class="col-dbx">Databricks</th><th class="col-aws">Harbormaster (AWS)</th></tr></thead><tbody>
+        <tr><td>Capture</td><td>Delta CDF (native to Delta)</td><td>Debezium on the Postgres WAL</td></tr>
+        <tr><td>Transport</td><td>(internal)</td><td>Kinesis</td></tr>
+        <tr><td>Apply / upsert</td><td>DLT apply_changes (SCD 1/2)</td><td>Iceberg MERGE INTO</td></tr>
+        <tr><td>Sink</td><td>Delta table</td><td>S3 + Iceberg</td></tr>
+      </tbody></table>
+      <div class="note"><b>Why Debezium.</b> Databricks' CDF only captures changes to Delta tables it owns. Harbormaster needs to capture changes from an external operational Postgres, which is exactly Debezium's job (log-based CDC off the write-ahead log).</div>
+    </section>
+
+    <!-- PHASE 3 -->
+    <section class="page" id="p3">
+      <span class="kicker">Phase 3</span>
+      <h1>Lake + model promotion (training &amp; backfill)</h1>
+      <p class="lead">Distributed batch over historical AIS, GPU training of the heavy models, and a disciplined promotion gate. Databricks does this on Spark + MLflow; Harbormaster splits it across EMR, MSI, W&amp;B, and SageMaker.</p>
+      <div class="meta"><span class="pill dbx">Databricks courses: ML at Scale (01) + Advanced ML Operations</span></div>
+
+      <div class="two">
+        <div class="col"><h4><span class="dot dbx"></span> Databricks (managed)</h4>
+          <ul>
+            <li>Distributed Spark training; <span class="t" data-k="hpo">Hyperopt</span> HPO</li>
+            <li>Batch inference via <span class="t" data-k="sparkudf">spark_udf</span> / pandas UDFs</li>
+            <li><span class="t" data-k="mlflow">MLflow Registry</span> + <span class="t" data-k="champion">@champion alias</span></li>
+            <li>Feature Store point-in-time joins</li>
+            <li><span class="t" data-k="cc">champion/challenger</span> A/B</li>
+          </ul></div>
+        <div class="col"><h4><span class="dot aws"></span> Harbormaster (AWS-native)</h4>
+          <ul>
+            <li><span class="t" data-k="emr">EMR transient Spark</span> backfill of MarineCadastre → Iceberg (auto-terminate)</li>
+            <li>GPU training on <span class="t" data-k="msi">MSI Slurm</span> + <span class="t" data-k="apptainer">Apptainer</span> (PyTorch, PhysicsNeMo, Pi-DPM)</li>
+            <li><span class="t" data-k="wandb">W&amp;B</span> lineage + <span class="t" data-k="smregistry">SageMaker Model Registry</span> promotion</li>
+            <li>Point-in-time feature export from Iceberg</li>
+            <li>Promotion gate: <span class="t" data-k="shadow">shadow</span> → <span class="t" data-k="canary">canary</span>, auto-rollback on error budgets</li>
+          </ul></div>
+      </div>
+
+      <h3>Side-by-side stack</h3>
+      <table><thead><tr><th>Capability</th><th class="col-dbx">Databricks</th><th class="col-aws">Harbormaster (AWS)</th></tr></thead><tbody>
+        <tr><td>Batch backfill</td><td>Spark on the cluster</td><td>EMR transient Spark (auto-terminate)</td></tr>
+        <tr><td>GPU training</td><td>Databricks GPU clusters</td><td>MSI Slurm + Apptainer (no GPU on AWS)</td></tr>
+        <tr><td>Batch inference</td><td>spark_udf / pandas UDF</td><td>Flink async-IO / EMR batch</td></tr>
+        <tr><td>Registry</td><td>MLflow + @champion</td><td>W&amp;B (lineage) + SageMaker Registry (promotion)</td></tr>
+        <tr><td>Promotion</td><td>champion/challenger A/B</td><td>shadow → canary on error budgets, auto-rollback</td></tr>
+      </tbody></table>
+      <div class="note warn"><b>The biggest split.</b> "No GPU on AWS" is a hard rule: GPU instances are the fastest way to blow the $75 cap, and MSI provides GPUs free. AWS serves; MSI trains. The cost is a model-promotion boundary to manage.</div>
+    </section>
+
+    <!-- PHASE 4 -->
+    <section class="page" id="p4">
+      <span class="kicker">Phase 4</span>
+      <h1>Drift → HITL → RL flywheel (evaluation &amp; monitoring)</h1>
+      <p class="lead">Catch drift, route ambiguous cases to humans, and turn the verdicts into training signal. Databricks uses mlflow.genai judges and a review app; Harbormaster uses statistical gates, a Streamlit console, and a preference-data flywheel.</p>
+      <div class="meta"><span class="pill dbx">Databricks course: Agent Evaluation (04)</span></div>
+
+      <div class="two">
+        <div class="col"><h4><span class="dot dbx"></span> Databricks (managed)</h4>
+          <ul>
+            <li><span class="t" data-k="genaijudge">mlflow.genai judges</span>: built-in / guideline / custom / trace-based</li>
+            <li>Offline + online eval</li>
+            <li><span class="t" data-k="reviewapp">Review app</span> for human feedback</li>
+            <li><span class="t" data-k="lhm">Lakehouse Monitoring</span> for drift</li>
+          </ul></div>
+        <div class="col"><h4><span class="dot aws"></span> Harbormaster (AWS-native)</h4>
+          <ul>
+            <li><span class="t" data-k="mirror">MIRROR</span> holdout statistical gate: <span class="t" data-k="auc">AUC</span>, <span class="t" data-k="crps">CRPS</span>, calibration ratio ∈ [0.8, 1.2]</li>
+            <li><span class="t" data-k="rewardhack">Reward-hacking probe</span> = custom/trace judge</li>
+            <li><span class="t" data-k="modelmonitor">SageMaker Model Monitor</span> + <span class="t" data-k="evidently">Evidently</span> + custom <span class="t" data-k="psiks">PSI/KS</span> + calibration drift</li>
+            <li>Streamlit HITL = review app; verdicts → preference triples → <span class="t" data-k="dpo">DPO</span> flywheel</li>
+          </ul></div>
+      </div>
+
+      <h3>Side-by-side stack</h3>
+      <table><thead><tr><th>Capability</th><th class="col-dbx">Databricks</th><th class="col-aws">Harbormaster (AWS)</th></tr></thead><tbody>
+        <tr><td>Scoring judge</td><td>LLM-as-judge (mlflow.genai)</td><td>Statistical: AUC / CRPS / calibration + hard-physics invariant</td></tr>
+        <tr><td>Process judge</td><td>custom / trace judge</td><td>Reward-hacking probe</td></tr>
+        <tr><td>Drift</td><td>Lakehouse Monitoring</td><td>Model Monitor + Evidently + custom PSI/KS</td></tr>
+        <tr><td>Human loop</td><td>Review app</td><td>Streamlit HITL console</td></tr>
+        <tr><td>Flywheel</td><td>(feedback dataset)</td><td>Verdicts → preference triples → DPO (pi-grpo)</td></tr>
+      </tbody></table>
+      <div class="note"><b>Deliberate.</b> The score is judged statistically, never by an LLM. Statistical gates are reproducible and cannot hallucinate a verdict; the LLM (Bedrock) is confined to explanation.</div>
+    </section>
+
+    <!-- PHASE 5 -->
+    <section class="page" id="p5">
+      <span class="kicker">Phase 5</span>
+      <h1>Multi-tenant, explanation &amp; FDE</h1>
+      <p class="lead">Open the platform to multiple tenants, add a natural-language explanation layer, and scale to zero between bursts. Databricks leans on Foundation Model APIs + Vector Search; Harbormaster uses Bedrock (explanation only), the corridor graph, EKS + KEDA, and row-level tenant isolation.</p>
+      <div class="meta"><span class="pill dbx">Databricks course: Retrieval Agents / RAG (03)</span></div>
+
+      <div class="two">
+        <div class="col"><h4><span class="dot dbx"></span> Databricks (managed)</h4>
+          <ul>
+            <li><span class="t" data-k="fmapi">Foundation Model APIs / ai_query</span></li>
+            <li><span class="t" data-k="vectorsearch">Vector Search</span> + managed embeddings</li>
+            <li><span class="t" data-k="provthroughput">Provisioned throughput</span> serving</li>
+            <li>Unity Catalog multi-tenant governance</li>
+          </ul></div>
+        <div class="col"><h4><span class="dot aws"></span> Harbormaster (AWS-native)</h4>
+          <ul>
+            <li><span class="t" data-k="bedrock">Bedrock</span> explanation over deterministic reasons (never the score) + faithfulness guardrail judge</li>
+            <li>Domain retrieval = the <span class="t" data-k="corridor">corridor graph</span> (RDP + HDBSCAN + NOAA ENC) + optional vector store</li>
+            <li><span class="t" data-k="eks">EKS</span> + <span class="t" data-k="keda">KEDA</span> scale-to-zero; per-region SageMaker async <span class="t" data-k="mme">MME</span></li>
+            <li><span class="t" data-k="tenant">tenant_id row-level isolation</span> (IAM + Glue + Iceberg)</li>
+          </ul></div>
+      </div>
+
+      <h3>Side-by-side stack</h3>
+      <table><thead><tr><th>Capability</th><th class="col-dbx">Databricks</th><th class="col-aws">Harbormaster (AWS)</th></tr></thead><tbody>
+        <tr><td>LLM access</td><td>ai_query / Foundation Model APIs</td><td>Bedrock (explanation layer only)</td></tr>
+        <tr><td>Retrieval</td><td>Vector Search + managed embeddings</td><td>Corridor graph (geospatial) + optional vector store</td></tr>
+        <tr><td>Serving scale</td><td>Provisioned throughput</td><td>EKS + KEDA scale-to-zero; SageMaker async MME per region</td></tr>
+        <tr><td>Multi-tenancy</td><td>Unity Catalog</td><td>tenant_id row-level isolation (IAM + Glue + Iceberg)</td></tr>
+      </tbody></table>
+      <div class="note"><b>Loosest mapping.</b> The RAG course is text-centric; Harbormaster's "retrieval" is geospatial (sea-lane graph), and the LLM only narrates an already-detected anomaly. EKS appears only here because its control plane (~$73/mo) would eat the whole cap if introduced earlier.</div>
+    </section>
+
+    <!-- ROSETTA -->
+    <section class="page" id="rosetta">
+      <span class="kicker">Synthesis</span>
+      <h1>The Rosetta table: managed → self-hosted</h1>
+      <p class="lead">One row per managed Databricks capability and its AWS-native Harbormaster equivalent.</p>
+      <table><thead><tr><th class="col-dbx">Databricks (managed)</th><th class="col-aws">Harbormaster (self-hosted AWS)</th></tr></thead><tbody>
+        <tr><td>MLflow Registry + @champion alias</td><td>W&amp;B (lineage) + SageMaker Model Registry (promotion). MLflow cut on purpose</td></tr>
+        <tr><td>Unity Catalog (governance)</td><td>IAM + Glue Catalog + Iceberg + tenant_id row-level isolation</td></tr>
+        <tr><td>Delta tables</td><td>S3 + Apache Iceberg</td></tr>
+        <tr><td>Model Serving endpoint</td><td>ECS Fargate front door + SageMaker async MME (GPU head only)</td></tr>
+        <tr><td>Inference tables</td><td>Firehose → S3/Iceberg payload landing + <code>cost_tracker</code></td></tr>
+        <tr><td>Lakehouse Monitoring</td><td>SageMaker Model Monitor + Evidently + custom PSI/KS + calibration drift</td></tr>
+        <tr><td>mlflow.genai judges + review app</td><td>MIRROR holdout gate + reward-hacking probe + Streamlit HITL</td></tr>
+        <tr><td>Vector Search + managed embeddings</td><td>Corridor graph (+ Bedrock explanation, optional vector store)</td></tr>
+        <tr><td>spark_udf batch</td><td>Flink async-IO / EMR batch</td></tr>
+        <tr><td>DABs + Workflows</td><td>Terraform + Helm + GitHub Actions + Argo CD</td></tr>
+        <tr><td>ai_query / Foundation Model APIs</td><td>Bedrock (explanation layer only, never the score)</td></tr>
+        <tr><td>Provisioned throughput</td><td>SageMaker async MME, scale-to-zero, per-region</td></tr>
+        <tr><td>DLT / Spark Structured Streaming</td><td>Kinesis + Managed Flink (event-time, keyed state)</td></tr>
+        <tr><td>Delta CDF</td><td>Debezium CDC off Postgres WAL → Kinesis</td></tr>
+      </tbody></table>
+    </section>
+
+    <!-- DIVERGENCES -->
+    <section class="page" id="diverge">
+      <span class="kicker">Synthesis</span>
+      <h1>Five deliberate divergences</h1>
+      <p class="lead">Each is a place where I know the managed Databricks default and chose a different AWS-native path for a reason worth defending in an interview.</p>
+      <div class="card"><b>1 · Cut MLflow</b> (Databricks' core) for W&amp;B + SageMaker Registry. Avoids three-registry sprawl and uses AWS-native promotion gates. The cut is documented, not accidental.</div>
+      <div class="card"><b>2 · Strip the LLM from the scoring path.</b> Deterministic kernels + a HeuristicPlanner. The agent courses are LLM-centric; Harbormaster's "agent" is deterministic for cost and defensibility. Bedrock only explains, it never computes a score.</div>
+      <div class="card"><b>3 · Kinesis + Managed Flink</b>, not Spark Structured Streaming or DLT. Right tool for high-volume, keyed AIS telemetry with true event-time state and watermarks.</div>
+      <div class="card"><b>4 · ECS Fargate</b>, not a managed Model Serving endpoint (and not EKS until Phase 5). The EKS control plane alone is ~$73/mo and would consume the entire $75 cap; Fargate scales to zero cheaply.</div>
+      <div class="card"><b>5 · Statistical judges</b> (AUC / CRPS / calibration ratio, plus the unbounded hard-physics invariant), not LLM-as-judge for the score. Defensible, reproducible, no hallucinated verdicts.</div>
+      <div class="note"><b>The senior signal.</b> Knowing both lets me say "I evaluated the managed pattern and chose the self-hosted equivalent because X." The divergences are the talking points; the managed patterns are the reference implementation.</div>
+    </section>
+
+    <!-- BUILT -->
+    <section class="page" id="built">
+      <span class="kicker">Status</span>
+      <h1>What is built today</h1>
+      <p class="lead">The no-AWS, zero-cost core of Phase 1 is built, tested, and adversarially reviewed in <code>~/code/harbormaster</code> (branch <code>phase1-serving-slice</code>). It is AWS-native logic that currently runs offline; the AWS deploy is gated on the account.</p>
+      <div class="grid3">
+        <div class="stat"><b>36 + 1</b><span>tests passing + skipped (Postgres integration)</span></div>
+        <div class="stat"><b>~2 ms</b><span>server-side score latency (SLO &lt; 200 ms)</span></div>
+        <div class="stat"><b>9 → 8</b><span>review findings confirmed → fixed (1 verified non-issue)</span></div>
+      </div>
+      <h3>Shipped (offline)</h3>
+      <ul>
+        <li><b>1.1</b> service + CI scaffold: <code>pyproject</code> (ruff+pytest), recorded AIS replay fixture (2709 events / 6 h, planted gap + jump + off-corridor) + <code>expectations.json</code> + SHA, schema-validating loader, GitHub Actions CI (lint + unit + container build, no deploy).</li>
+        <li><b>1.2</b> serving (single-vessel): vendored STAGD/TGARD/S-KBM + space-time prism, HeuristicPlanner (no LLM), <code>POST /v1/score-ais</code> + <code>orchestrator.run_plan</code>, CorridorDeviationDetector, real Postgres HITL + in-memory fallback, <code>/healthz</code> + Prometheus <code>/metrics</code> + per-inference cost ledger.</li>
+        <li><b>1.5</b> Flink feature functions as a pure, unit-tested library (haversine, v_required, p_physical cheap-gate) pinned to the serving config.</li>
+      </ul>
+      <h3>Pending (need the AWS account)</h3>
+      <ul>
+        <li>Gate G0 pre-flight (account, IAM, Cost Explorer, Terraform state, Phase 0 apply) and all AWS gates: 1.3 Terraform modules, 1.4 ingestor deploy, 1.5 Flink deploy, 1.6 Streamlit console, 1.7 observability/SLOs, 1.8 e2e acceptance, 1.9 live toggle + teardown.</li>
+        <li>Phases 2–5 in full (CDC, lake + promotion, drift/HITL/RL, multi-tenant/FDE).</li>
+      </ul>
+      <div class="note honest"><b>Honest framing.</b> This slice is a study-to-build bridge, not Databricks production experience. It is AWS-native and never merged with ESRI's work.</div>
+    </section>
+
+    <!-- GLOSSARY -->
+    <section class="page" id="glossary">
+      <span class="kicker">Reference</span>
+      <h1>Glossary</h1>
+      <p class="lead">Click any dotted term anywhere in the doc for a popover. The full list is below.</p>
+      <div id="glosslist"></div>
+    </section>
+  </main>
+</div>
+
+<div id="pop" role="tooltip"></div>
+
+<script>
+(function(){
+  "use strict";
+  var GLOSSARY = {
+    mlflow:["MLflow Registry","Databricks' model registry + lifecycle (versions, aliases like @champion). Harbormaster cut it for W&B + SageMaker Registry."],
+    uc:["Unity Catalog","Databricks' unified governance + lineage layer for data and models. AWS equivalent: IAM + Glue Catalog + Iceberg."],
+    delta:["Delta Lake","Databricks' ACID table format on object storage. AWS-native equivalent: Apache Iceberg on S3."],
+    serving:["Model Serving","Databricks' managed real-time model endpoint. Harbormaster uses ECS Fargate + SageMaker async MME."],
+    lhm:["Lakehouse Monitoring","Databricks' managed data/model drift monitoring. AWS: SageMaker Model Monitor + Evidently + custom PSI/KS."],
+    genaijudge:["mlflow.genai judges","LLM-based evaluation judges (built-in, guideline, custom, trace). Harbormaster judges the score statistically instead."],
+    msi:["MSI","Minnesota Supercomputing Institute: the off-cloud Slurm/GPU cluster where Harbormaster trains all heavy models for free, keeping the AWS bill low."],
+    cdc:["CDC","Change Data Capture: streaming row-level changes out of a database. Harbormaster uses Debezium off the Postgres write-ahead log."],
+    hitl:["HITL","Human-in-the-loop: ambiguous/anomalous events routed to a human reviewer whose verdicts become training data."],
+    fde:["FDE","Forward-deployed engineering / multi-tenant productization phase (tenant isolation, explanation, scale-to-zero)."],
+    dabs:["Databricks Asset Bundles","Databricks' IaC/packaging format for jobs, pipelines, models. AWS equivalent: Terraform."],
+    workflows:["Workflows","Databricks' managed job orchestration. AWS: Terraform/Helm + Argo CD."],
+    terraform:["Terraform","Declarative infrastructure-as-code; Harbormaster uses modules for network, state stores, and FinOps."],
+    budgets:["AWS Budgets","Cost budgets with actions. Harbormaster: $30 soft (SNS alerts) and a $75 hard cap that triggers an IAM deny."],
+    denypolicy:["IAM deny policy","On hitting the $75 hard cap, a budget action attaches a deny policy to the platform role, blocking new resource creation."],
+    gha:["GitHub Actions","CI/CD runner; Harbormaster runs lint + unit + container build (no deploy) and Terraform plan/apply."],
+    argo:["Argo CD","GitOps continuous delivery for Kubernetes; used in later phases for the EKS workloads."],
+    glue:["Glue Catalog","AWS' managed data catalog; the metadata layer over S3/Iceberg, standing in for Unity Catalog."],
+    dlt:["Delta Live Tables","Databricks' declarative streaming/batch pipeline framework. AWS-native equivalent: Kinesis + Flink."],
+    sss:["Spark Structured Streaming","Spark's micro-batch streaming engine. Harbormaster uses Flink for true event-time processing."],
+    autoloader:["Auto Loader","Databricks' incremental file ingestion. AWS: Firehose / Kinesis-driven ingest."],
+    ucfn:["UC functions as tools","Unity Catalog SQL/Python functions exposed as agent tools in the Databricks agent courses."],
+    modelsfromcode:["models-from-code","Databricks pattern of logging an agent's code as the model artifact for reproducible serving."],
+    mlflowtrace:["MLflow tracing","Built-in span/trace capture for agent runs. Harbormaster uses OpenTelemetry / X-Ray."],
+    inftable:["inference tables","Databricks auto-logging of serving requests/responses. AWS: Firehose → Iceberg + cost_tracker."],
+    fargate:["Fargate","Serverless container compute on AWS (no nodes to manage); used for the ingestor and the serving front door."],
+    kinesis:["Kinesis Data Streams","AWS' managed, pay-per-shard ordered streaming transport; chosen over self-managed Kafka (MSK)."],
+    kda:["Managed Flink (KDA)","Kinesis Data Analytics running Apache Flink: event-time windows, watermarks, keyed per-vessel state."],
+    feast:["Feast / DynamoDB","Open-source feature store on DynamoDB serving online features at low latency."],
+    firehose:["Firehose","AWS' managed delivery stream that batches records into S3/Iceberg."],
+    iceberg:["Apache Iceberg","Open table format on S3: schema evolution, hidden partitioning, snapshot isolation, time-travel."],
+    ecs:["ECS Fargate","The serving front door runs here, scale-to-zero (~$5/mo), instead of a managed endpoint or EKS."],
+    detectors:["STAGD / TGARD / S-KBM","Arun's deterministic spatial detectors: abnormal gap detection, rendezvous detection, and the kinematic (S-KBM) gate."],
+    heuristic:["HeuristicPlanner","A deterministic router (by track-history length) that replaces the LLM planner, so the live path costs zero tokens."],
+    otel:["OpenTelemetry (OTel)","Vendor-neutral traces/metrics; shipped to AWS X-Ray / CloudWatch."],
+    cdf:["Delta Change Data Feed","Databricks' native row-change feed for Delta tables it owns. Cannot capture an external operational DB."],
+    applychanges:["apply_changes","DLT API that applies CDC upserts as SCD type 1/2. AWS equivalent: Iceberg MERGE INTO."],
+    scd:["SCD","Slowly Changing Dimension: how a table tracks history of changing records (type 1 overwrite, type 2 versioned)."],
+    rds:["RDS Postgres","Managed relational database holding operational state; the CDC source."],
+    debezium:["Debezium","Log-based CDC connector that reads the Postgres write-ahead log and emits change events to Kinesis."],
+    icebergmerge:["Iceberg MERGE","SQL MERGE INTO on Iceberg tables for upsert/SCD semantics in the lakehouse."],
+    hpo:["Hyperopt / HPO","Hyperparameter optimization; the search over model configs during training."],
+    sparkudf:["spark_udf","Wrapping a logged model as a Spark UDF for distributed batch inference. AWS: Flink async-IO / EMR batch."],
+    champion:["@champion alias","An MLflow alias marking the production model version; promotion swaps it. AWS: SageMaker Registry stages."],
+    cc:["champion/challenger","A/B comparison of the current production model against a candidate before promotion."],
+    emr:["EMR transient Spark","Short-lived, auto-terminating Spark clusters for the historical-AIS backfill into Iceberg."],
+    apptainer:["Apptainer","HPC container runtime (formerly Singularity) used to run reproducible training images on MSI Slurm."],
+    wandb:["Weights & Biases (W&B)","Experiment tracking + model lineage; Harbormaster's lineage tool in place of MLflow."],
+    smregistry:["SageMaker Model Registry","AWS' model registry used for the promotion gate (approve → deploy)."],
+    shadow:["shadow deploy","Run the candidate on live traffic without serving its output, to compare against production safely."],
+    canary:["canary deploy","Send a small slice of traffic to the candidate, watch error budgets, then ramp or roll back."],
+    mirror:["MIRROR","Arun's distortion-aware physics-geostatistical generative framework; here, its holdout statistical eval gate."],
+    auc:["AUC","Area under the ROC curve: a threshold-free measure of ranking/detection quality."],
+    crps:["CRPS","Continuous Ranked Probability Score: a proper scoring rule for probabilistic forecasts (lower is better)."],
+    rewardhack:["reward-hacking probe","A custom/trace judge that checks the model is solving the task, not gaming the metric."],
+    modelmonitor:["SageMaker Model Monitor","AWS' managed data-quality/drift monitoring for endpoints."],
+    evidently:["Evidently","Open-source ML monitoring (drift, data quality) used alongside Model Monitor."],
+    psiks:["PSI / KS","Population Stability Index and Kolmogorov-Smirnov: statistical tests for feature/score drift."],
+    dpo:["DPO","Direct Preference Optimization: trains on preference pairs; HITL verdicts become the preference triples (via pi-grpo)."],
+    reviewapp:["Review app","Databricks' built-in human-feedback UI for evaluating agent outputs. AWS: a Streamlit HITL console."],
+    fmapi:["Foundation Model APIs / ai_query","Databricks' hosted LLM access from SQL/notebooks. AWS: Bedrock."],
+    vectorsearch:["Vector Search","Databricks' managed vector index + embeddings for RAG. Harbormaster's retrieval is the geospatial corridor graph."],
+    provthroughput:["Provisioned throughput","Reserved serving capacity for LLM endpoints. AWS: SageMaker async MME, scale-to-zero."],
+    bedrock:["Amazon Bedrock","Managed access to foundation models; in Harbormaster it only narrates already-detected anomalies, never scores."],
+    corridor:["corridor graph","A static sea-lane graph (RDP simplification + HDBSCAN clustering + NOAA ENC charts) used for geospatial retrieval + the off-corridor detector."],
+    eks:["EKS","Managed Kubernetes; introduced only in Phase 5 because its control plane (~$73/mo) would otherwise eat the $75 cap."],
+    keda:["KEDA","Kubernetes event-driven autoscaler enabling scale-to-zero between bursts."],
+    mme:["SageMaker async MME","Asynchronous multi-model endpoint: queues requests, serves the heavy Pi-DPM model, absorbs bursts, scales to zero."],
+    tenant:["tenant_id isolation","Row-level multi-tenancy enforced via IAM + Glue + Iceberg, in place of Unity Catalog governance."]
+  };
+
+  // ---- safe storage ----
+  function getStore(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+  function setStore(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
+
+  var pages = Array.prototype.slice.call(document.querySelectorAll('.page'));
+  var navBtns = Array.prototype.slice.call(document.querySelectorAll('#nav button'));
+  var order = navBtns.map(function(b){ return b.getAttribute('data-p'); });
+
+  function show(id, push){
+    if(!document.getElementById(id)) id = 'overview';
+    pages.forEach(function(p){ p.classList.toggle('active', p.id===id); });
+    navBtns.forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-p')===id); });
+    try{ if(push!==false) history.replaceState(null,'', '#'+id); }catch(e){}
+    try{ window.scrollTo(0,0); }catch(e){}
+    var m=document.getElementById('main'); if(m) m.scrollTop=0;
+    closeSide();
+  }
+  navBtns.forEach(function(b){ b.addEventListener('click', function(){ show(b.getAttribute('data-p')); }); });
+  document.addEventListener('click', function(e){
+    var go = e.target.closest && e.target.closest('[data-go]');
+    if(go){ e.preventDefault(); show(go.getAttribute('data-go')); }
+  });
+
+  // keyboard up/down between pages
+  document.addEventListener('keydown', function(e){
+    if(e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+    var cur = pages.findIndex(function(p){ return p.classList.contains('active'); });
+    if(e.key==='ArrowDown' || e.key==='j'){ if(cur<order.length-1){ e.preventDefault(); show(order[cur+1]); } }
+    else if(e.key==='ArrowUp' || e.key==='k'){ if(cur>0){ e.preventDefault(); show(order[cur-1]); } }
+    else if(e.key==='Escape'){ hidePop(); closeSide(); }
+  });
+
+  // ---- theme ----
+  var root = document.documentElement;
+  var saved = getStore('hm-theme');
+  if(saved){ root.setAttribute('data-theme', saved); }
+  document.getElementById('theme').addEventListener('click', function(){
+    var cur = root.getAttribute('data-theme');
+    var next = cur==='dark' ? 'light' : (cur==='light' ? 'auto' : 'dark');
+    root.setAttribute('data-theme', next); setStore('hm-theme', next);
+  });
+
+  // ---- sidebar (mobile) ----
+  var side=document.getElementById('side');
+  function closeSide(){ if(side) side.classList.remove('open'); }
+  var hamb=document.getElementById('hamb');
+  if(hamb) hamb.addEventListener('click', function(){ side.classList.toggle('open'); });
+
+  // ---- expand-all stacks (no-op placeholder kept simple: scroll to phase 0) ----
+  var exp=document.getElementById('expand');
+  if(exp) exp.addEventListener('click', function(){ show('p0'); });
+
+  // ---- glossary popovers ----
+  var pop=document.getElementById('pop');
+  function hidePop(){ pop.style.display='none'; }
+  function showPop(el){
+    var k=el.getAttribute('data-k'); var g=GLOSSARY[k];
+    if(!g) return;
+    pop.innerHTML='<b>'+g[0]+'</b><br>'+g[1];
+    pop.style.display='block';
+    var r=el.getBoundingClientRect();
+    var pw=Math.min(320, window.innerWidth-24);
+    pop.style.maxWidth=pw+'px';
+    var left=Math.min(r.left, window.innerWidth-pw-12);
+    var top=r.bottom+8;
+    if(top+pop.offsetHeight>window.innerHeight-8){ top=Math.max(8, r.top-pop.offsetHeight-8); }
+    pop.style.left=Math.max(8,left)+'px'; pop.style.top=top+'px';
+  }
+  document.addEventListener('click', function(e){
+    var t=e.target.closest && e.target.closest('.t');
+    if(t){ e.stopPropagation(); showPop(t); }
+    else if(!e.target.closest || !e.target.closest('#pop')){ hidePop(); }
+  });
+  window.addEventListener('resize', hidePop);
+
+  // ---- build glossary list ----
+  var glossHost=document.getElementById('glosslist');
+  if(glossHost){
+    var keys=Object.keys(GLOSSARY).sort(function(a,b){ return GLOSSARY[a][0].localeCompare(GLOSSARY[b][0]); });
+    var html='<table><tbody>';
+    keys.forEach(function(k){ html+='<tr><td style="white-space:nowrap"><b>'+GLOSSARY[k][0]+'</b></td><td>'+GLOSSARY[k][1]+'</td></tr>'; });
+    html+='</tbody></table>';
+    glossHost.innerHTML=html;
+  }
+
+  // ---- initial route ----
+  var initial='overview';
+  try{ if(location.hash){ initial=location.hash.replace('#',''); } }catch(e){}
+  show(initial, false);
+})();
+</script>
+</body>
+</html>
