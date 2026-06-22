@@ -2,6 +2,38 @@
 
 Status: APPROVED 2026-06-19, NOT STARTED. Do not begin execution until (a) the Ray/rate submission is done, (b) Arun has completed the AWS setup guide below, and (c) the internship-contents reveal has been folded in or explicitly deferred. Governance: this doc is the working plan for Phase 1; any change updates this file AND the master plan (~/.claude/plans/i-am-thinking-to-rustling-sifakis.md), and is re-confirmed before executing. No scope drift mid-phase.
 
+## Local slice progress (no-AWS, zero-cost) - 2026-06-22
+
+Built the parts of Phase 1 that need neither an AWS account nor any spend, so the
+deterministic scoring logic is real and tested ahead of gate G0. All of the below
+runs offline (`make serve-test`, 36 passed + 1 postgres test skipped; `ruff` clean).
+A 5-dimension adversarial review (9 confirmed findings) was applied: all-segment
+implausible-speed scoring, AGM-weighted gap severity, single-cause jump fixture,
+asyncpg jsonb codec, 404 on unknown-trace feedback, and tests excluded from the wheel:
+
+- 1.1 service + CI scaffold: DONE. `pyproject.toml` (ruff + pytest), `serving/app`
+  package, recorded fixture `streaming/fixtures/ais_recorded.jsonl` (2709 events / 6 h,
+  with a planted multi-hour gap, an implausible jump, and an off-corridor vessel) +
+  `expectations.json` + recorded SHA256, schema-validating loader, and
+  `.github/workflows/serving-ci.yml` (lint + unit + container build, no deploy).
+- 1.2 GeoTrace serving adaptation: DONE (single-vessel). Vendored deterministic
+  agents + prism kernel; `HeuristicPlanner` (routes by history 0/1/3+);
+  `POST /v1/score-ais` + `orchestrator.run_plan` (no LLM); real Postgres HITL backend
+  with an in-memory fallback; `/healthz` + Prometheus `/metrics`; the corridor add-on
+  (`CorridorDeviationDetector` + `app/artifacts/corridors.json`, design in
+  `docs/corridor-detector.md`). Golden checksums pass against `expectations.json`.
+  RendezvousFinder/TGARD is vendored and unit-tested but not routed for single-vessel
+  scoring (it activates in the future multi-vessel endpoint).
+- 1.5 feature funcs as a local library: DONE. `streaming/features` (haversine,
+  v_required, the `p_physical` cheap-gate) with a test asserting `v_max` equals the
+  serving config exactly. The Flink job that deploys these (gate G5) needs AWS.
+
+Pending on AWS (gate G0) / owner tasks, unchanged by this slice: 1.0 pre-flight,
+1.3 Terraform modules (G3), 1.4 ingestor deploy (G4), 1.5 Flink deploy (G5), 1.6
+Streamlit console (G6), 1.7 observability/SLOs (G7), 1.8 e2e acceptance (G8), 1.9
+live toggle + teardown (G9). Preconditions (a) Ray/rate submission and (b) AWS setup
+remain owner tasks; (c) the internship reveal is folded in via the corridor add-on.
+
 ## Goal
 A genuinely production-grade vertical slice: recorded AIS replay -> Kinesis -> Managed Flink features + P_phys gate -> async score on the ECS Fargate GeoTrace front door (deterministic agents) -> anomaly to the Streamlit HITL console, every event landing in S3/Iceberg, with full observability and the $75 guardrails honored. Each sub-phase has a deliverable, reuse anchors, and a verification GATE (unit tests, a smoke test, and a checksum). Nothing proceeds past a red gate.
 

@@ -1,0 +1,60 @@
+name: serving-ci
+
+# Phase 1.1 CI gate: lint + unit + container build. No deploy, no AWS.
+on:
+  push:
+    paths:
+      - "serving/**"
+      - "streaming/**"
+      - "pyproject.toml"
+      - ".github/workflows/serving-ci.yml"
+  pull_request:
+    paths:
+      - "serving/**"
+      - "streaming/**"
+      - "pyproject.toml"
+      - ".github/workflows/serving-ci.yml"
+  workflow_dispatch:
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Lint (ruff)
+        run: ruff check serving streaming
+      - name: Verify recorded fixture checksum
+        run: python -c "from replay.loader import verify_fixture; assert verify_fixture()"
+        env:
+          PYTHONPATH: streaming
+      - name: Unit tests
+        run: pytest -q
+
+  container-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build serving image (no push)
+        run: docker build -f serving/Dockerfile -t harbormaster-serving:ci .
+      - name: Smoke the image
+        run: |
+          docker run -d --name hm -p 8000:8000 harbormaster-serving:ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8000/healthz; then ok=1; break; fi
+            sleep 1
+          done
+          test "${ok:-0}" = "1" || (docker logs hm; exit 1)
+          echo
+          curl -fsS -X POST http://localhost:8000/v1/score-ais \
+            -H 'content-type: application/json' \
+            -d '{"mmsi":367000099,"fix":{"lat":40.50,"lon":-73.95,"t":"2024-06-01T00:01:00Z"},"history":[{"lat":40.50,"lon":-73.95,"t":"2024-06-01T00:00:00Z"}]}'
+          echo
+          docker rm -f hm

@@ -1,0 +1,56 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "harbormaster"
+version = "0.1.0"
+description = "Harbormaster serving plane: deterministic AIS anomaly scoring (Phase 1 vertical slice)."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.110",
+  "uvicorn[standard]>=0.27",
+  "pydantic>=2.6",
+  "pydantic-settings>=2.2",
+  "prometheus-client>=0.20",
+  "structlog>=24.1",
+  "shapely>=2.0",
+  "numpy>=1.26",
+  "orjson>=3.9",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-asyncio>=0.23", "httpx>=0.27", "ruff>=0.5"]
+postgres = ["asyncpg>=0.29"]
+
+# Map the in-repo source dirs onto importable top-level packages so the
+# vendored GeoTrace modules keep their `from app.* import ...` paths unchanged
+# and the Flink feature funcs import as `features`.
+[tool.hatch.build.targets.wheel]
+packages = ["serving/app", "streaming/features"]
+# don't ship test code into site-packages
+exclude = ["**/tests", "**/tests/**", "**/test_*.py"]
+
+[tool.pytest.ini_options]
+pythonpath = ["serving", "streaming"]
+asyncio_mode = "auto"
+testpaths = ["serving/tests", "streaming/features/tests", "streaming/replay/tests"]
+markers = [
+  "postgres: integration test that needs a live Postgres (set HM_TEST_PG_DSN to run)",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["serving", "streaming"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+# Verbatim-vendored from geotrace-agent; kept byte-identical, not reformatted.
+"serving/app/components/space_time_prism.py" = ["E501"]
+"serving/app/agents/space_time_reasoner.py" = ["E501"]
+"serving/app/agents/rendezvous_finder.py" = ["E501"]
+"serving/app/agents/validator.py" = ["E501"]

@@ -7,7 +7,8 @@
 TF_DIR := infra/terraform/envs/base
 COST_CAP := 75
 
-.PHONY: help fmt validate plan apply destroy cost
+.PHONY: help fmt validate plan apply destroy cost \
+        serve-install serve-lint serve-test serve-run serve-fixture serve-docker
 
 help:
 	@echo "Harbormaster Phase 0 targets (operate on $(TF_DIR)):"
@@ -49,3 +50,28 @@ destroy:
 	@echo "WARNING: 'make destroy' will delete the Harbormaster base environment resources."
 	@printf "Type 'yes' to continue: " && read confirm && [ "$$confirm" = "yes" ] || (echo "Aborted." && exit 1)
 	terraform -chdir=$(TF_DIR) destroy
+
+# ---- Serving plane (Phase 1 vertical slice; no AWS, no cost) ----
+# Local Python toolchain for the deterministic AIS scorer in serving/ + streaming/.
+VENV := .venv
+PY := $(VENV)/bin/python
+
+serve-install:        ## create .venv and install the serving package + dev deps
+	python3 -m venv $(VENV)
+	$(PY) -m pip install --upgrade pip
+	$(PY) -m pip install -e ".[dev]"
+
+serve-lint:           ## ruff lint serving + streaming
+	$(PY) -m ruff check serving streaming
+
+serve-test:           ## run the unit + golden test suite
+	$(PY) -m pytest -q
+
+serve-fixture:        ## regenerate the recorded AIS replay fixture + expectations + sha
+	PYTHONPATH=streaming $(PY) -m replay.generate
+
+serve-run:            ## run the scoring API locally on :8000
+	PYTHONPATH=serving $(PY) -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+serve-docker:         ## build the serving container image (build context = repo root)
+	docker build -f serving/Dockerfile -t harbormaster-serving:dev .
