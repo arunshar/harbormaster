@@ -65,3 +65,6 @@ Thumbs.db
 
 # raw internship analysis kept local-only (HONESTY.md carries the polished version)
 docs/internship/
+
+# local CDC drill/smoke artifacts (Phase 2)
+.cdc-warehouse/

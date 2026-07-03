@@ -8,7 +8,8 @@ TF_DIR := infra/terraform/envs/base
 COST_CAP := 75
 
 .PHONY: help fmt init validate plan apply destroy cost \
-        serve-install serve-lint serve-test serve-run serve-fixture serve-docker flink-package e2e
+        serve-install serve-lint serve-test serve-run serve-fixture serve-docker flink-package e2e \
+        cdc-up cdc-down cdc-smoke cdc-consumer
 
 help:
 	@echo "Harbormaster Phase 0 targets (operate on $(TF_DIR)):"
@@ -91,3 +92,31 @@ flink-package:        ## package the PyFlink feature job for Managed Flink -> di
 
 e2e:                  ## Phase 1 e2e acceptance against a live demo apply (needs HM_E2E=1 + SERVING_URL)
 	HM_E2E=1 $(PY) -m pytest tests/e2e/test_phase1.py -v
+
+# ---- CDC plane (Phase 2; local kind/Strimzi stack, $0) ----
+KIND_CLUSTER := hm-cdc
+STRIMZI_VERSION := 0.45.0
+STRIMZI_URL := https://github.com/strimzi/strimzi-kafka-operator/releases/download/$(STRIMZI_VERSION)/strimzi-cluster-operator-$(STRIMZI_VERSION).yaml
+
+cdc-up:               ## create the local CDC stack (kind + Strimzi Kafka + Debezium + pg + redis + ddb-local)
+	kind create cluster --config deploy/k8s/cdc/kind-config.yaml || true
+	kubectl apply -f deploy/k8s/cdc/00-namespace.yaml
+	curl -sL $(STRIMZI_URL) | sed 's/namespace: myproject/namespace: hm-cdc/' | kubectl apply -n hm-cdc -f -
+	kubectl apply -f deploy/k8s/cdc/10-postgres.yaml -f deploy/k8s/cdc/11-redis.yaml -f deploy/k8s/cdc/12-dynamodb-local.yaml
+	kubectl wait -n hm-cdc --for=condition=Available deploy/strimzi-cluster-operator --timeout=300s
+	kubectl apply -f deploy/k8s/cdc/20-kafka.yaml
+	kubectl wait -n hm-cdc --for=condition=Ready kafka/hm --timeout=600s
+	kubectl apply -f deploy/k8s/cdc/30-connect.yaml
+	kubectl wait -n hm-cdc --for=condition=Available deploy/debezium-connect --timeout=300s
+	@echo "local CDC stack is up (kafka :30092, connect :30083, pg :30432, redis :30379, ddb :30800)"
+
+cdc-down:             ## delete the local CDC stack
+	kind delete cluster --name $(KIND_CLUSTER)
+
+cdc-smoke:            ## insert-to-online latency smoke against the local stack (needs cdc-up)
+	$(PY) scripts/cdc_smoke.py
+
+cdc-consumer:         ## run the CDC consumer against the local stack
+	HM_KAFKA_BOOTSTRAP=127.0.0.1:30092 HM_ONLINE_TABLE=hm-local-feast-online \
+	HM_DDB_ENDPOINT_URL=http://127.0.0.1:30800 HM_REDIS_URL=redis://127.0.0.1:30379/0 \
+	$(PY) -m cdc.consumer.service
