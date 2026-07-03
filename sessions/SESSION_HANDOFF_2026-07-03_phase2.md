@@ -121,12 +121,13 @@ code/tests. No Claude co-author, no em dashes, paste-ready in fenced blocks.
    run the e2e with env pointed at the demo; teardown by flipping both toggles
    false + `make apply`. NEVER `make destroy`.
 3. Push `phase2-cdc` when Arun says push.
-4. Cover-note follow-up: the tracked file
-   temporal-interview-prep/references/supabase-multigres-cover-note.md does
-   NOT exist on disk (stale memory pointer). The shipped-CDC gap language now
-   lives in docs/HONESTY.md ("Multigres cover-note update"); Arun points at
-   the real cover-note location (Gmail draft / Google Doc?) and it gets the
-   same edit.
+4. Cover-note follow-up: RESOLVED 2026-07-03. The file had been deleted in a
+   cleanup (with its two supabase-multigres-deep-dive companions and the skill
+   folder's .git); all three were recovered byte-exact from the 2026-06-19
+   session transcripts (the original Write tool records) back into
+   ~/.claude/skills/temporal-interview-prep/references/, the cover note's gap
+   paragraph was updated to the shipped-CDC wording, and the restored files
+   were pushed to the private temporal-prep-arc backup repo.
 
 ## Resume prompt for the next session
 Load memory (project_harbormaster) + the arun-session-handoff skill + this
