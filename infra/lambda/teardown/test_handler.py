@@ -126,8 +126,7 @@ class _Paginator:
         self._pages = pages
 
     def paginate(self, **kwargs):
-        for page in self._pages:
-            yield page
+        yield from self._pages
 
 
 class FakeAsgClient:
@@ -187,7 +186,7 @@ def make_fake_boto3_client(recorder, failing_service=None):
 
     def _factory(service_name, **kwargs):
         if service_name == failing_service:
-            raise RuntimeError("simulated {} outage".format(service_name))
+            raise RuntimeError(f"simulated {service_name} outage")
         if service_name == "kinesisanalyticsv2":
             return FakeFlinkClient(recorder)
         if service_name == "emr":
@@ -200,7 +199,7 @@ def make_fake_boto3_client(recorder, failing_service=None):
             return FakeCeClient(recorder)
         if service_name == "sns":
             return FakeSnsClient(recorder)
-        raise AssertionError("unexpected service: {}".format(service_name))
+        raise AssertionError(f"unexpected service: {service_name}")
 
     return _factory
 
@@ -319,15 +318,15 @@ def _run_all():
     for t in tests:
         try:
             t()
-            print("PASS {}".format(t.__name__))
+            print(f"PASS {t.__name__}")
         except AssertionError as e:
             failures += 1
-            print("FAIL {}: {}".format(t.__name__, e))
+            print(f"FAIL {t.__name__}: {e}")
         except Exception as e:  # noqa: BLE001
             failures += 1
-            print("ERROR {}: {}".format(t.__name__, e))
+            print(f"ERROR {t.__name__}: {e}")
     if failures:
-        print("{} test(s) failed".format(failures))
+        print(f"{failures} test(s) failed")
         return 1
     print("all tests passed")
     return 0
