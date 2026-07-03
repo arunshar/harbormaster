@@ -100,3 +100,49 @@ module "finops" {
 
   tags = local.common_tags
 }
+
+# -----------------------------------------------------------------------------
+# Phase 1 (gate 1.3): streaming + serving pipeline. Every module is gated behind
+# enable_phase1 (default false) so a base apply stays Phase-0-only and cheap.
+# Flip enable_phase1 = true for a demo apply, then set it back to false (or
+# destroy the Phase 1 resources) to stop the billable compute. Data plane in
+# this batch: kinesis, firehose, rds. Compute plane (ecs_*, kda_flink, apigw)
+# follows in the next batch.
+# -----------------------------------------------------------------------------
+
+module "kinesis" {
+  count  = var.enable_phase1 ? 1 : 0
+  source = "../../modules/kinesis"
+
+  project     = var.project
+  environment = var.environment
+  tags        = local.common_tags
+}
+
+module "firehose" {
+  count  = var.enable_phase1 ? 1 : 0
+  source = "../../modules/firehose"
+
+  project     = var.project
+  environment = var.environment
+
+  kinesis_stream_arn = module.kinesis[0].stream_arn
+  lake_bucket_arn    = "arn:aws:s3:::${module.state_stores.lake_bucket_name}"
+
+  tags = local.common_tags
+}
+
+module "rds" {
+  count  = var.enable_phase1 ? 1 : 0
+  source = "../../modules/rds"
+
+  project     = var.project
+  environment = var.environment
+
+  vpc_id             = module.network.vpc_id
+  private_subnet_ids = module.network.private_subnet_ids
+  # The VPC is 10.0.0.0/16 (network module default); allow in-VPC Postgres.
+  allowed_ingress_cidrs = ["10.0.0.0/16"]
+
+  tags = local.common_tags
+}

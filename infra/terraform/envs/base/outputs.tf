@@ -68,3 +68,25 @@ output "teardown_lambda_name" {
   description = "Name of the nightly teardown Lambda."
   value       = module.finops.teardown_lambda_name
 }
+
+# ---- Phase 1 (null when enable_phase1 = false) ------------------------------
+
+output "kinesis_stream_name" {
+  description = "Name of the ais-raw Kinesis stream (Phase 1)."
+  value       = one(module.kinesis[*].stream_name)
+}
+
+output "firehose_delivery_stream_name" {
+  description = "Name of the ais-raw -> S3 Firehose delivery stream (Phase 1)."
+  value       = one(module.firehose[*].delivery_stream_name)
+}
+
+output "rds_endpoint" {
+  description = "Postgres endpoint address (Phase 1)."
+  value       = one(module.rds[*].db_endpoint)
+}
+
+output "rds_master_secret_arn" {
+  description = "Secrets Manager ARN of the RDS-managed master credentials (Phase 1)."
+  value       = one(module.rds[*].master_user_secret_arn)
+}

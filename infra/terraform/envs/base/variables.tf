@@ -70,3 +70,14 @@ variable "cost_anomaly_monitor_arn" {
   type        = string
   default     = ""
 }
+
+variable "enable_phase1" {
+  description = <<-EOT
+    Gate for the Phase 1 streaming + serving pipeline (kinesis, firehose, rds,
+    and the compute plane). Default false keeps a base apply Phase-0-only and
+    cheap. Set true for a demo apply, then back to false (or destroy) to stop
+    the billable compute.
+  EOT
+  type        = bool
+  default     = false
+}

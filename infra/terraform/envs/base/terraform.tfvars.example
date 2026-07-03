@@ -38,3 +38,7 @@ enable_nightly_teardown = true
 # you have read its logs and trust what it would stop/terminate. Set false to
 # let it actually stop streaming/EMR/MSK workloads overnight.
 teardown_dry_run = true
+
+# Phase 1 streaming + serving pipeline. Keep false so a base apply stays
+# Phase-0-only and cheap; flip true for a demo apply, then back to false.
+enable_phase1 = false
