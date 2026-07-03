@@ -115,3 +115,8 @@ output "flink_role_arn" {
   description = "Managed Flink service execution role ARN (Phase 1)."
   value       = one(module.kda_flink[*].role_arn)
 }
+
+output "phase1_dashboard_name" {
+  description = "CloudWatch dashboard for the Phase 1 slice (Phase 1)."
+  value       = one(module.observability[*].dashboard_name)
+}

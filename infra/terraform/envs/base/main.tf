@@ -224,3 +224,20 @@ module "kda_flink" {
 
   tags = local.common_tags
 }
+
+module "observability" {
+  count  = var.enable_phase1 ? 1 : 0
+  source = "../../modules/observability"
+
+  project     = var.project
+  environment = var.environment
+  aws_region  = var.aws_region
+
+  api_id              = module.apigw[0].api_id
+  cluster_name        = module.ecs_cluster[0].cluster_name
+  service_name        = module.ecs_serving[0].service_name
+  kinesis_stream_name = module.kinesis[0].stream_name
+  sns_topic_arn       = module.finops.sns_topic_arn
+
+  tags = local.common_tags
+}
