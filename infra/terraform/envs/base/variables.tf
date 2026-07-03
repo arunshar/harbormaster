@@ -59,3 +59,14 @@ variable "teardown_dry_run" {
   type        = bool
   default     = true
 }
+
+variable "cost_anomaly_monitor_arn" {
+  description = <<-EOT
+    Reuse an existing Cost Explorer SERVICE anomaly monitor instead of creating one.
+    AWS allows only one dimensional SERVICE monitor per account and auto-creates a
+    "Default-Services-Monitor", so set this to that monitor's ARN on such accounts.
+    Empty creates our own monitor.
+  EOT
+  type        = string
+  default     = ""
+}

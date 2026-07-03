@@ -68,6 +68,18 @@ variable "anomaly_threshold_usd" {
   default     = 10
 }
 
+variable "existing_cost_anomaly_monitor_arn" {
+  description = <<-EOT
+    ARN of an existing Cost Explorer DIMENSIONAL SERVICE anomaly monitor to reuse.
+    AWS allows only one such monitor per account and auto-creates a
+    "Default-Services-Monitor" for many accounts, so creating a second fails with
+    "Limit exceeded on dimensional spend monitor creation". Leave empty to create
+    one; set to an existing monitor ARN to attach the subscription to it instead.
+  EOT
+  type        = string
+  default     = ""
+}
+
 variable "enable_nightly_teardown" {
   description = <<-EOT
     Whether to create the EventBridge schedule that invokes the teardown Lambda

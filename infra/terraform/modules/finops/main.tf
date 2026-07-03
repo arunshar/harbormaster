@@ -267,6 +267,11 @@ resource "aws_budgets_budget_action" "spend_freeze" {
 # -----------------------------------------------------------------------------
 
 resource "aws_ce_anomaly_monitor" "service" {
+  # AWS permits only one DIMENSIONAL SERVICE monitor per account. Skip creating
+  # ours when an existing monitor ARN is supplied (e.g. AWS' auto-created
+  # Default-Services-Monitor) and attach the subscription to that instead.
+  count = var.existing_cost_anomaly_monitor_arn == "" ? 1 : 0
+
   name              = "${local.name_prefix}-anomaly-monitor"
   monitor_type      = "DIMENSIONAL"
   monitor_dimension = "SERVICE"
@@ -278,7 +283,7 @@ resource "aws_ce_anomaly_subscription" "service" {
   name      = "${local.name_prefix}-anomaly-subscription"
   frequency = "IMMEDIATE"
 
-  monitor_arn_list = [aws_ce_anomaly_monitor.service.arn]
+  monitor_arn_list = [coalesce(var.existing_cost_anomaly_monitor_arn, one(aws_ce_anomaly_monitor.service[*].arn))]
 
   subscriber {
     type    = "SNS"
@@ -416,6 +421,21 @@ data "aws_iam_policy_document" "teardown" {
       "kafka:DescribeCluster",
       "kafka:DescribeClusterV2",
       "kafka:DeleteCluster",
+    ]
+
+    resources = ["*"]
+  }
+
+  statement {
+    sid    = "AutoScalingDescribeZero"
+    effect = "Allow"
+
+    # The handler drains tagged Auto Scaling Groups (desired/min -> 0). Describe
+    # has no resource-level scope, so it must be "*"; the handler filters by the
+    # Project tag at runtime.
+    actions = [
+      "autoscaling:DescribeAutoScalingGroups",
+      "autoscaling:UpdateAutoScalingGroup",
     ]
 
     resources = ["*"]

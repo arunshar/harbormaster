@@ -92,6 +92,8 @@ module "finops" {
   enable_nightly_teardown = var.enable_nightly_teardown
   teardown_dry_run        = var.teardown_dry_run
 
+  existing_cost_anomaly_monitor_arn = var.cost_anomaly_monitor_arn
+
   # Lambda source lives at infra/lambda/teardown relative to this root:
   # envs/base -> ../../.. = infra, then lambda/teardown.
   lambda_source_dir = "${path.module}/../../../lambda/teardown"
