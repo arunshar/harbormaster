@@ -42,3 +42,9 @@ teardown_dry_run = true
 # Phase 1 streaming + serving pipeline. Keep false so a base apply stays
 # Phase-0-only and cheap; flip true for a demo apply, then back to false.
 enable_phase1 = false
+
+# Phase 2 CDC showcase plane (MSK Serverless, Debezium on Fargate, CDC consumer,
+# Redis on Fargate, slot-lag monitoring). Demo windows only; also requires
+# enable_phase1 = true. MSK Serverless left running is ~$18/day: always flip
+# back to false after a demo. The local kind/Strimzi CDC plane needs neither.
+enable_phase2 = false

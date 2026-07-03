@@ -81,3 +81,17 @@ variable "enable_phase1" {
   type        = bool
   default     = false
 }
+
+variable "enable_phase2" {
+  description = <<-EOT
+    Gate for the Phase 2 CDC showcase plane (MSK Serverless, Debezium on
+    Fargate, the CDC consumer, Redis on Fargate, slot-lag monitoring, and the
+    RDS logical-replication parameter group). Default false keeps a base apply
+    Phase-0-only. The AWS showcase also requires enable_phase1 = true (RDS,
+    ECS cluster, serving); the local kind/Strimzi plane needs neither. Set true
+    for a demo window, then back to false: MSK Serverless left running is the
+    single biggest budget threat in the platform (~$18/day).
+  EOT
+  type        = bool
+  default     = false
+}

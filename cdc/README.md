@@ -1,11 +1,24 @@
 # cdc
 
-Change-data-capture configuration for Harbormaster.
+The Phase 2 change-data-capture pipeline: Postgres (`wal_level=logical`, pgoutput)
+-> Debezium on Kafka Connect -> an idempotent, LSN-guarded consumer -> the online
+stores (Feast/DynamoDB + Redis invalidation) + an Iceberg `cdc_audit` table.
 
-**Lands in:** Phase 3 (Lakehouse and CDC).
+Execution plan, gates, and invariants: `docs/phases/PHASE_2.md`. Layout:
 
-**Will contain:** the Debezium connector configuration that captures changes from the operational RDS Postgres (logical replication, `wal_level=logical`, replica identity, incremental snapshot) and streams them through Kinesis into the S3/Iceberg lakehouse. War story P3 (snapshot locking the source on first enable) anticipates the cold-start cost this configuration has to manage.
+- `schema/` - DDL for `vessels` / `watchlist` / `sanctions_flags`, replica
+  identity, and the `harbormaster_cdc` publication (system of record: Postgres).
+- `connector/` - Debezium Postgres connector config generator + validator
+  (pgoutput, explicit publication, heartbeats on).
+- `consumer/` - envelope parser, the LSN-guarded applier (at-least-once
+  transport + idempotent sink), and the Kafka consumer service.
+- `sinks/` - DynamoDB online store (conditional-write guard), Redis
+  invalidation, Iceberg `cdc_audit` appender.
+- `monitor/` - `pg_replication_slots` lag reader + alert evaluator (feeds the
+  slot-lag Lambda and drill P1).
+- `fixtures/` - recorded Debezium envelopes + `expectations.json` checksums.
 
-This is also where the planned Multigres cover-note update is grounded (see `docs/HONESTY.md`): today Harbormaster uses managed Postgres plus Debezium, and it does NOT implement a sharded query router or a consensus layer. That boundary is stated, not blurred.
-
-Empty for now. Phase 0 provisions only foundations and FinOps guardrails.
+Honesty boundary (see `docs/HONESTY.md`): Harbormaster consumes managed Postgres
+plus Debezium. It does NOT implement a sharded query router or a consensus
+layer; that is Vitess / Multigres territory, and the boundary is stated, not
+blurred.
