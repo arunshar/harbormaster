@@ -1,0 +1,30 @@
+sessions/SESSION_HANDOFF_2026-07-03_phase2.md
+  s_c739fb2c80ca09::t_417bf3e2c5f6c5 113-125
+  s_c739fb2c80ca09::t_51ee31bdbabcd3 1,4-20
+  s_c739fb2c80ca09::t_bd4f1454d62be4 137-143
+cdc/fixtures/expectations.json
+  s_c739fb2c80ca09::t_42ee576d0a0018 16-18
+docs/runbooks/PHASE_2_AWS_SHOWCASE.md
+  s_c739fb2c80ca09::t_bc550ca3d31fcd 1-246
+docs/drills/E2E_local_stack.md
+  s_c739fb2c80ca09::t_841b8af944f1ed 1-91
+docs/phases/PHASE_2.md
+  s_c739fb2c80ca09::t_1bee49340ee476 3
+  s_c739fb2c80ca09::t_c1595df01b37f9 87-93
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "4860b3084263ac4d44d070469300b02aea1df893",
+  "prompts": {},
+  "sessions": {
+    "s_c739fb2c80ca09": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fd41cdbb-bae6-4673-876e-f2e017957fa4",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
