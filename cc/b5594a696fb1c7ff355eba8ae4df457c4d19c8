@@ -1,0 +1,53 @@
+serving/frontend/registry_client.py
+  s_c739fb2c80ca09::t_909c257d9ac3a6 1-87
+serving/frontend/console.py
+  s_c739fb2c80ca09::t_672c3de4f66786 1,5-12,29-34,36-39,41-42,44-52,54-61,63,65-74,76-77,79,81-129
+cdc/tests/test_ddl.py
+  s_c739fb2c80ca09::t_848ab23d752378 1-59
+serving/app/errors.py
+  s_c739fb2c80ca09::t_f8a78ca6c4d09e 48-54
+serving/frontend/tests/test_registry_client.py
+  s_c739fb2c80ca09::t_4528fe13e238ca 1-53
+cdc/__init__.py
+  s_c739fb2c80ca09::t_0cab1b85ab61c4 1-6
+serving/app/main.py
+  s_c739fb2c80ca09::t_ee8dce58776439 16
+  s_c739fb2c80ca09::t_d18ac1a43599a4 23-32
+  s_c739fb2c80ca09::t_577653fc44edc2 91-144
+serving/app/orchestrator.py
+  s_c739fb2c80ca09::t_aed04c1bb46bda 93,99
+  s_c739fb2c80ca09::t_d905c9addd5084 53
+  s_c739fb2c80ca09::t_681ffe814a7ce6 69,79
+serving/app/registry.py
+  s_c739fb2c80ca09::t_3a4e5830236151 1-258
+Makefile
+  s_c739fb2c80ca09::t_b5be3363b9d63e 70-71
+cdc/schema/ddl.py
+  s_c739fb2c80ca09::t_b2c1ae4ed4d11f 1-97
+serving/tests/test_registry.py
+  s_c739fb2c80ca09::t_f86ccd515df067 1-146
+serving/app/models.py
+  s_c739fb2c80ca09::t_300d8a34f5b6de 154-173
+pyproject.toml
+  s_c739fb2c80ca09::t_7e63be97d86f4b 49
+  s_c739fb2c80ca09::t_194f7b92ed59ba 38-39
+  s_c739fb2c80ca09::t_98780479a1ee7c 41
+cdc/fixtures/expectations.json
+  s_c739fb2c80ca09::t_402ef6d5c81ec4 1-3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "ccb5594a696fb1c7ff355eba8ae4df457c4d19c8",
+  "prompts": {},
+  "sessions": {
+    "s_c739fb2c80ca09": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fd41cdbb-bae6-4673-876e-f2e017957fa4",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
