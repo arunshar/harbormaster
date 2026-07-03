@@ -50,6 +50,7 @@ from app.models import (
     ReasonCode,
     ScoreReason,
 )
+from app.registry import RegistryStore
 
 log = structlog.get_logger(__name__)
 
@@ -65,6 +66,7 @@ class Orchestrator:
         validator: ValidatorAgent,
         corridor: CorridorDeviationDetector,
         hitl: HitlQueue,
+        registry: RegistryStore,
         cost: CostTracker,
     ) -> None:
         self.settings = settings
@@ -74,6 +76,7 @@ class Orchestrator:
         self.validator = validator
         self.corridor = corridor
         self.hitl = hitl
+        self.registry = registry
         self.cost = cost
 
     @classmethod
@@ -87,11 +90,13 @@ class Orchestrator:
             validator=ValidatorAgent(s),
             corridor=CorridorDeviationDetector(s),
             hitl=await HitlQueue.connect(s),
+            registry=await RegistryStore.connect(s),
             cost=CostTracker(s),
         )
 
     async def shutdown(self) -> None:
         await self.hitl.close()
+        await self.registry.close()
 
     # --------------------------------------------------------------- score
 

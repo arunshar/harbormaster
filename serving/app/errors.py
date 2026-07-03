@@ -45,3 +45,10 @@ class HitlTraceNotFound(HarbormasterError):
 
     code = "harbormaster.hitl_trace_not_found"
     http_status = 404
+
+
+class RegistryEntryNotFound(HarbormasterError):
+    """A registry lookup (vessel / watchlist / sanctions) matched nothing."""
+
+    code = "harbormaster.registry_not_found"
+    http_status = 404

@@ -151,6 +151,26 @@ class FeedbackIn(_Mutable):
     reviewer: str
 
 
+# --- Registry (Phase 2; Postgres is the system of record) ---------------------
+
+
+class VesselIn(_Mutable):
+    name: str = ""
+    flag_state: str = ""
+    vessel_type: str = ""
+
+
+class WatchlistIn(_Mutable):
+    reason: str = Field(..., min_length=1)
+    severity: float = Field(0.9, ge=0, le=1)
+    added_by: str = ""
+
+
+class SanctionsIn(_Mutable):
+    regime: str = Field(..., min_length=1)
+    reference: str = ""
+
+
 class FeedbackOut(_Frozen):
     accepted: bool = True
     queue_position: int | None = None

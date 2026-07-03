@@ -67,8 +67,8 @@ serve-install:        ## create .venv and install the serving package + dev deps
 	$(PY) -m pip install --upgrade pip
 	$(PY) -m pip install -e ".[dev]"
 
-serve-lint:           ## ruff lint serving + streaming + tests
-	$(PY) -m ruff check serving streaming tests
+serve-lint:           ## ruff lint serving + streaming + cdc + tests
+	$(PY) -m ruff check serving streaming cdc tests
 
 serve-test:           ## run the unit + golden test suite
 	$(PY) -m pytest -q

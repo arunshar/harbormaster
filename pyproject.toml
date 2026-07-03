@@ -35,9 +35,10 @@ packages = ["serving/app", "streaming/features"]
 exclude = ["**/tests", "**/tests/**", "**/test_*.py"]
 
 [tool.pytest.ini_options]
-pythonpath = ["serving", "streaming", "tests"]
+# "." puts the repo root on sys.path so the cdc package imports as `cdc`.
+pythonpath = ["serving", "streaming", "tests", "."]
 asyncio_mode = "auto"
-testpaths = ["serving/tests", "streaming/features/tests", "streaming/replay/tests", "streaming/ingestor/tests", "streaming/flink/tests", "serving/frontend/tests", "tests/e2e"]
+testpaths = ["serving/tests", "streaming/features/tests", "streaming/replay/tests", "streaming/ingestor/tests", "streaming/flink/tests", "serving/frontend/tests", "cdc/tests", "tests/e2e"]
 markers = [
   "postgres: integration test that needs a live Postgres (set HM_TEST_PG_DSN to run)",
 ]
@@ -45,7 +46,7 @@ markers = [
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-src = ["serving", "streaming"]
+src = ["serving", "streaming", "cdc", "."]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
