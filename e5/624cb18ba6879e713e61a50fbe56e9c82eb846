@@ -1,0 +1,33 @@
+cdc/tests/test_envelope.py
+  s_c739fb2c80ca09::t_4e90761dadd894 1-121
+cdc/tests/test_connector_config.py
+  s_c739fb2c80ca09::t_f3272a6cd2ff5c 1-67
+cdc/consumer/envelope.py
+  s_c739fb2c80ca09::t_08fcfda8f32c08 1-132
+cdc/connector/config.py
+  s_c739fb2c80ca09::t_0a72fd0ef811de 1-135
+cdc/fixtures/debezium_envelopes.jsonl
+  s_c739fb2c80ca09::t_014162a64981c0 1-11
+cdc/fixtures/loader.py
+  s_c739fb2c80ca09::t_7582ce3805bd45 1-44
+cdc/fixtures/connector_config.expected.json
+  s_c739fb2c80ca09::t_53952b5b09800a 1-27
+cdc/fixtures/expectations.json
+  s_c739fb2c80ca09::t_5934b76d2ff478 2-9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "e5624cb18ba6879e713e61a50fbe56e9c82eb846",
+  "prompts": {},
+  "sessions": {
+    "s_c739fb2c80ca09": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fd41cdbb-bae6-4673-876e-f2e017957fa4",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
