@@ -1,0 +1,27 @@
+cdc/tests/test_sinks.py
+  s_c739fb2c80ca09::t_760ba230bd58bf 1-281
+cdc/sinks/dynamo.py
+  s_c739fb2c80ca09::t_e8a010d6a14a59 1-151
+pyproject.toml
+  s_c739fb2c80ca09::t_f78cba73c86a17 28-36
+cdc/sinks/iceberg_audit.py
+  s_c739fb2c80ca09::t_b8168dabe5515a 1-145
+cdc/sinks/redis_cache.py
+  s_c739fb2c80ca09::t_fcc321c6146bf3 1-54
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "b23f07eb2289daf83f4594ce439728ca00e6d28e",
+  "prompts": {},
+  "sessions": {
+    "s_c739fb2c80ca09": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fd41cdbb-bae6-4673-876e-f2e017957fa4",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
