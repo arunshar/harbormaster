@@ -37,6 +37,7 @@ from app.metrics import (
     REJECTS_TOTAL,
     SCORE_LATENCY,
     SCORES_TOTAL,
+    WATCHLIST_HITS_TOTAL,
 )
 from app.models import (
     AisScoreIn,
@@ -51,6 +52,7 @@ from app.models import (
     ScoreReason,
 )
 from app.registry import RegistryStore
+from app.watchlist import WatchlistLookup, WatchlistStatus
 
 log = structlog.get_logger(__name__)
 
@@ -67,6 +69,7 @@ class Orchestrator:
         corridor: CorridorDeviationDetector,
         hitl: HitlQueue,
         registry: RegistryStore,
+        watchlist: WatchlistLookup,
         cost: CostTracker,
     ) -> None:
         self.settings = settings
@@ -77,6 +80,7 @@ class Orchestrator:
         self.corridor = corridor
         self.hitl = hitl
         self.registry = registry
+        self.watchlist = watchlist
         self.cost = cost
 
     @classmethod
@@ -91,6 +95,7 @@ class Orchestrator:
             corridor=CorridorDeviationDetector(s),
             hitl=await HitlQueue.connect(s),
             registry=await RegistryStore.connect(s),
+            watchlist=WatchlistLookup.from_settings(s),
             cost=CostTracker(s),
         )
 
@@ -112,6 +117,9 @@ class Orchestrator:
 
         plan = self.planner.plan(n_history)
         results = await self.run_plan(plan, payload, anchors)
+        # The CDC-fed online watchlist runs on every score, outside the plan
+        # graph: it is a lookup, not a kinematic agent, and it is fail-open.
+        results["watchlist"] = self.watchlist.get(payload.mmsi)
         reasons = self._fuse(results, anchors)
 
         score = self._noisy_or([r.severity for r in reasons])
@@ -243,6 +251,28 @@ class Orchestrator:
                     },
                 )
             )
+
+        wl: WatchlistStatus | None = results.get("watchlist")
+        if wl is not None and wl.watchlisted:
+            reasons.append(
+                ScoreReason(
+                    code=ReasonCode.WATCHLIST_HIT,
+                    severity=self.settings.watchlist_severity,
+                    detail=f"vessel is on the analyst watchlist: {wl.reason or 'no reason given'}",
+                    evidence={"reason": wl.reason, "list_severity": wl.severity},
+                )
+            )
+        if wl is not None and wl.sanctioned:
+            reasons.append(
+                ScoreReason(
+                    code=ReasonCode.SANCTIONS_HIT,
+                    severity=self.settings.sanctions_severity,
+                    detail=f"vessel is sanctions-flagged ({', '.join(wl.sanctions)})",
+                    evidence={"regimes": list(wl.sanctions)},
+                )
+            )
+        if wl is not None and (wl.watchlisted or wl.sanctioned):
+            WATCHLIST_HITS_TOTAL.inc()
         return reasons
 
     def _speed_signal(self, anchors: list[Anchor]) -> dict[str, float]:

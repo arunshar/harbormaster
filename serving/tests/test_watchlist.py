@@ -1,0 +1,184 @@
+"""Online watchlist read-path tests (Phase 2, gate C2).
+
+Covers the pure item parser, the read-through cache order, fail-open behavior,
+and the scoring fusion: a watchlisted vessel gains WATCHLIST_HIT and lands in
+HITL; an unseeded vessel scores exactly as in Phase 1 (goldens unchanged).
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from app.metrics import WATCHLIST_LOOKUP_ERRORS
+from app.watchlist import (
+    EMPTY_STATUS,
+    FEATURE_SANCTIONS_PREFIX,
+    FEATURE_VESSEL_META,
+    FEATURE_WATCHLIST,
+    WatchlistLookup,
+    WatchlistStatus,
+    online_entity_id,
+    parse_online_items,
+    redis_key,
+)
+
+from ._helpers import build_score_in
+
+MMSI = 367000003
+
+
+def _item(feature: str, **attrs: Any) -> dict:
+    out: dict[str, Any] = {
+        "entity_id": {"S": online_entity_id(MMSI)},
+        "feature_name": {"S": feature},
+    }
+    for k, v in attrs.items():
+        if isinstance(v, bool):
+            out[k] = {"BOOL": v}
+        elif isinstance(v, int | float):
+            out[k] = {"N": str(v)}
+        else:
+            out[k] = {"S": str(v)}
+    return out
+
+
+class FakeDdb:
+    def __init__(self, items: list[dict] | None = None, err: Exception | None = None) -> None:
+        self.items = items or []
+        self.err = err
+        self.calls: list[dict] = []
+
+    def query(self, **kwargs: Any) -> dict:
+        self.calls.append(kwargs)
+        if self.err:
+            raise self.err
+        return {"Items": self.items}
+
+
+class FakeRedis:
+    def __init__(self) -> None:
+        self.store: dict[str, str] = {}
+        self.setex_calls: list[tuple[str, int, str]] = []
+
+    def get(self, key: str) -> bytes | None:
+        v = self.store.get(key)
+        return v.encode() if v is not None else None
+
+    def setex(self, key: str, ttl_s: int, value: str) -> None:
+        self.setex_calls.append((key, ttl_s, value))
+        self.store[key] = value
+
+
+# ------------------------------------------------------------------ parsing
+
+
+def test_parse_online_items_watchlist_and_sanctions_and_meta():
+    status = parse_online_items(
+        [
+            _item(FEATURE_WATCHLIST, reason="dark rendezvous", severity=0.8),
+            _item(FEATURE_SANCTIONS_PREFIX + "ofac", regime="ofac"),
+            _item(FEATURE_SANCTIONS_PREFIX + "eu", regime="eu"),
+            _item(FEATURE_VESSEL_META, name="EVER GIVEN", flag_state="PA"),
+        ]
+    )
+    assert status.watchlisted is True
+    assert status.reason == "dark rendezvous"
+    assert status.severity == 0.8
+    assert status.sanctions == ("eu", "ofac")
+    assert status.vessel["name"] == "EVER GIVEN"
+
+
+def test_parse_online_items_soft_delete_marker_reads_as_absent():
+    status = parse_online_items(
+        [_item(FEATURE_WATCHLIST, reason="stale", deleted=True, last_applied_lsn=42)]
+    )
+    assert status == EMPTY_STATUS
+
+
+def test_status_json_round_trip():
+    s = WatchlistStatus(watchlisted=True, reason="r", severity=0.7, sanctions=("ofac",))
+    assert WatchlistStatus.from_json(s.to_json()) == s
+
+
+# ------------------------------------------------------------------- lookup
+
+
+def test_disabled_lookup_returns_empty_without_calls():
+    lookup = WatchlistLookup(ddb_client=None, redis_client=None, table="")
+    assert lookup.enabled is False
+    assert lookup.get(MMSI) == EMPTY_STATUS
+
+
+def test_cache_miss_queries_ddb_and_populates_with_ttl():
+    ddb = FakeDdb([_item(FEATURE_WATCHLIST, reason="x")])
+    r = FakeRedis()
+    lookup = WatchlistLookup(ddb_client=ddb, redis_client=r, table="t", cache_ttl_s=123)
+    status = lookup.get(MMSI)
+    assert status.watchlisted is True
+    assert len(ddb.calls) == 1
+    assert ddb.calls[0]["TableName"] == "t"
+    (key, ttl, value) = r.setex_calls[0]
+    assert key == redis_key(MMSI) and ttl == 123
+    assert WatchlistStatus.from_json(value) == status
+
+
+def test_cache_hit_skips_ddb():
+    ddb = FakeDdb([_item(FEATURE_WATCHLIST, reason="x")])
+    r = FakeRedis()
+    lookup = WatchlistLookup(ddb_client=ddb, redis_client=r, table="t")
+    lookup.get(MMSI)  # miss populates
+    lookup.get(MMSI)  # hit
+    assert len(ddb.calls) == 1
+
+
+def test_ddb_error_fails_open_and_counts():
+    before = WATCHLIST_LOOKUP_ERRORS._value.get()
+    lookup = WatchlistLookup(
+        ddb_client=FakeDdb(err=RuntimeError("boom")), redis_client=None, table="t"
+    )
+    assert lookup.get(MMSI) == EMPTY_STATUS
+    assert WATCHLIST_LOOKUP_ERRORS._value.get() == before + 1
+
+
+# ------------------------------------------------------------------- fusion
+
+
+async def test_watchlisted_vessel_gains_hit_reason_and_hitl(orch, fixture_by_mmsi, expectations):
+    ns = expectations["normal_samples"][0]
+    ddb = FakeDdb([_item(FEATURE_WATCHLIST, reason="dark rendezvous", severity=0.8)])
+    orch.watchlist = WatchlistLookup(ddb_client=ddb, redis_client=None, table="t")
+    # the fake store answers for every mmsi; the normal event now scores as a hit
+    out = await orch.score(build_score_in(fixture_by_mmsi, ns["mmsi"], ns["t"]))
+    hits = [r for r in out.reasons if r.code.value == "watchlist_hit"]
+    assert len(hits) == 1
+    assert hits[0].severity == orch.settings.watchlist_severity == 0.9
+    assert out.hitl_required is True
+    assert out.score >= orch.settings.anomaly_hitl_threshold
+
+
+async def test_sanctioned_vessel_gains_sanctions_reason(orch, fixture_by_mmsi, expectations):
+    ns = expectations["normal_samples"][0]
+    ddb = FakeDdb([_item(FEATURE_SANCTIONS_PREFIX + "ofac", regime="ofac")])
+    orch.watchlist = WatchlistLookup(ddb_client=ddb, redis_client=None, table="t")
+    out = await orch.score(build_score_in(fixture_by_mmsi, ns["mmsi"], ns["t"]))
+    hits = [r for r in out.reasons if r.code.value == "sanctions_hit"]
+    assert len(hits) == 1
+    assert hits[0].severity == orch.settings.sanctions_severity == 0.95
+    assert out.hitl_required is True
+
+
+async def test_unseeded_vessel_scores_exactly_as_phase1(orch, fixture_by_mmsi, expectations):
+    # goldens unchanged: the default orchestrator has the lookup disabled
+    assert orch.watchlist.enabled is False
+    for ns in expectations["normal_samples"]:
+        out = await orch.score(build_score_in(fixture_by_mmsi, ns["mmsi"], ns["t"]))
+        assert out.reasons == [] and out.hitl_required is False
+
+
+async def test_lookup_failure_never_blocks_scoring(orch, fixture_by_mmsi, expectations):
+    ns = expectations["normal_samples"][0]
+    orch.watchlist = WatchlistLookup(
+        ddb_client=FakeDdb(err=RuntimeError("outage")), redis_client=None, table="t"
+    )
+    out = await orch.score(build_score_in(fixture_by_mmsi, ns["mmsi"], ns["t"]))
+    assert out.reasons == [] and out.hitl_required is False

@@ -124,6 +124,8 @@ class ReasonCode(StrEnum):
     ABNORMAL_GAP = "abnormal_gap"
     OFF_CORRIDOR = "off_corridor"
     UNEXPECTED_NODE = "unexpected_node"
+    WATCHLIST_HIT = "watchlist_hit"
+    SANCTIONS_HIT = "sanctions_hit"
 
 
 class ScoreReason(_Frozen):

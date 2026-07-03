@@ -20,8 +20,19 @@ class Settings(BaseSettings):
     env: Literal["dev", "staging", "prod"] = "dev"
     version: str = "0.1.0"
 
-    # storage (HITL queue). Empty/unreachable -> the in-memory HITL backend.
+    # storage (HITL queue + registry). Empty/unreachable -> in-memory backends.
     pg_dsn: str = ""
+
+    # Phase 2: the CDC-fed online watchlist read path. online_table empty keeps
+    # the lookup disabled (Phase 1 behavior, golden outputs unchanged).
+    # ddb_endpoint_url points boto3 at DynamoDB Local on the kind stack.
+    online_table: str = ""
+    ddb_endpoint_url: str = ""
+    redis_url: str = ""
+    watchlist_severity: float = Field(0.9, ge=0, le=1)
+    sanctions_severity: float = Field(0.95, ge=0, le=1)
+    # TTL is a staleness backstop only; CDC invalidation is the freshness path.
+    watchlist_cache_ttl_s: int = Field(300, gt=0)
 
     # kinematics (hard physical bounds). vessel_v_max_kts * 0.514444 = 12.861 m/s.
     vessel_v_max_kts: float = Field(25.0, gt=0)

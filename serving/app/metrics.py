@@ -18,3 +18,12 @@ SCORE_LATENCY = Histogram(
     "End-to-end /v1/score-ais latency",
     buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.2, 0.5, 1.0),
 )
+
+# Phase 2 (gate C2): the CDC-fed online watchlist read path.
+WATCHLIST_HITS_TOTAL = Counter(
+    "hm_watchlist_hits_total", "Scored events whose vessel is watchlisted or sanctioned"
+)
+WATCHLIST_LOOKUP_ERRORS = Counter(
+    "hm_watchlist_lookup_errors_total",
+    "Online watchlist lookups that failed (the scorer fails open and scores anyway)",
+)
