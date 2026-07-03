@@ -1,9 +1,11 @@
 # Strimzi-managed single-node KRaft Kafka (the locked local-plane default).
+# kafka.strimzi.io/v1 (Strimzi 1.x, pinned in the Makefile): KRaft + node
+# pools are the only mode, so the 0.4x feature-gate annotations are gone.
 # Internal listener 9092 (plaintext, in-cluster: Debezium Connect) and a
 # nodeport listener for the host-side consumer/smoke script (bootstrap 30092,
 # broker-0 30093 advertised as 127.0.0.1, matching kind's port mappings).
 # Ephemeral storage: this cluster is created and deleted per session.
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaNodePool
 metadata:
   name: dual
@@ -18,14 +20,11 @@ spec:
   storage:
     type: ephemeral
 ---
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: Kafka
 metadata:
   name: hm
   namespace: hm-cdc
-  annotations:
-    strimzi.io/kraft: enabled
-    strimzi.io/node-pools: enabled
 spec:
   kafka:
     listeners:

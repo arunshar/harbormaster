@@ -101,7 +101,10 @@ e2e:                  ## Phase 1 e2e acceptance against a live demo apply (needs
 
 # ---- CDC plane (Phase 2; local kind/Strimzi stack, $0) ----
 KIND_CLUSTER := hm-cdc
-STRIMZI_VERSION := 0.45.0
+# 1.1.0: 0.45.x's bundled fabric8 client cannot parse the /version response of
+# current Kubernetes (unknown field emulationMajor on kind v0.32 / k8s 1.36)
+# and crash-loops; 1.x also moves the CRs to kafka.strimzi.io/v1 (20-kafka.yaml).
+STRIMZI_VERSION := 1.1.0
 STRIMZI_URL := https://github.com/strimzi/strimzi-kafka-operator/releases/download/$(STRIMZI_VERSION)/strimzi-cluster-operator-$(STRIMZI_VERSION).yaml
 
 cdc-up:               ## create the local CDC stack (kind + Strimzi Kafka + Debezium + pg + redis + ddb-local)
