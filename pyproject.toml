@@ -35,9 +35,9 @@ packages = ["serving/app", "streaming/features"]
 exclude = ["**/tests", "**/tests/**", "**/test_*.py"]
 
 [tool.pytest.ini_options]
-pythonpath = ["serving", "streaming"]
+pythonpath = ["serving", "streaming", "tests"]
 asyncio_mode = "auto"
-testpaths = ["serving/tests", "streaming/features/tests", "streaming/replay/tests", "streaming/ingestor/tests", "streaming/flink/tests", "serving/frontend/tests"]
+testpaths = ["serving/tests", "streaming/features/tests", "streaming/replay/tests", "streaming/ingestor/tests", "streaming/flink/tests", "serving/frontend/tests", "tests/e2e"]
 markers = [
   "postgres: integration test that needs a live Postgres (set HM_TEST_PG_DSN to run)",
 ]

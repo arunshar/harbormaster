@@ -8,7 +8,7 @@ TF_DIR := infra/terraform/envs/base
 COST_CAP := 75
 
 .PHONY: help fmt init validate plan apply destroy cost \
-        serve-install serve-lint serve-test serve-run serve-fixture serve-docker flink-package
+        serve-install serve-lint serve-test serve-run serve-fixture serve-docker flink-package e2e
 
 help:
 	@echo "Harbormaster Phase 0 targets (operate on $(TF_DIR)):"
@@ -67,8 +67,8 @@ serve-install:        ## create .venv and install the serving package + dev deps
 	$(PY) -m pip install --upgrade pip
 	$(PY) -m pip install -e ".[dev]"
 
-serve-lint:           ## ruff lint serving + streaming
-	$(PY) -m ruff check serving streaming
+serve-lint:           ## ruff lint serving + streaming + tests
+	$(PY) -m ruff check serving streaming tests
 
 serve-test:           ## run the unit + golden test suite
 	$(PY) -m pytest -q
@@ -88,3 +88,6 @@ flink-package:        ## package the PyFlink feature job for Managed Flink -> di
 	cp streaming/features/*.py dist/flink-app/features/
 	cd dist/flink-app && zip -qr ../flink-app.zip flink features
 	@echo "packaged dist/flink-app.zip -> upload to the models bucket, set flink_code_s3_key on"
+
+e2e:                  ## Phase 1 e2e acceptance against a live demo apply (needs HM_E2E=1 + SERVING_URL)
+	HM_E2E=1 $(PY) -m pytest tests/e2e/test_phase1.py -v
