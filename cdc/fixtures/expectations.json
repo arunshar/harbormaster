@@ -13,5 +13,7 @@
     "applied": 7,
     "guard_rejected": 1,
     "tombstones": 1
-  }
+  },
+  "smoke_insert_to_online_s_informational": 0.57,
+  "smoke_recorded_at": "2026-07-03"
 }

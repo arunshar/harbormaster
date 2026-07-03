@@ -1,15 +1,23 @@
-# Harbormaster session handoff - 2026-07-03 (Phase 2 CDC code-complete)
+# Harbormaster session handoff - 2026-07-03 (Phase 2 CDC local-stack ACCEPTED)
 
 ## One-line state
-Phase 2 (the CDC pipeline, the resume-critical gap-closer) is CODE-COMPLETE on
-branch `phase2-cdc` (off `phase1-aws-gates`), one commit per gate 2.0-2.9 PLUS
-a same-day adversarial-review fix pass (`3d55bae`, 17 confirmed findings from a
-24-agent review; full record in the PHASE_2.md addendum), with both drills RUN
-LIVE (and re-run post-fix) and war stories P9/P10 grounded. What remains is
-stack-run-time only: the local kind/Strimzi bring-up + smoke + e2e, and the
-Arun-run AWS showcase demo apply. Phase 1 infra is untouched except two
-deliberate serving-module fixes recorded in the addendum (the task definition
-now actually injects Postgres config; DB_SECRET_ARN was read by nothing).
+Phase 2 (the CDC pipeline, the resume-critical gap-closer) is LOCAL-STACK
+ACCEPTED on branch `phase2-cdc` (off `phase1-aws-gates`): one commit per gate
+2.0-2.9, the same-day adversarial-review fix pass (`3d55bae`, 17 confirmed
+findings from a 24-agent review), AND the live local-stack run (same day,
+later session): `make cdc-up` after a Strimzi 0.45.0 -> 1.1.0 fix (`ea22df4`;
+0.45's fabric8 client cannot parse the k8s 1.36 /version response,
+`emulationMajor`; Kafka CRs migrated to `kafka.strimzi.io/v1`), the envelope
+fixture RE-RECORDED from the live topics and re-pinned with an identical
+census (`d38a0fe`, new `scripts/cdc_record_fixture.py`), smoke insert-to-online
+0.57 s vs the 5 s target, and `make cdc-e2e` = ALL FIVE acceptance criteria
+green in one run (transcript `docs/drills/E2E_local_stack.md`); teardown
+clean. Suite 180 passed / 9 skipped, ruff clean. What remains is the Arun-run
+AWS showcase demo apply only, scripted end-to-end in
+`docs/runbooks/PHASE_2_AWS_SHOWCASE.md`. Phase 1 infra untouched except the
+two deliberate serving-module fixes recorded in the addendum (the task
+definition now actually injects Postgres config; DB_SECRET_ARN was read by
+nothing).
 
 ## What Phase 2 delivered (commits on phase2-cdc)
 - **2.0** (`8b891e4`): `docs/phases/PHASE_2.md` (the ultra-detailed gate plan,
@@ -102,24 +110,19 @@ CLI = IAM arun-admin. State in S3. $75 hard cap live; alerts to
 arunshar@umn.edu. `terraform apply` is Arun-run; Claude does plan/validate/
 code/tests. No Claude co-author, no em dashes, paste-ready in fenced blocks.
 
-## Remaining to declare Phase 2 DONE (stack-run-time)
-1. Local: `make cdc-up` (kind + Strimzi + Debezium + pg + redis + ddb-local;
-   first run pulls images), then `make cdc-smoke` (registers the connector,
-   runs the consumer, times insert-to-online vs the 5 s target). While the
-   stack is up: re-record `cdc/fixtures/debezium_envelopes.jsonl` from the
-   live topics and re-pin its SHA (documented diff vs the hand-authored one),
-   run the serving API locally pointed at DynamoDB Local
-   (HM_ONLINE_TABLE=hm-local-feast-online HM_DDB_ENDPOINT_URL=http://127.0.0.1:30800
-   HM_REDIS_URL=redis://127.0.0.1:30379/0 HM_PG_DSN=postgresql://hm_admin:hm_local_pw@127.0.0.1:30432/harbormaster
-   make serve-run), then `make cdc-e2e` (all five criteria in one run;
-   transcript to docs/drills/). Teardown `make cdc-down`.
-2. AWS showcase (Arun-run, demo window): `make cdc-lambda-package`; build +
-   push `cdc/connect/Dockerfile` and `cdc/consumer/Dockerfile` to the ECR
-   repos (created by the apply); set enable_phase1=true enable_phase2=true +
-   cdc_connect_image/cdc_consumer_image in tfvars; `make apply`; register the
-   connector (ecs exec / in-VPC task, db_password="$${env:HM_PG_PASSWORD}");
-   run the e2e with env pointed at the demo; teardown by flipping both toggles
-   false + `make apply`. NEVER `make destroy`.
+## Remaining to declare Phase 2 DONE
+1. Local: DONE 2026-07-03. `make cdc-up` (Strimzi 1.1.0 after the fix) ->
+   fixture re-record + re-pin -> `make cdc-smoke` 0.57 s PASS ->
+   `make cdc-consumer` + `make serve-run-cdc` -> `make cdc-e2e` 5/5 PASSED
+   (33.5 s) -> `make cdc-down`. Transcript `docs/drills/E2E_local_stack.md`;
+   findings folded into the PHASE_2.md local-stack run addendum + the master
+   plan per governance.
+2. AWS showcase (Arun-run, demo window): follow
+   `docs/runbooks/PHASE_2_AWS_SHOWCASE.md` end to end (lambda package ->
+   toggles-only apply -> image build/push with --platform linux/amd64 ->
+   image-vars apply -> in-VPC connector registration via ECS exec -> the five
+   criteria via laptop-reachable primitives -> teardown by flipping
+   enable_phase2 false + `make apply`). NEVER `make destroy`.
 3. Push `phase2-cdc` when Arun says push.
 4. Cover-note follow-up: RESOLVED 2026-07-03. The file had been deleted in a
    cleanup (with its two supabase-multigres-deep-dive companions and the skill
@@ -131,7 +134,10 @@ code/tests. No Claude co-author, no em dashes, paste-ready in fenced blocks.
 
 ## Resume prompt for the next session
 Load memory (project_harbormaster) + the arun-session-handoff skill + this
-file + docs/phases/PHASE_2.md. Phase 2 is code-complete on phase2-cdc; do the
-local-stack run (step 1 above), fix anything the live stack surfaces
-(reflecting changes into PHASE_2.md per governance), and prepare the AWS
-showcase runbook for Arun's demo apply.
+file + docs/phases/PHASE_2.md. Phase 2 is LOCAL-STACK ACCEPTED on phase2-cdc
+(unpushed; push gated on Arun). Next actions: (a) walk Arun through the AWS
+showcase per docs/runbooks/PHASE_2_AWS_SHOWCASE.md when he opens a demo
+window (Claude preps plans/commands; Arun runs applies), and (b) push
+phase2-cdc when Arun says push. After the showcase, log any new war stories
+and start Phase 3 planning (lake + Pi-DPM async endpoint) per the master
+plan.
