@@ -2,10 +2,14 @@
 
 ## One-line state
 Phase 2 (the CDC pipeline, the resume-critical gap-closer) is CODE-COMPLETE on
-branch `phase2-cdc` (off `phase1-aws-gates`), one commit per gate 2.0-2.9, with
-both drills RUN LIVE and war stories P9/P10 grounded. What remains is
+branch `phase2-cdc` (off `phase1-aws-gates`), one commit per gate 2.0-2.9 PLUS
+a same-day adversarial-review fix pass (`3d55bae`, 17 confirmed findings from a
+24-agent review; full record in the PHASE_2.md addendum), with both drills RUN
+LIVE (and re-run post-fix) and war stories P9/P10 grounded. What remains is
 stack-run-time only: the local kind/Strimzi bring-up + smoke + e2e, and the
-Arun-run AWS showcase demo apply. Phase 1 is untouched (deploy-only, as before).
+Arun-run AWS showcase demo apply. Phase 1 infra is untouched except two
+deliberate serving-module fixes recorded in the addendum (the task definition
+now actually injects Postgres config; DB_SECRET_ARN was read by nothing).
 
 ## What Phase 2 delivered (commits on phase2-cdc)
 - **2.0** (`8b891e4`): `docs/phases/PHASE_2.md` (the ultra-detailed gate plan,
@@ -56,9 +60,9 @@ Arun-run AWS showcase demo apply. Phase 1 is untouched (deploy-only, as before).
   (1-min slot-lag Lambda -> Harbormaster/CDC metrics -> alarm with
   missing-data=breaching -> FinOps SNS). rds module gains inert-by-default
   `logical_replication`. `make cdc-lambda-package` vendors pg8000.
-  CHECKSUMS: both-false plan = No changes; both-true = 62 add / 0 change /
-  0 destroy (Phase 1 = 43, Phase 2 adds 19; connect/consumer additionally
-  gated on image vars).
+  CHECKSUMS (post-review-fix): both-false plan = No changes; both-true =
+  67 add / 0 change / 0 destroy (connect/consumer services additionally
+  gated on image vars; their ECR repos exist whenever enable_phase2 is on).
 - **2.8** (`60cc808`): DRILLS RUN LIVE. P1 (real postgres:16 container): an
   undrained pgoutput slot pinned 0 -> 74,038,888 WAL bytes over 5 rounds,
   monotonic; alert fired; drain collapsed to 0. P2 (real applier): crash-replay
@@ -76,7 +80,20 @@ Arun-run AWS showcase demo apply. Phase 1 is untouched (deploy-only, as before).
   fires live. `make cdc-e2e` with local-stack defaults. HONESTY.md Multigres
   section updated to shipped-CDC language.
 
-Full suite: **178 passed / 9 skipped** (5 phase-2 e2e + 2 phase-1 e2e +
+- **review fix pass** (`3d55bae`): 17 confirmed findings fixed. Highlights:
+  snapshot rows apply at a floor guard LSN of 0 (spanning-transaction updates
+  can never be lost); poison events are counted + audited + skipped instead of
+  crash-looping the consumer, and the poison sanctions id is unmintable at
+  every layer (API validators, id producers, DDL CHECKs); Redis invalidation
+  fires per delivered event; the scorer's lookup runs off the event loop with
+  1 s fail-fast timeouts; the serving task definition finally injects real
+  Postgres config (fixing a silent Phase 1 memory-fallback defect); the
+  slot-lag Lambda gets Secrets Manager + CloudWatch interface endpoints (it
+  had no route to either API in the NAT-less VPC); CDC ECR repos moved out of
+  the image-gated modules (push-then-apply works); drill P1 uses a drill-only
+  slot; the replay e2e can no longer pass vacuously. Goldens re-pinned.
+
+Full suite: **179 passed / 9 skipped** (5 phase-2 e2e + 2 phase-1 e2e +
 2 postgres opt-ins), ruff clean, terraform fmt + validate clean.
 
 ## Environment / access (unchanged from the Phase 1 handoff)
