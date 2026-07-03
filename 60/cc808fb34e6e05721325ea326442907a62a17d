@@ -1,0 +1,35 @@
+scripts/drill_p1_slot_bloat.py
+  s_c739fb2c80ca09::t_afcdd47c621e33 1-192
+infra/lambda/cdc_slot_lag/handler.py
+  s_c739fb2c80ca09::t_dda5664af0240b 66-68,71,79,87-95
+cdc/sinks/dynamo.py
+  s_c739fb2c80ca09::t_a2bda7ad58caa5 122,124-128,131,134-137,139
+cdc/consumer/service.py
+  s_c739fb2c80ca09::t_df2be33a33fde0 152-158,165-167
+cdc/tests/test_slot_lag.py
+  s_c739fb2c80ca09::t_40458ef28a85d8 1-80
+scripts/drill_p2_duplicates.py
+  s_c739fb2c80ca09::t_c227161cafe3c3 1-162
+PLATFORM_WAR_STORIES.md
+  s_c739fb2c80ca09::t_f3219b25cb7c29 126-149
+docs/drills/P1_slot_bloat.md
+  s_c739fb2c80ca09::t_5c131c8216db13 1-20
+docs/drills/P2_duplicates.md
+  s_c739fb2c80ca09::t_84847f3ea46972 1-19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "60cc808fb34e6e05721325ea326442907a62a17d",
+  "prompts": {},
+  "sessions": {
+    "s_c739fb2c80ca09": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fd41cdbb-bae6-4673-876e-f2e017957fa4",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
