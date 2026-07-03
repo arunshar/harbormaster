@@ -1,0 +1,25 @@
+cdc/sinks/base.py
+  s_c739fb2c80ca09::t_6c599eb6096dca 1-117
+cdc/consumer/applier.py
+  s_c739fb2c80ca09::t_88637958fbbf59 1-115
+cdc/tests/test_applier.py
+  s_c739fb2c80ca09::t_1daf4eeb78a6dd 1-239
+cdc/fixtures/expectations.json
+  s_c739fb2c80ca09::t_510f4c374eb060 9-15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "64ac3964e92230d6eae0a11daeaa97fdb8eb7ce0",
+  "prompts": {},
+  "sessions": {
+    "s_c739fb2c80ca09": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fd41cdbb-bae6-4673-876e-f2e017957fa4",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
