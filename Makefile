@@ -9,7 +9,7 @@ COST_CAP := 75
 
 .PHONY: help fmt init validate plan apply destroy cost \
         serve-install serve-lint serve-test serve-run serve-fixture serve-docker flink-package e2e \
-        cdc-up cdc-down cdc-smoke cdc-consumer cdc-lambda-package
+        cdc-up cdc-down cdc-smoke cdc-consumer cdc-lambda-package cdc-e2e
 
 help:
 	@echo "Harbormaster Phase 0 targets (operate on $(TF_DIR)):"
@@ -122,6 +122,17 @@ cdc-consumer:         ## run the CDC consumer against the local stack
 	$(PY) -m cdc.consumer.service
 
 LAMBDA_BUILD := infra/lambda/cdc_slot_lag/build
+
+cdc-e2e:              ## Phase 2 e2e acceptance against a running CDC stack (local defaults)
+	HM_CDC_E2E=1 \
+	SERVING_URL=$${SERVING_URL:-http://localhost:8000} \
+	HM_ONLINE_TABLE=$${HM_ONLINE_TABLE:-hm-local-feast-online} \
+	HM_DDB_ENDPOINT_URL=$${HM_DDB_ENDPOINT_URL:-http://127.0.0.1:30800} \
+	HM_KAFKA_BOOTSTRAP=$${HM_KAFKA_BOOTSTRAP:-127.0.0.1:30092} \
+	HM_REDIS_URL=$${HM_REDIS_URL:-redis://127.0.0.1:30379/0} \
+	HM_CDC_PG_DSN=$${HM_CDC_PG_DSN:-postgresql://hm_admin:hm_local_pw@127.0.0.1:30432/harbormaster} \
+	HM_CDC_RESTART_CMD=$${HM_CDC_RESTART_CMD:-kubectl -n hm-cdc rollout restart deploy/debezium-connect && kubectl -n hm-cdc rollout status deploy/debezium-connect --timeout=240s} \
+	$(PY) -m pytest tests/e2e/test_phase2.py -v
 
 cdc-lambda-package:   ## vendor pg8000 + the shared monitor into the slot-lag Lambda build dir
 	rm -rf $(LAMBDA_BUILD) && mkdir -p $(LAMBDA_BUILD)
