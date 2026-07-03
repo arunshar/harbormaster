@@ -10,11 +10,12 @@
 #
 # The empty block below selects the local backend explicitly.
 
-terraform {
-  backend "local" {
-    path = "terraform.tfstate"
-  }
-}
+# Local backend disabled after migrating state to the S3 backend below (2026-07-03).
+# terraform {
+#   backend "local" {
+#     path = "terraform.tfstate"
+#   }
+# }
 
 # -----------------------------------------------------------------------------
 # OPTIONAL: migrate to a remote S3 + DynamoDB backend AFTER the first apply.
@@ -40,15 +41,15 @@ terraform {
 #
 #   4. Run `terraform init -migrate-state`. Terraform copies local state into S3.
 #
-# terraform {
-#   backend "s3" {
-#     bucket         = "harbormaster-tfstate-REPLACE_ME"   # dedicated state bucket
-#     key            = "base/terraform.tfstate"
-#     region         = "us-east-1"
-#     dynamodb_table = "harbormaster-base-tf-state-lock"   # tf_state_lock_table_name output
-#     encrypt        = true
-#   }
-# }
+terraform {
+  backend "s3" {
+    bucket         = "harbormaster-tfstate-645322802947"
+    key            = "base/terraform.tfstate"
+    region         = "us-east-1"
+    dynamodb_table = "harbormaster-base-tf-state-lock"
+    encrypt        = true
+  }
+}
 #
 # Note: a backend block cannot use variables or interpolation; the values must
 # be literals. That is a Terraform constraint, not an oversight here.
