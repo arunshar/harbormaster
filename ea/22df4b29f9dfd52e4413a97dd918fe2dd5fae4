@@ -1,0 +1,21 @@
+Makefile
+  s_c739fb2c80ca09::t_5e075a233d30d8 104-107
+deploy/k8s/cdc/20-kafka.yaml
+  s_c739fb2c80ca09::t_e4d683e139ad1d 2-3,8,23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "ea22df4b29f9dfd52e4413a97dd918fe2dd5fae4",
+  "prompts": {},
+  "sessions": {
+    "s_c739fb2c80ca09": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fd41cdbb-bae6-4673-876e-f2e017957fa4",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
