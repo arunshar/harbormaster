@@ -6,5 +6,12 @@
     "change_events": 8,
     "tombstones": 1,
     "skips": 2
+  },
+  "final_state_sha256": "7af35b23e788b014367227315d73c7eae62e717f5a9424cf2cd6dfb6d563989f",
+  "apply_census": {
+    "events": 8,
+    "applied": 7,
+    "guard_rejected": 1,
+    "tombstones": 1
   }
 }

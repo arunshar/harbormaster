@@ -1,0 +1,239 @@
+"""Gate C4: the applier's idempotency invariants (docs/phases/PHASE_2.md 1-5).
+
+The heart of the phase: any delivery schedule (duplicates, restarts, shuffles)
+converges to the same final online state as exactly-once delivery, offsets
+commit only after every sink acks, and the audit trail records transport truth.
+"""
+
+from __future__ import annotations
+
+import random
+
+import pytest
+
+from cdc.consumer.applier import Applier, ApplyError, BatchResult
+from cdc.consumer.envelope import ChangeEvent, parse_envelope
+from cdc.fixtures.loader import load_envelope_messages, load_expectations
+from cdc.sinks.base import MemoryAudit, MemorySink
+
+
+def _messages():
+    return [parse_envelope(t, k, v) for t, k, v in load_envelope_messages()]
+
+
+def _events() -> list[ChangeEvent]:
+    return [m for m in _messages() if isinstance(m, ChangeEvent)]
+
+
+def _run(messages) -> tuple[MemorySink, MemoryAudit, BatchResult, list[int]]:
+    store, audit = MemorySink(), MemoryAudit()
+    commits: list[int] = []
+    applier = Applier(store=store, audit=audit)
+    result = applier.apply_batch(messages, commit=lambda: commits.append(1))
+    return store, audit, result, commits
+
+
+# ------------------------------------------------------------ fixture golden
+
+
+def test_fixture_final_state_matches_the_pinned_golden():
+    store, _, result, commits = _run(_messages())
+    exp = load_expectations()
+    assert store.state_sha256() == exp["final_state_sha256"], (
+        "the applied final state changed; if intentional, re-pin "
+        "cdc/fixtures/expectations.json AND update PHASE_2.md in the same commit"
+    )
+    census = exp["apply_census"]
+    assert result.events == census["events"]
+    assert result.applied == census["applied"]
+    assert result.guard_rejected == census["guard_rejected"]
+    assert result.tombstones == census["tombstones"]
+    assert commits == [1]
+
+
+def test_fixture_semantics_spot_checks():
+    store, _, _, _ = _run(_messages())
+    state = store.final_state()
+    # the update (lsn 3000) won over the create (lsn 2000) and its redelivery
+    wl = state['watchlist|{"mmsi":367000003}']
+    assert wl["deleted"] is False and wl["row"]["severity"] == 0.95
+    assert wl["last_applied_lsn"] == 3000
+    # the snapshot-seeded watchlist row was deleted by the streamed op=d (lsn 6000)
+    legacy = state['watchlist|{"mmsi":367000001}']
+    assert legacy["deleted"] is True and legacy["row"] is None
+    assert legacy["last_applied_lsn"] == 6000
+    # snapshot vessels row survives untouched
+    assert state['vessels|{"mmsi":367000001}']["row"]["name"] == "PACIFIC HARRIER"
+
+
+# ------------------------------------------------------- invariants 1 and 2
+
+
+def test_full_replay_is_a_no_op_on_state():
+    msgs = _messages()
+    store, audit, _, _ = _run(msgs)
+    first_hash = store.state_sha256()
+
+    applier = Applier(store=store, audit=audit)
+    result2 = applier.apply_batch(msgs, commit=lambda: None)
+    assert store.state_sha256() == first_hash
+    assert result2.applied == 0
+    assert result2.guard_rejected == result2.events  # every redelivery rejected
+
+
+def test_equal_lsn_redelivery_is_rejected_not_reapplied():
+    e = _events()[0]
+    store = MemorySink()
+    assert store.upsert(e.table, e.pk, e.after or {}, e.lsn) is True
+    assert store.upsert(e.table, e.pk, e.after or {}, e.lsn) is False  # equal, not >
+
+
+def test_out_of_order_older_lsn_no_ops():
+    store = MemorySink()
+    pk = {"mmsi": 1}
+    assert store.upsert("watchlist", pk, {"severity": 0.95}, lsn=3000) is True
+    assert store.upsert("watchlist", pk, {"severity": 0.9}, lsn=2000) is False
+    assert store.final_state()['watchlist|{"mmsi":1}']["row"]["severity"] == 0.95
+
+
+# ------------------------------------------------------------- invariant 3
+
+
+def test_delete_then_replayed_older_update_stays_deleted():
+    store = MemorySink()
+    pk = {"mmsi": 1}
+    store.upsert("watchlist", pk, {"reason": "x"}, lsn=2000)
+    assert store.soft_delete("watchlist", pk, lsn=6000) is True
+    assert store.upsert("watchlist", pk, {"reason": "x"}, lsn=2000) is False  # no resurrection
+    item = store.final_state()['watchlist|{"mmsi":1}']
+    assert item["deleted"] is True and item["row"] is None
+
+
+def test_delete_marker_is_canonical_regardless_of_arrival_order():
+    in_order, shuffled = MemorySink(), MemorySink()
+    pk = {"mmsi": 1}
+    in_order.upsert("watchlist", pk, {"reason": "x"}, lsn=1000)
+    in_order.soft_delete("watchlist", pk, lsn=6000)
+    shuffled.soft_delete("watchlist", pk, lsn=6000)  # delete arrives first
+    shuffled.upsert("watchlist", pk, {"reason": "x"}, lsn=1000)  # straggler rejected
+    assert in_order.state_sha256() == shuffled.state_sha256()
+
+
+# ------------------------------------------------------------- invariant 4
+
+
+def test_snapshot_then_identical_streamed_row_applies_once():
+    store = MemorySink()
+    pk = {"mmsi": 1}
+    assert store.upsert("watchlist", pk, {"reason": "x"}, lsn=1000) is True  # op=r
+    assert store.upsert("watchlist", pk, {"reason": "x"}, lsn=1000) is False  # re-snapshot
+    assert store.upsert("watchlist", pk, {"reason": "y"}, lsn=2000) is True  # stream
+
+
+# ------------------------------------------------- commit protocol (inv. 2)
+
+
+class _FailingSink(MemorySink):
+    def flush(self) -> None:
+        raise RuntimeError("sink outage")
+
+
+def test_commit_fires_only_after_all_sinks_flush():
+    order: list[str] = []
+
+    class OrderedAudit(MemoryAudit):
+        def flush(self) -> None:
+            order.append("audit_flush")
+            super().flush()
+
+    class OrderedStore(MemorySink):
+        def flush(self) -> None:
+            order.append("store_flush")
+            super().flush()
+
+    applier = Applier(store=OrderedStore(), audit=OrderedAudit())
+    applier.apply_batch(_messages(), commit=lambda: order.append("commit"))
+    assert order == ["store_flush", "audit_flush", "commit"]
+
+
+def test_sink_failure_leaves_offsets_uncommitted_and_redelivery_converges():
+    committed: list[int] = []
+    failing = _FailingSink()
+    applier = Applier(store=failing, audit=MemoryAudit())
+    with pytest.raises(ApplyError):
+        applier.apply_batch(_messages(), commit=lambda: committed.append(1))
+    assert committed == []
+
+    # the crash-recovery path: a fresh consumer redelivers the whole batch into
+    # the SAME store state; the guard absorbs everything already applied
+    good = MemorySink()
+    Applier(store=good, audit=MemoryAudit()).apply_batch(_messages(), commit=lambda: None)
+    recovered = MemorySink()
+    recovered._items = failing._items  # state survived the crash
+    Applier(store=recovered, audit=MemoryAudit()).apply_batch(_messages(), commit=lambda: None)
+    assert recovered.state_sha256() == good.state_sha256()
+
+
+# ---------------------------------------------------------------- effects
+
+
+def test_effect_sink_fires_only_for_applied_events():
+    fired: list[tuple[str, int]] = []
+
+    class RecordingEffect:
+        def on_applied(self, event: ChangeEvent) -> None:
+            fired.append((event.table, event.lsn))
+
+        def flush(self) -> None:
+            return None
+
+    store = MemorySink()
+    applier = Applier(store=store, effects=(RecordingEffect(),), audit=MemoryAudit())
+    result = applier.apply_batch(_messages(), commit=lambda: None)
+    assert len(fired) == result.applied
+    assert (("watchlist", 2000) in fired) and fired.count(("watchlist", 2000)) == 1
+
+
+# ------------------------------------------------------------------- audit
+
+
+def test_audit_records_transport_truth_including_redeliveries():
+    _, audit, result, _ = _run(_messages())
+    assert len(audit.rows) == result.events  # every data event, dupes included
+    assert sum(r["applied"] for r in audit.rows) == result.applied
+    dupes = [r for r in audit.rows if r["lsn"] == 2000 and r["event_table"] == "watchlist"]
+    assert [r["applied"] for r in dupes] == [True, False]  # first applied, replay rejected
+
+
+def test_audit_buffers_until_flush():
+    audit = MemoryAudit()
+    e = _events()[0]
+    audit.append(e, True)
+    assert audit.rows == []  # buffered
+    audit.flush()
+    assert len(audit.rows) == 1
+
+
+# ----------------------------------------------- convergence (the property)
+
+
+def test_any_delivery_schedule_converges_to_the_same_state():
+    """Shuffles, duplications, and partial-restart replays all converge."""
+    baseline, _, _, _ = _run(_messages())
+    expected = baseline.state_sha256()
+    events = _events()
+
+    rng = random.Random(20260703)
+    for _ in range(25):
+        schedule: list[ChangeEvent] = list(events)
+        # duplicate a random slice (an at-least-once redelivery window)
+        i = rng.randrange(len(events))
+        j = rng.randrange(i, len(events))
+        schedule.extend(events[i : j + 1])
+        # a consumer restart replaying from a random earlier offset
+        schedule.extend(events[rng.randrange(len(events)) :])
+        rng.shuffle(schedule)
+
+        store = MemorySink()
+        Applier(store=store, audit=MemoryAudit()).apply_batch(schedule, commit=lambda: None)
+        assert store.state_sha256() == expected
