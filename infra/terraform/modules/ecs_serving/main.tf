@@ -29,8 +29,9 @@ variable "vpc_cidr" {
   default = "10.0.0.0/16"
 }
 
-variable "private_subnet_ids" {
-  type = list(string)
+variable "public_subnet_ids" {
+  description = "Public subnets for the Fargate service (egress via IGW, no NAT)."
+  type        = list(string)
 }
 
 variable "cluster_arn" {
@@ -303,9 +304,12 @@ resource "aws_ecs_service" "serving" {
   }
 
   network_configuration {
-    subnets          = var.private_subnet_ids
+    # Public subnets + public IP so tasks reach ECR / Kinesis / Secrets / Logs
+    # over the IGW with no NAT (~$32/mo) or interface endpoints. The SG allows
+    # inbound only from the VPC CIDR, so the public IP is egress-only in practice.
+    subnets          = var.public_subnet_ids
     security_groups  = [aws_security_group.serving.id]
-    assign_public_ip = false
+    assign_public_ip = true
   }
 
   service_registries {

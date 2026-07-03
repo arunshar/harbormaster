@@ -105,3 +105,13 @@ output "serving_cloudmap_dns" {
   description = "In-VPC DNS name for the scorer (Phase 1)."
   value       = one(module.ecs_serving[*].cloudmap_dns_name)
 }
+
+output "ingestor_task_definition_arn" {
+  description = "Replay ingestor Fargate task definition ARN (Phase 1)."
+  value       = one(module.ecs_ingestor[*].task_definition_arn)
+}
+
+output "flink_role_arn" {
+  description = "Managed Flink service execution role ARN (Phase 1)."
+  value       = one(module.kda_flink[*].role_arn)
+}

@@ -164,8 +164,8 @@ module "ecs_serving" {
   environment = var.environment
   aws_region  = var.aws_region
 
-  vpc_id             = module.network.vpc_id
-  private_subnet_ids = module.network.private_subnet_ids
+  vpc_id            = module.network.vpc_id
+  public_subnet_ids = module.network.public_subnet_ids
 
   cluster_arn  = module.ecs_cluster[0].cluster_arn
   cluster_name = module.ecs_cluster[0].cluster_name
@@ -188,6 +188,39 @@ module "apigw" {
   private_subnet_ids = module.network.private_subnet_ids
 
   cloudmap_service_arn = module.ecs_serving[0].cloudmap_service_arn
+
+  tags = local.common_tags
+}
+
+module "ecs_ingestor" {
+  count  = var.enable_phase1 ? 1 : 0
+  source = "../../modules/ecs_ingestor"
+
+  project     = var.project
+  environment = var.environment
+  aws_region  = var.aws_region
+
+  vpc_id             = module.network.vpc_id
+  kinesis_stream_arn = module.kinesis[0].stream_arn
+  lake_bucket_arn    = "arn:aws:s3:::${module.state_stores.lake_bucket_name}"
+
+  tags = local.common_tags
+}
+
+module "kda_flink" {
+  count  = var.enable_phase1 ? 1 : 0
+  source = "../../modules/kda_flink"
+
+  project     = var.project
+  environment = var.environment
+  aws_region  = var.aws_region
+
+  kinesis_stream_arn = module.kinesis[0].stream_arn
+  feast_table_name   = module.state_stores.feast_online_table_name
+  lake_bucket_arn    = "arn:aws:s3:::${module.state_stores.lake_bucket_name}"
+
+  # flink_code_s3_key stays empty until gate 1.5 uploads the job artifact, so the
+  # Flink application (and its KPU cost) is not created by a 1.3 demo apply.
 
   tags = local.common_tags
 }
