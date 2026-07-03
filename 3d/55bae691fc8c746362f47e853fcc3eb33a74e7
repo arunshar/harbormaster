@@ -1,0 +1,92 @@
+serving/app/hitl.py
+  s_c739fb2c80ca09::t_4fbf7735e500fe 168-169,171
+cdc/schema/ddl.py
+  s_c739fb2c80ca09::t_e4f95948d046b7 52-54,57,59
+  s_c739fb2c80ca09::t_0b97a7a596bdeb 98-104
+cdc/consumer/applier.py
+  s_c739fb2c80ca09::t_3332766e646043 16-31,35-40
+  s_c739fb2c80ca09::t_7e6fbc1a9cd0f9 115-142,152-161
+  s_c739fb2c80ca09::t_048cb36c9dafc4 67
+  s_c739fb2c80ca09::t_a18ee50a11db62 162
+Makefile
+  s_c739fb2c80ca09::t_874e942974759f 83-88
+serving/app/watchlist.py
+  s_c739fb2c80ca09::t_1e81df5bb494ac 177-184,190-201,204-205,213-215
+  s_c739fb2c80ca09::t_c3d98cd4e323c3 225-234
+  s_c739fb2c80ca09::t_8098196becb6a3 28
+tests/e2e/test_phase2.py
+  s_c739fb2c80ca09::t_de2d155d90970f 150,153-155,157-158
+  s_c739fb2c80ca09::t_bd45fd486c824e 4-8
+infra/terraform/modules/rds/main.tf
+  s_c739fb2c80ca09::t_47451832038c36 126-129
+infra/terraform/envs/base/main.tf
+  s_c739fb2c80ca09::t_7f662feee201ac 180-186
+  s_c739fb2c80ca09::t_b45ea8ea339381 13,295-323
+cdc/sinks/base.py
+  s_c739fb2c80ca09::t_2c5374c4b81e7e 13-17
+  s_c739fb2c80ca09::t_55adc91ff9f66e 52
+serving/app/models.py
+  s_c739fb2c80ca09::t_2f1560e2226ec2 157-159,163-165,169,171-179,183-195
+cdc/sinks/redis_cache.py
+  s_c739fb2c80ca09::t_e75ad41c838f7d 3-14
+  s_c739fb2c80ca09::t_66da3357193be5 49,54
+infra/terraform/modules/cdc_monitoring/main.tf
+  s_c739fb2c80ca09::t_781e79d7266c4b 101-153
+serving/app/registry.py
+  s_c739fb2c80ca09::t_6c437dc15de6fe 225-226,228
+  s_c739fb2c80ca09::t_2e0431a57315bb 30-36
+infra/terraform/modules/ecs_connect/main.tf
+  s_c739fb2c80ca09::t_dc40bb21dcf33c 5-6
+  s_c739fb2c80ca09::t_ea1ea94bd059c4 201-213,315-319
+serving/app/orchestrator.py
+  s_c739fb2c80ca09::t_25072c86782a06 122-123
+serving/app/config.py
+  s_c739fb2c80ca09::t_983d48540d4684 75-90
+  s_c739fb2c80ca09::t_e2bbdc51cd9c03 24-26,28-32
+cdc/consumer/service.py
+  s_c739fb2c80ca09::t_297668c0eb2a45 45-48
+  s_c739fb2c80ca09::t_f0978f2eaf7e9d 269-270,277
+docs/phases/PHASE_2.md
+  s_c739fb2c80ca09::t_70c9002b6a21f5 76-86
+  s_c739fb2c80ca09::t_9195a4f9bd7f70 3
+PLATFORM_WAR_STORIES.md
+  s_c739fb2c80ca09::t_358bc42b1b92da 133,136,148
+cdc/fixtures/expectations.json
+  s_c739fb2c80ca09::t_50897cf08ee2be 2,10
+cdc/tests/test_applier.py
+  s_c739fb2c80ca09::t_ee468b97b18a84 125-141,143-194,244-247,251,260-261
+cdc/tests/test_ddl.py
+  s_c739fb2c80ca09::t_97bcc284f1edc9 48,51-57,63-64,69-70
+cdc/tests/test_sinks.py
+  s_c739fb2c80ca09::t_84171ed604e3b9 217,224-226
+docs/drills/P1_slot_bloat.md
+  s_c739fb2c80ca09::t_8377eead068e0d 1,7-17
+docs/drills/P2_duplicates.md
+  s_c739fb2c80ca09::t_2274c673b94ced 1,4
+infra/terraform/envs/base/outputs.tf
+  s_c739fb2c80ca09::t_5de4d0441e8a97 130-131,135-136
+infra/terraform/modules/ecs_serving/main.tf
+  s_c739fb2c80ca09::t_490123cb47c964 53-74,222-242,316-332
+infra/terraform/versions.tf
+  s_c739fb2c80ca09::t_e2f4b376b8e924 16
+scripts/drill_p1_slot_bloat.py
+  s_c739fb2c80ca09::t_c742a0bed78708 36-40,94,97-100,102-115,134,149,160,164,170-171
+serving/tests/test_registry.py
+  s_c739fb2c80ca09::t_0bc8ea1a8f4d9b 119-128
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "3d55bae691fc8c746362f47e853fcc3eb33a74e7",
+  "prompts": {},
+  "sessions": {
+    "s_c739fb2c80ca09": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fd41cdbb-bae6-4673-876e-f2e017957fa4",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
