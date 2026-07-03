@@ -8,7 +8,7 @@ TF_DIR := infra/terraform/envs/base
 COST_CAP := 75
 
 .PHONY: help fmt init validate plan apply destroy cost \
-        serve-install serve-lint serve-test serve-run serve-fixture serve-docker
+        serve-install serve-lint serve-test serve-run serve-fixture serve-docker flink-package
 
 help:
 	@echo "Harbormaster Phase 0 targets (operate on $(TF_DIR)):"
@@ -81,3 +81,10 @@ serve-run:            ## run the scoring API locally on :8000
 
 serve-docker:         ## build the serving container image (build context = repo root)
 	docker build -f serving/Dockerfile -t harbormaster-serving:dev .
+
+flink-package:        ## package the PyFlink feature job for Managed Flink -> dist/flink-app.zip
+	rm -rf dist/flink-app && mkdir -p dist/flink-app/flink dist/flink-app/features
+	cp streaming/flink/*.py streaming/flink/requirements.txt dist/flink-app/flink/
+	cp streaming/features/*.py dist/flink-app/features/
+	cd dist/flink-app && zip -qr ../flink-app.zip flink features
+	@echo "packaged dist/flink-app.zip -> upload to the models bucket, set flink_code_s3_key on"

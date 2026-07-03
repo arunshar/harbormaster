@@ -36,7 +36,7 @@ exclude = ["**/tests", "**/tests/**", "**/test_*.py"]
 [tool.pytest.ini_options]
 pythonpath = ["serving", "streaming"]
 asyncio_mode = "auto"
-testpaths = ["serving/tests", "streaming/features/tests", "streaming/replay/tests", "streaming/ingestor/tests"]
+testpaths = ["serving/tests", "streaming/features/tests", "streaming/replay/tests", "streaming/ingestor/tests", "streaming/flink/tests"]
 markers = [
   "postgres: integration test that needs a live Postgres (set HM_TEST_PG_DSN to run)",
 ]
