@@ -1,0 +1,49 @@
+cdc/consumer/service.py
+  s_c739fb2c80ca09::t_2fe7af8b5bf705 1-299
+deploy/k8s/cdc/11-redis.yaml
+  s_c739fb2c80ca09::t_de9076faab3ee5 1-34
+docs/phases/PHASE_2.md
+  s_c739fb2c80ca09::t_4c4d9876f084ac 47
+  s_c739fb2c80ca09::t_dd68a782e64b06 10
+  s_c739fb2c80ca09::t_61a6a4b243f128 22
+deploy/k8s/cdc/30-connect.yaml
+  s_c739fb2c80ca09::t_a9ac64e6fb4e9b 1-64
+deploy/k8s/cdc/00-namespace.yaml
+  s_c739fb2c80ca09::t_56ea7dd639582b 1-4
+deploy/k8s/cdc/20-kafka.yaml
+  s_c739fb2c80ca09::t_51f7d1ea7b5a72 1-53
+deploy/k8s/cdc/10-postgres.yaml
+  s_c739fb2c80ca09::t_36148233892643 1-51
+deploy/k8s/cdc/12-dynamodb-local.yaml
+  s_c739fb2c80ca09::t_673c1337a89a55 1-38
+deploy/k8s/cdc/kind-config.yaml
+  s_c739fb2c80ca09::t_046c114931962f 1-25
+Makefile
+  s_c739fb2c80ca09::t_ad693bec5af407 95-122
+  s_c739fb2c80ca09::t_bcf9ae057c08ca 11-12
+cdc/tests/test_service.py
+  s_c739fb2c80ca09::t_63591c6aa3f8f2 1-179
+cdc/consumer/Dockerfile
+  s_c739fb2c80ca09::t_50630a2ba6efa8 1-19
+scripts/cdc_smoke.py
+  s_c739fb2c80ca09::t_e837d1333201c8 1-205
+  s_c739fb2c80ca09::t_d19d5c73a220b9 206-210
+.gitignore
+  s_c739fb2c80ca09::t_7d81ac25cb1867 68-70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "cd7cad31e50e93024c5a010bc6563acffd6705fe",
+  "prompts": {},
+  "sessions": {
+    "s_c739fb2c80ca09": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fd41cdbb-bae6-4673-876e-f2e017957fa4",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
