@@ -1,0 +1,34 @@
+cdc/tests/test_envelope.py
+  s_c739fb2c80ca09::t_a4e72ca8c62a66 40-43,46,48,51-52,58-75,77-79,82,84
+  s_c739fb2c80ca09::t_fd990db00725f0 99-103
+cdc/fixtures/loader.py
+  s_c739fb2c80ca09::t_77c8cd10c49507 5-10
+scripts/cdc_record_fixture.py
+  s_c739fb2c80ca09::t_a6219475039c59 221,225-227
+  s_c739fb2c80ca09::t_26bc59363aec46 1-220,222-224,228-386
+  s_c739fb2c80ca09::t_bf85b40b4cc95d 387
+cdc/tests/test_applier.py
+  s_c739fb2c80ca09::t_6f4b67ee3e84fd 273,276
+  s_c739fb2c80ca09::t_8fa288dfbc9085 263,265
+  s_c739fb2c80ca09::t_2230758f4e4237 57-60,63-64,67
+cdc/fixtures/debezium_envelopes.jsonl
+  s_c739fb2c80ca09::t_897f4b5c565710 1-8,11
+cdc/fixtures/expectations.json
+  s_c739fb2c80ca09::t_ec370abd5f2677 3,10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "d38a0fe38477ac65818c0a126401d35594656b17",
+  "prompts": {},
+  "sessions": {
+    "s_c739fb2c80ca09": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fd41cdbb-bae6-4673-876e-f2e017957fa4",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
