@@ -120,3 +120,28 @@ output "phase1_dashboard_name" {
   description = "CloudWatch dashboard for the Phase 1 slice (Phase 1)."
   value       = one(module.observability[*].dashboard_name)
 }
+
+output "msk_bootstrap_sasl_iam" {
+  description = "MSK Serverless IAM bootstrap brokers (Phase 2)."
+  value       = one(module.msk[*].bootstrap_brokers_sasl_iam)
+}
+
+output "cdc_connect_ecr_repository_url" {
+  description = "ECR repo for the Debezium Connect image (Phase 2)."
+  value       = one(module.ecs_connect[*].ecr_repository_url)
+}
+
+output "cdc_consumer_ecr_repository_url" {
+  description = "ECR repo for the CDC consumer image (Phase 2)."
+  value       = one(module.ecs_cdc_consumer[*].ecr_repository_url)
+}
+
+output "cdc_redis_dns" {
+  description = "In-VPC Redis endpoint for the CDC cache (Phase 2)."
+  value       = one(module.redis_fargate[*].redis_dns)
+}
+
+output "cdc_slot_lag_alarm_name" {
+  description = "CloudWatch alarm on replication-slot lag (Phase 2)."
+  value       = one(module.cdc_monitoring[*].alarm_name)
+}

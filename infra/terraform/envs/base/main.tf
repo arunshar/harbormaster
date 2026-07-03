@@ -144,6 +144,10 @@ module "rds" {
   # The VPC is 10.0.0.0/16 (network module default); allow in-VPC Postgres.
   allowed_ingress_cidrs = ["10.0.0.0/16"]
 
+  # Phase 2: logical decoding for Debezium (parameter group + reboot at the
+  # demo apply). Inert (no parameter group at all) while enable_phase2 = false.
+  logical_replication = var.enable_phase2
+
   tags = local.common_tags
 }
 
@@ -238,6 +242,117 @@ module "observability" {
   service_name        = module.ecs_serving[0].service_name
   kinesis_stream_name = module.kinesis[0].stream_name
   sns_topic_arn       = module.finops.sns_topic_arn
+
+  tags = local.common_tags
+}
+
+# -----------------------------------------------------------------------------
+# Phase 2 (gate 2.7): the CDC showcase plane. Everything below is gated behind
+# enable_phase2 (default false; also requires enable_phase1 for RDS, the ECS
+# cluster, and the Cloud Map namespace). MSK Serverless is ~$18/day while up:
+# demo windows only, then flip enable_phase2 back to false. The image-consuming
+# services (connect, consumer) are additionally gated on their image vars so a
+# plan/apply before the ECR pushes creates no crash-looping services (the
+# flink_code_s3_key pattern from Phase 1).
+# -----------------------------------------------------------------------------
+
+module "msk" {
+  count  = var.enable_phase2 ? 1 : 0
+  source = "../../modules/msk_serverless"
+
+  project     = var.project
+  environment = var.environment
+
+  vpc_id     = module.network.vpc_id
+  subnet_ids = module.network.private_subnet_ids
+
+  tags = local.common_tags
+}
+
+module "redis_fargate" {
+  count  = var.enable_phase2 ? 1 : 0
+  source = "../../modules/redis_fargate"
+
+  project     = var.project
+  environment = var.environment
+
+  vpc_id            = module.network.vpc_id
+  public_subnet_ids = module.network.public_subnet_ids
+
+  cluster_arn           = module.ecs_cluster[0].cluster_arn
+  cloudmap_namespace_id = module.ecs_serving[0].cloudmap_namespace_id
+
+  tags = local.common_tags
+}
+
+module "ecs_connect" {
+  count  = var.enable_phase2 && var.cdc_connect_image != "" ? 1 : 0
+  source = "../../modules/ecs_connect"
+
+  project     = var.project
+  environment = var.environment
+  aws_region  = var.aws_region
+
+  vpc_id            = module.network.vpc_id
+  public_subnet_ids = module.network.public_subnet_ids
+  cluster_arn       = module.ecs_cluster[0].cluster_arn
+
+  image = var.cdc_connect_image
+
+  msk_cluster_arn        = module.msk[0].cluster_arn
+  msk_topic_wildcard_arn = module.msk[0].topic_wildcard_arn
+  msk_group_wildcard_arn = module.msk[0].group_wildcard_arn
+  msk_bootstrap          = module.msk[0].bootstrap_brokers_sasl_iam
+
+  rds_endpoint   = module.rds[0].db_endpoint
+  rds_secret_arn = module.rds[0].master_user_secret_arn
+
+  tags = local.common_tags
+}
+
+module "ecs_cdc_consumer" {
+  count  = var.enable_phase2 && var.cdc_consumer_image != "" ? 1 : 0
+  source = "../../modules/ecs_cdc_consumer"
+
+  project     = var.project
+  environment = var.environment
+  aws_region  = var.aws_region
+
+  vpc_id            = module.network.vpc_id
+  public_subnet_ids = module.network.public_subnet_ids
+  cluster_arn       = module.ecs_cluster[0].cluster_arn
+
+  image = var.cdc_consumer_image
+
+  msk_cluster_arn        = module.msk[0].cluster_arn
+  msk_topic_wildcard_arn = module.msk[0].topic_wildcard_arn
+  msk_group_wildcard_arn = module.msk[0].group_wildcard_arn
+  msk_bootstrap          = module.msk[0].bootstrap_brokers_sasl_iam
+
+  feast_table_name = module.state_stores.feast_online_table_name
+  lake_bucket_arn  = "arn:aws:s3:::${module.state_stores.lake_bucket_name}"
+  redis_url        = "redis://${module.redis_fargate[0].redis_dns}:6379/0"
+
+  tags = local.common_tags
+}
+
+module "cdc_monitoring" {
+  count  = var.enable_phase2 ? 1 : 0
+  source = "../../modules/cdc_monitoring"
+
+  project     = var.project
+  environment = var.environment
+
+  vpc_id             = module.network.vpc_id
+  private_subnet_ids = module.network.private_subnet_ids
+
+  rds_endpoint   = module.rds[0].db_endpoint
+  rds_secret_arn = module.rds[0].master_user_secret_arn
+
+  sns_topic_arn = module.finops.sns_topic_arn
+
+  # Built by `make cdc-lambda-package` (handler + shared monitor + pg8000).
+  lambda_source_dir = "${path.module}/../../../lambda/cdc_slot_lag/build"
 
   tags = local.common_tags
 }

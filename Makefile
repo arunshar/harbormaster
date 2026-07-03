@@ -9,7 +9,7 @@ COST_CAP := 75
 
 .PHONY: help fmt init validate plan apply destroy cost \
         serve-install serve-lint serve-test serve-run serve-fixture serve-docker flink-package e2e \
-        cdc-up cdc-down cdc-smoke cdc-consumer
+        cdc-up cdc-down cdc-smoke cdc-consumer cdc-lambda-package
 
 help:
 	@echo "Harbormaster Phase 0 targets (operate on $(TF_DIR)):"
@@ -120,3 +120,11 @@ cdc-consumer:         ## run the CDC consumer against the local stack
 	HM_KAFKA_BOOTSTRAP=127.0.0.1:30092 HM_ONLINE_TABLE=hm-local-feast-online \
 	HM_DDB_ENDPOINT_URL=http://127.0.0.1:30800 HM_REDIS_URL=redis://127.0.0.1:30379/0 \
 	$(PY) -m cdc.consumer.service
+
+LAMBDA_BUILD := infra/lambda/cdc_slot_lag/build
+
+cdc-lambda-package:   ## vendor pg8000 + the shared monitor into the slot-lag Lambda build dir
+	rm -rf $(LAMBDA_BUILD) && mkdir -p $(LAMBDA_BUILD)
+	cp infra/lambda/cdc_slot_lag/handler.py cdc/monitor/slot_lag.py $(LAMBDA_BUILD)/
+	$(PY) -m pip install --quiet --target $(LAMBDA_BUILD) "pg8000>=1.31"
+	@echo "packaged $(LAMBDA_BUILD); terraform archives it via modules/cdc_monitoring"

@@ -48,6 +48,17 @@ variable "master_username" {
   default = "hm_admin"
 }
 
+variable "logical_replication" {
+  description = <<-EOT
+    Enable logical decoding for the Phase 2 CDC pipeline: attaches a parameter
+    group with rds.logical_replication=1 (static parameter; takes effect at the
+    next reboot, acceptable at demo-apply time). Default false keeps Phase 1
+    applies byte-identical (no parameter group is created or attached).
+  EOT
+  type        = bool
+  default     = false
+}
+
 variable "tags" {
   type    = map(string)
   default = {}
@@ -89,11 +100,30 @@ resource "aws_security_group" "this" {
   tags = merge(local.tags, { Name = "${local.name_prefix}-pg-sg" })
 }
 
+# Phase 2 (gate C7): logical decoding for Debezium/pgoutput. Created only when
+# logical_replication = true, so the module stays inert for Phase-1-only use.
+resource "aws_db_parameter_group" "logical" {
+  count = var.logical_replication ? 1 : 0
+
+  name   = "${local.name_prefix}-pg16-logical"
+  family = "postgres16"
+
+  parameter {
+    name         = "rds.logical_replication"
+    value        = "1"
+    apply_method = "pending-reboot"
+  }
+
+  tags = merge(local.tags, { Name = "${local.name_prefix}-pg16-logical" })
+}
+
 resource "aws_db_instance" "this" {
   identifier     = "${local.name_prefix}-pg"
   engine         = "postgres"
   engine_version = "16"
   instance_class = var.instance_class
+
+  parameter_group_name = var.logical_replication ? aws_db_parameter_group.logical[0].name : null
 
   allocated_storage = var.allocated_storage_gb
   storage_type      = "gp3"

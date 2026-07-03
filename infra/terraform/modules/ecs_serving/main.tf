@@ -373,3 +373,8 @@ output "cloudmap_dns_name" {
   description = "In-VPC DNS for the scorer (e.g. serving.harbormaster-base.local)."
   value       = "${local.service}.${aws_service_discovery_private_dns_namespace.this.name}"
 }
+
+output "cloudmap_namespace_id" {
+  description = "The private DNS namespace id (Phase 2 registers redis into it)."
+  value       = aws_service_discovery_private_dns_namespace.this.id
+}

@@ -94,4 +94,29 @@ variable "enable_phase2" {
   EOT
   type        = bool
   default     = false
+
+  validation {
+    condition     = !var.enable_phase2 || var.enable_phase1
+    error_message = "enable_phase2 requires enable_phase1 = true (RDS, the ECS cluster, and the Cloud Map namespace are Phase 1 resources)."
+  }
+}
+
+variable "cdc_connect_image" {
+  description = <<-EOT
+    ECR image URI for Debezium Connect (built from cdc/connect/Dockerfile and
+    pushed at demo time). Empty skips the connect service, the Phase 1
+    flink_code_s3_key pattern, so an apply before the image push creates no
+    crash-looping service.
+  EOT
+  type        = string
+  default     = ""
+}
+
+variable "cdc_consumer_image" {
+  description = <<-EOT
+    ECR image URI for the CDC consumer (built from cdc/consumer/Dockerfile and
+    pushed at demo time). Empty skips the consumer service.
+  EOT
+  type        = string
+  default     = ""
 }
