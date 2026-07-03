@@ -1,0 +1,19 @@
+sessions/SESSION_HANDOFF_2026-07-03_phase2.md
+  s_c739fb2c80ca09::t_33fa9b9b8ecb6c 5-8,10-12,63-65,83-96
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "f28069c86656892b32ad1ce0eed8d7f2de8d7cd2",
+  "prompts": {},
+  "sessions": {
+    "s_c739fb2c80ca09": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fd41cdbb-bae6-4673-876e-f2e017957fa4",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
