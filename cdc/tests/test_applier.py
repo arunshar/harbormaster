@@ -54,14 +54,17 @@ def test_fixture_final_state_matches_the_pinned_golden():
 def test_fixture_semantics_spot_checks():
     store, _, _, _ = _run(_messages())
     state = store.final_state()
-    # the update (lsn 3000) won over the create (lsn 2000) and its redelivery
+    events = _events()
+    update_lsn = [e.lsn for e in events if e.op == "u"][0]
+    delete_lsn = [e.lsn for e in events if e.op == "d"][0]
+    # the update won over the create and its redelivery
     wl = state['watchlist|{"mmsi":367000003}']
     assert wl["deleted"] is False and wl["row"]["severity"] == 0.95
-    assert wl["last_applied_lsn"] == 3000
-    # the snapshot-seeded watchlist row was deleted by the streamed op=d (lsn 6000)
+    assert wl["last_applied_lsn"] == update_lsn
+    # the snapshot-seeded watchlist row was deleted by the streamed op=d
     legacy = state['watchlist|{"mmsi":367000001}']
     assert legacy["deleted"] is True and legacy["row"] is None
-    assert legacy["last_applied_lsn"] == 6000
+    assert legacy["last_applied_lsn"] == delete_lsn
     # snapshot vessels row survives untouched
     assert state['vessels|{"mmsi":367000001}']["row"]["name"] == "PACIFIC HARRIER"
 
@@ -257,8 +260,9 @@ def test_effect_sink_fires_for_every_delivered_data_event():
     store = MemorySink()
     applier = Applier(store=store, effects=(RecordingEffect(),), audit=MemoryAudit())
     result = applier.apply_batch(_messages(), commit=lambda: None)
+    create_lsn = [e.lsn for e in _events() if e.op == "c" and e.table == "watchlist"][0]
     assert len(fired) == result.events  # applied AND guard-rejected
-    assert fired.count(("watchlist", 2000)) == 2  # the redelivered dupe re-fires
+    assert fired.count(("watchlist", create_lsn)) == 2  # the redelivered dupe re-fires
 
 
 # ------------------------------------------------------------------- audit
@@ -266,9 +270,10 @@ def test_effect_sink_fires_for_every_delivered_data_event():
 
 def test_audit_records_transport_truth_including_redeliveries():
     _, audit, result, _ = _run(_messages())
+    create_lsn = [e.lsn for e in _events() if e.op == "c" and e.table == "watchlist"][0]
     assert len(audit.rows) == result.events  # every data event, dupes included
     assert sum(r["applied"] for r in audit.rows) == result.applied
-    dupes = [r for r in audit.rows if r["lsn"] == 2000 and r["event_table"] == "watchlist"]
+    dupes = [r for r in audit.rows if r["lsn"] == create_lsn and r["event_table"] == "watchlist"]
     assert [r["applied"] for r in dupes] == [True, False]  # first applied, replay rejected
 
 

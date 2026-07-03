@@ -2,9 +2,12 @@
 
 debezium_envelopes.jsonl lines are {"topic", "key", "value"} with key/value as
 embedded JSON values (null for a tombstone value). Hand-authored at gate C3 per
-the Debezium 2.7 format; re-recorded from the live Strimzi stack at gate C6 and
-re-pinned (any diff is a finding, not a silent overwrite). The SHA256 pins in
-expectations.json are asserted by cdc/tests.
+the Debezium 2.7 format; RE-RECORDED from the live Strimzi stack on 2026-07-03
+by scripts/cdc_record_fixture.py (real LSNs/timestamps; the schema-change line
+is retained hand-authored because the live Postgres connector does not emit
+one; the redelivery line is the recorded create repeated verbatim). Any future
+diff is a finding, not a silent overwrite. The SHA256 pins in expectations.json
+are asserted by cdc/tests.
 """
 
 from __future__ import annotations

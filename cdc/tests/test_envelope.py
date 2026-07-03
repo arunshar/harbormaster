@@ -37,30 +37,51 @@ def test_fixture_message_census():
 
 
 def test_snapshot_reads_carry_the_snapshot_lsn():
-    first = _parse_all()[0]
+    # both op=r rows share the snapshot consistent-point LSN (recorded fixture)
+    parsed = _parse_all()
+    reads = [p for p in parsed if isinstance(p, ChangeEvent) and p.is_snapshot]
+    first = parsed[0]
     assert isinstance(first, ChangeEvent)
     assert first.op == "r" and first.is_snapshot
-    assert first.table == "vessels" and first.lsn == 1000
+    assert first.table == "vessels" and first.lsn > 0
     assert first.pk == {"mmsi": 367000001}
+    assert len({r.lsn for r in reads}) == 1
 
 
-def test_schema_wrapped_converter_output_unwraps():
-    # fixture line 5: the update is {"schema": ..., "payload": ...} on both key and value
-    update = [
-        p for p in _parse_all() if isinstance(p, ChangeEvent) and p.op == "u"
-    ][0]
+def test_fixture_update_carries_both_images():
+    update = [p for p in _parse_all() if isinstance(p, ChangeEvent) and p.op == "u"][0]
     assert update.pk == {"mmsi": 367000003}
-    assert update.lsn == 3000
     assert update.after is not None and update.after["severity"] == 0.95
     assert update.before is not None and update.before["severity"] == 0.9
 
 
+def test_schema_wrapped_converter_output_unwraps():
+    # the live plane runs schemas.enable=false, so the recorded fixture has no
+    # wrapped line; wrap the recorded update here and assert the parse is
+    # identical (the unwrap path stays covered for schemas.enable=true planes)
+    topic, key, value = [
+        (t, k, v)
+        for t, k, v in load_envelope_messages()
+        if v is not None and json.loads(v).get("op") == "u"
+    ][0]
+    plain = parse_envelope(topic, key, value)
+    wrapped = parse_envelope(
+        topic,
+        json.dumps({"schema": {"type": "struct"}, "payload": json.loads(key)}),
+        json.dumps({"schema": {"type": "struct"}, "payload": json.loads(value)}),
+    )
+    assert wrapped == plain
+
+
 def test_delete_has_before_image_and_no_after():
-    delete = [p for p in _parse_all() if isinstance(p, ChangeEvent) and p.is_delete][0]
+    parsed = _parse_all()
+    delete = [p for p in parsed if isinstance(p, ChangeEvent) and p.is_delete][0]
+    update = [p for p in parsed if isinstance(p, ChangeEvent) and p.op == "u"][0]
     assert delete.table == "watchlist" and delete.pk == {"mmsi": 367000001}
     assert delete.after is None
+    # REPLICA IDENTITY FULL: the delete carries the full before image
     assert delete.before is not None and delete.before["reason"] == "legacy flag"
-    assert delete.lsn == 6000
+    assert delete.lsn > update.lsn
 
 
 def test_tombstone_carries_the_pk_and_nothing_else():
@@ -75,7 +96,11 @@ def test_heartbeat_and_schema_change_are_typed_skips():
 
 def test_redelivered_duplicate_parses_identically():
     events = [p for p in _parse_all() if isinstance(p, ChangeEvent)]
-    dupes = [e for e in events if e.lsn == 2000 and e.table == "watchlist"]
+    dupes = [
+        e
+        for e in events
+        if e.op == "c" and e.table == "watchlist" and e.pk == {"mmsi": 367000003}
+    ]
     assert len(dupes) == 2 and dupes[0] == dupes[1]
 
 
