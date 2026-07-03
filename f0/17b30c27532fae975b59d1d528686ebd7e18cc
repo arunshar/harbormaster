@@ -1,0 +1,31 @@
+tests/e2e/cdc_helpers.py
+  s_c739fb2c80ca09::t_f67b1c89eecc8a 1-45
+tests/e2e/test_cdc_helpers.py
+  s_c739fb2c80ca09::t_c836bdf69d0a75 1-51
+docs/phases/PHASE_2.md
+  s_c739fb2c80ca09::t_dcfd6ef66cf97f 3
+sessions/SESSION_HANDOFF_2026-07-03_phase2.md
+  s_c739fb2c80ca09::t_9550d26e0dc1e5 1-119
+tests/e2e/test_phase2.py
+  s_c739fb2c80ca09::t_de7683d940b5e9 1-256
+Makefile
+  s_c739fb2c80ca09::t_942462801a4de9 12,126-136
+docs/HONESTY.md
+  s_c739fb2c80ca09::t_b327a25e0b844e 61,63
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "f017b30c27532fae975b59d1d528686ebd7e18cc",
+  "prompts": {},
+  "sessions": {
+    "s_c739fb2c80ca09": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fd41cdbb-bae6-4673-876e-f2e017957fa4",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
