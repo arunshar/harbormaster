@@ -150,22 +150,28 @@ def _kinesis_putter(client, stream_name: str) -> Callable[[list[KinesisEntry]], 
 
 
 def main() -> None:
-    if os.environ.get("AIS_LIVE", "").lower() == "true":
-        raise NotImplementedError(
-            "live AISStream mode is wired at gate 1.9; set AIS_LIVE=false for replay"
-        )
-
     import boto3
 
     region = os.environ.get("AWS_REGION", "us-east-1")
     stream = os.environ.get("KINESIS_STREAM_NAME") or _name_from_arn(
         os.environ["KINESIS_STREAM_ARN"]
     )
-    speedup = float(os.environ.get("REPLAY_SPEEDUP", "10"))
+    put = _kinesis_putter(boto3.client("kinesis", region_name=region), stream)
 
-    records = _load_records()
-    client = boto3.client("kinesis", region_name=region)
-    sent = replay(records, _kinesis_putter(client, stream), speedup=speedup)
+    if os.environ.get("AIS_LIVE", "").lower() == "true":
+        from ingestor.live import real_open_stream, run_live
+
+        api_key = os.environ["AISSTREAM_API_KEY"]
+        n = run_live(
+            lambda: real_open_stream(api_key),
+            lambda rec: put([record_to_entry(rec)]),
+            time.sleep,
+        )
+        print(f"live: streamed {n} records to {stream}")
+        return
+
+    speedup = float(os.environ.get("REPLAY_SPEEDUP", "10"))
+    sent = replay(_load_records(), put, speedup=speedup)
     print(f"replayed {sent} records to {stream}")
 
 
