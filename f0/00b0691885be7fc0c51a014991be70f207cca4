@@ -1,0 +1,37 @@
+serving/app/orchestrator.py
+  s_c739fb2c80ca09::t_fc9642a1b6ea81 254-275
+  s_c739fb2c80ca09::t_57c14a6787f7c3 40
+  s_c739fb2c80ca09::t_28c26f8671f9b0 72,83
+  s_c739fb2c80ca09::t_fb9f8e6efe20d3 55
+  s_c739fb2c80ca09::t_c32057228c09ee 98
+  s_c739fb2c80ca09::t_4b9255766002c8 120-122
+serving/tests/test_watchlist.py
+  s_c739fb2c80ca09::t_b16e42152b3ee7 1-13,15-135,139-184
+  s_c739fb2c80ca09::t_ee5d171cd32f0e 136-138
+  s_c739fb2c80ca09::t_048a467977406e 14
+serving/app/config.py
+  s_c739fb2c80ca09::t_05e0512269e7cc 23,26-35
+  s_c739fb2c80ca09::t_c3621f328090bf 36
+serving/app/metrics.py
+  s_c739fb2c80ca09::t_3664e50bdbbb9a 21-29
+serving/app/watchlist.py
+  s_c739fb2c80ca09::t_98aafef865b64a 1-237
+serving/app/models.py
+  s_c739fb2c80ca09::t_4670d2b37a03f8 127-128
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "f000b0691885be7fc0c51a014991be70f207cca4",
+  "prompts": {},
+  "sessions": {
+    "s_c739fb2c80ca09": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fd41cdbb-bae6-4673-876e-f2e017957fa4",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
