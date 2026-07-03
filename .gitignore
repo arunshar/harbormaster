@@ -1,5 +1,8 @@
 # ---- Terraform ----
 .terraform/
+.terraform.validate/
+# archive_file build output (e.g. the teardown Lambda zip), regenerated each plan
+**/.build/
 .terraform.lock.hcl.bak
 *.tfstate
 *.tfstate.*
