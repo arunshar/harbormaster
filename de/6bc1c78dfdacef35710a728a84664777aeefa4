@@ -1,0 +1,57 @@
+docs/phases/PHASE_2.md
+  s_c739fb2c80ca09::t_f81a06272ced38 49
+  s_c739fb2c80ca09::t_b0eea807d948e5 51
+infra/terraform/modules/msk_serverless/main.tf
+  s_c739fb2c80ca09::t_132ae33f5a4ba7 1-110
+infra/terraform/modules/redis_fargate/main.tf
+  s_c739fb2c80ca09::t_818e49fb1ef7df 1-196
+infra/terraform/envs/base/main.tf
+  s_c739fb2c80ca09::t_04c82c362f1f8d 282
+  s_c739fb2c80ca09::t_f7c3d09d9116f2 147-150
+  s_c739fb2c80ca09::t_a48d6525838c0d 279-281
+  s_c739fb2c80ca09::t_570a7fec8a30f3 283-285
+  s_c739fb2c80ca09::t_7385eeb2ac5ded 248-278,286-358
+infra/lambda/cdc_slot_lag/handler.py
+  s_c739fb2c80ca09::t_9ed7a43ea6704d 1-101
+Makefile
+  s_c739fb2c80ca09::t_19f2577afae703 123-130
+  s_c739fb2c80ca09::t_f2fbe100ddb9d0 12
+cdc/monitor/slot_lag.py
+  s_c739fb2c80ca09::t_9290d762a1aacf 1-74
+cdc/connect/Dockerfile
+  s_c739fb2c80ca09::t_a7213a94459839 1-10
+infra/terraform/modules/ecs_connect/main.tf
+  s_c739fb2c80ca09::t_e134800d9cc666 1-339
+infra/terraform/modules/ecs_cdc_consumer/main.tf
+  s_c739fb2c80ca09::t_24fd1d4bcb0eec 1-315
+infra/terraform/modules/rds/main.tf
+  s_c739fb2c80ca09::t_c705ed3e21b94e 51-61
+  s_c739fb2c80ca09::t_ee50f9b100b2ff 103-119,126
+  s_c739fb2c80ca09::t_5cd922c906f77a 127
+infra/terraform/modules/cdc_monitoring/main.tf
+  s_c739fb2c80ca09::t_530b8817f2449b 1-229
+.gitignore
+  s_c739fb2c80ca09::t_444f98ae98fbf7 71-73
+infra/terraform/envs/base/outputs.tf
+  s_c739fb2c80ca09::t_a9e22999f0d6ea 123-147
+infra/terraform/envs/base/variables.tf
+  s_c739fb2c80ca09::t_cc0cc13f860387 97-121
+infra/terraform/modules/ecs_serving/main.tf
+  s_c739fb2c80ca09::t_a37158e7358049 376-380
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "de6bc1c78dfdacef35710a728a84664777aeefa4",
+  "prompts": {},
+  "sessions": {
+    "s_c739fb2c80ca09": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fd41cdbb-bae6-4673-876e-f2e017957fa4",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
