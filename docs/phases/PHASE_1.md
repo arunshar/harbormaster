@@ -44,6 +44,10 @@ A genuinely production-grade vertical slice: recorded AIS replay -> Kinesis -> M
 - Live-scoring path strips GeoTrace's LLM planner: a deterministic HeuristicPlanner + a new POST /v1/score-ais endpoint run the existing deterministic agents (SpaceTimeReasoner, GapDetector / STAGD+AGM, RendezvousFinder / TGARD, Validator / S-KBM) with zero LLM cost.
 
 ## Prerequisite: AWS setup (one-time, before 1.0; region us-east-1)
+> Scripted on-ramp: this prose is now an ordered runbook in `docs/AWS_SETUP.md`
+> (+ `docs/AWS_SETUP.html`), with steps 2's role + state-bucket scaffolding scripted
+> in `infra/aws/bootstrap.sh` (idempotent, `--dry-run`) and `terraform.tfvars`
+> pre-filled. The steps below are the source of truth; the runbook orchestrates them.
 1. Account hygiene: enable MFA on root, then stop using root; create an admin via IAM Identity Center (SSO) or an IAM admin user.
 2. CLI: AWS CLI v2 configured; `aws sts get-caller-identity` succeeds in us-east-1.
 3. Platform role: create the IAM role the finops budget action attaches the deny policy to and that Terraform/services assume (e.g. harbormaster-platform); record it as platform_role_name in terraform.tfvars.
