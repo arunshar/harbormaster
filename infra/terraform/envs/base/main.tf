@@ -10,7 +10,7 @@
 # cap and nightly sweep exist before any heavier Phase 1 compute is added.
 
 terraform {
-  required_version = ">= 1.6"
+  required_version = ">= 1.9" # cross-variable validation (enable_phase2 -> enable_phase1)
 
   required_providers {
     aws = {
@@ -177,6 +177,13 @@ module "ecs_serving" {
   feast_table_name = module.state_stores.feast_online_table_name
   lake_bucket_arn  = "arn:aws:s3:::${module.state_stores.lake_bucket_name}"
   rds_secret_arn   = module.rds[0].master_user_secret_arn
+  rds_endpoint     = module.rds[0].db_endpoint
+
+  # Phase 2: point the scorer at the CDC-fed online store. The redis DNS name
+  # is deterministic (Cloud Map name in the serving namespace), so no reference
+  # into the gated redis_fargate module is needed here.
+  cdc_online_enabled = var.enable_phase2
+  redis_url          = var.enable_phase2 ? "redis://redis.${var.project}-${var.environment}.local:6379/0" : ""
 
   tags = local.common_tags
 }
@@ -283,6 +290,35 @@ module "redis_fargate" {
   cloudmap_namespace_id = module.ecs_serving[0].cloudmap_namespace_id
 
   tags = local.common_tags
+}
+
+# ECR repos for the two CDC images live OUTSIDE the image-gated service modules:
+# they must exist before an image can be pushed, and the services can only be
+# created after the push (apply -> push -> set image vars -> apply).
+resource "aws_ecr_repository" "cdc_connect" {
+  count = var.enable_phase2 ? 1 : 0
+
+  name                 = "${var.project}-${var.environment}-cdc-connect"
+  image_tag_mutability = "MUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+
+  tags = merge(local.common_tags, { Name = "${var.project}-${var.environment}-cdc-connect" })
+}
+
+resource "aws_ecr_repository" "cdc_consumer" {
+  count = var.enable_phase2 ? 1 : 0
+
+  name                 = "${var.project}-${var.environment}-cdc-consumer"
+  image_tag_mutability = "MUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+
+  tags = merge(local.common_tags, { Name = "${var.project}-${var.environment}-cdc-consumer" })
 }
 
 module "ecs_connect" {

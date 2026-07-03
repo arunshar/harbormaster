@@ -1,7 +1,7 @@
-# Drill P2 transcript: duplicate events after restart (2026-07-03T18:07:58.155308+00:00)
+# Drill P2 transcript: duplicate events after restart (2026-07-03T18:55:52.415163+00:00)
 
 ## Baseline (exactly-once delivery)
-final-state sha256 = 7af35b23e788b014367227315d73c7eae62e717f5a9424cf2cd6dfb6d563989f
+final-state sha256 = ca123c3593a9086de8b63e46e342e08fd32db141f7fb525de7018cfb0478b2ff
 watchlist 367000003 severity = 0.95 (the lsn=3000 update won)
 
 ## Schedule A: crash between sink-ack and offset commit

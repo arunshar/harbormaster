@@ -127,13 +127,13 @@ output "msk_bootstrap_sasl_iam" {
 }
 
 output "cdc_connect_ecr_repository_url" {
-  description = "ECR repo for the Debezium Connect image (Phase 2)."
-  value       = one(module.ecs_connect[*].ecr_repository_url)
+  description = "ECR repo for the Debezium Connect image (Phase 2; exists before the service)."
+  value       = one(aws_ecr_repository.cdc_connect[*].repository_url)
 }
 
 output "cdc_consumer_ecr_repository_url" {
-  description = "ECR repo for the CDC consumer image (Phase 2)."
-  value       = one(module.ecs_cdc_consumer[*].ecr_repository_url)
+  description = "ECR repo for the CDC consumer image (Phase 2; exists before the service)."
+  value       = one(aws_ecr_repository.cdc_consumer[*].repository_url)
 }
 
 output "cdc_redis_dns" {

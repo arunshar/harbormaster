@@ -80,6 +80,12 @@ serve-fixture:        ## regenerate the recorded AIS replay fixture + expectatio
 serve-run:            ## run the scoring API locally on :8000
 	PYTHONPATH=serving $(PY) -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 
+serve-run-cdc:        ## run the scoring API wired to the local CDC stack (Phase 2 env)
+	HM_PG_DSN=postgresql://hm_admin:hm_local_pw@127.0.0.1:30432/harbormaster \
+	HM_ONLINE_TABLE=hm-local-feast-online HM_DDB_ENDPOINT_URL=http://127.0.0.1:30800 \
+	HM_REDIS_URL=redis://127.0.0.1:30379/0 \
+	PYTHONPATH=serving $(PY) -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+
 serve-docker:         ## build the serving container image (build context = repo root)
 	docker build -f serving/Dockerfile -t harbormaster-serving:dev .
 

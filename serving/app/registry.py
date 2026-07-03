@@ -27,8 +27,13 @@ log = structlog.get_logger(__name__)
 
 def _sanctions_flag_id(mmsi: int, regime: str) -> str:
     # Kept in sync with cdc.schema.ddl.sanctions_flag_id by a unit test; the
-    # serving wheel must not depend on the cdc package at runtime.
-    return f"{int(mmsi)}:{regime.strip().lower()}"
+    # serving wheel must not depend on the cdc package at runtime. A blank
+    # regime would mint the "<mmsi>:" id the CDC key mapper rejects (a poison
+    # event); refuse it here too, defense in depth behind the model validator.
+    normalized = regime.strip().lower()
+    if not normalized:
+        raise ValueError("regime must not be blank")
+    return f"{int(mmsi)}:{normalized}"
 
 
 class RegistryBackend(Protocol):
@@ -217,9 +222,10 @@ class RegistryStore:
 
     @classmethod
     async def connect(cls, settings: Settings) -> RegistryStore:
-        if settings.pg_dsn:
+        dsn = settings.resolved_pg_dsn()
+        if dsn:
             try:
-                backend: RegistryBackend = await PostgresRegistryBackend.connect(settings.pg_dsn)
+                backend: RegistryBackend = await PostgresRegistryBackend.connect(dsn)
                 log.info("registry_backend", kind="postgres")
                 return cls(backend)
             except Exception as exc:  # asyncpg missing or DB unreachable -> memory

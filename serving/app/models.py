@@ -154,23 +154,45 @@ class FeedbackIn(_Mutable):
 
 
 # --- Registry (Phase 2; Postgres is the system of record) ---------------------
+# All strings are bounded: an unbounded value accepted here becomes a CDC event
+# and a DynamoDB item, and DynamoDB caps items at 400 KB, so the API boundary
+# is where oversized payloads must die (422), not the consumer.
 
 
 class VesselIn(_Mutable):
-    name: str = ""
-    flag_state: str = ""
-    vessel_type: str = ""
+    name: str = Field("", max_length=256)
+    flag_state: str = Field("", max_length=256)
+    vessel_type: str = Field("", max_length=256)
 
 
 class WatchlistIn(_Mutable):
-    reason: str = Field(..., min_length=1)
+    reason: str = Field(..., min_length=1, max_length=4096)
     severity: float = Field(0.9, ge=0, le=1)
-    added_by: str = ""
+    added_by: str = Field("", max_length=256)
+
+    @field_validator("reason")
+    @classmethod
+    def _reason_not_blank(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("reason must not be blank")
+        return v
 
 
 class SanctionsIn(_Mutable):
-    regime: str = Field(..., min_length=1)
-    reference: str = ""
+    regime: str = Field(..., min_length=1, max_length=128)
+    reference: str = Field("", max_length=4096)
+
+    @field_validator("regime")
+    @classmethod
+    def _regime_not_blank(cls, v: str) -> str:
+        # The stripped, lowercased regime is the sanctions_flags id suffix
+        # ("<mmsi>:<regime>"); a blank one would mint the "<mmsi>:" poison id
+        # the CDC key mapper rejects, so it dies here with a 422.
+        v = v.strip().lower()
+        if not v:
+            raise ValueError("regime must not be blank")
+        return v
 
 
 class FeedbackOut(_Frozen):

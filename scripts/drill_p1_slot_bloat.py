@@ -33,6 +33,11 @@ sys.path.insert(0, str(REPO_ROOT))
 from cdc.monitor.slot_lag import evaluate_lag_alert, fetch_slot_lag  # noqa: E402
 from cdc.schema import ddl  # noqa: E402
 
+# The drill NEVER touches the production slot (ddl.SLOT_NAME): pointed at a
+# live CDC stack, creating/draining/dropping harbormaster_cdc would silently
+# consume and then destroy Debezium's position. It uses its own slot and only
+# warns when the production slot is present on the target.
+DRILL_SLOT = "hm_drill_p1_slot_bloat"
 DRILL_THRESHOLD_BYTES = 64 * 1024  # small so the drill fires quickly
 ROUNDS = 5
 ROWS_PER_ROUND = 300
@@ -86,15 +91,28 @@ async def run_drill(dsn: str, log: list[str]) -> None:
         for stmt in ddl.statements():
             await conn.execute(stmt)
 
-        # the "stalled consumer": a logical slot nothing drains
-        exists = await conn.fetchval(
+        prod_slot = await conn.fetchval(
             "SELECT 1 FROM pg_replication_slots WHERE slot_name = $1", ddl.SLOT_NAME
         )
-        if not exists:
-            await conn.execute(
-                "SELECT pg_create_logical_replication_slot($1, 'pgoutput')", ddl.SLOT_NAME
+        if prod_slot:
+            log.append(
+                f"NOTE: production slot `{ddl.SLOT_NAME}` exists on this target (a live "
+                "CDC stack); the drill leaves it strictly alone and uses its own slot"
             )
-        log.append(f"slot `{ddl.SLOT_NAME}` (pgoutput) created; NO consumer attached")
+
+        # the "stalled consumer": a drill-only logical slot nothing drains
+        exists = await conn.fetchval(
+            "SELECT 1 FROM pg_replication_slots WHERE slot_name = $1", DRILL_SLOT
+        )
+        if exists:
+            raise RuntimeError(
+                f"drill slot `{DRILL_SLOT}` already exists; a previous drill did not clean "
+                "up. Drop it explicitly before re-running (never auto-adopt a slot)."
+            )
+        await conn.execute(
+            "SELECT pg_create_logical_replication_slot($1, 'pgoutput')", DRILL_SLOT
+        )
+        log.append(f"drill slot `{DRILL_SLOT}` (pgoutput) created; NO consumer attached")
 
         baseline = await fetch_slot_lag(conn)
         log.append(f"baseline: {baseline}")
@@ -113,7 +131,7 @@ async def run_drill(dsn: str, log: list[str]) -> None:
                 )
             await conn.execute("SELECT pg_switch_wal()")
             slots = await fetch_slot_lag(conn)
-            ours = next(s for s in slots if s.slot_name == ddl.SLOT_NAME)
+            ours = next(s for s in slots if s.slot_name == DRILL_SLOT)
             samples.append(ours.lag_bytes)
             log.append(
                 f"round {rnd}: +{ROWS_PER_ROUND} rows, pg_switch_wal -> "
@@ -128,7 +146,7 @@ async def run_drill(dsn: str, log: list[str]) -> None:
         breaching = evaluate_lag_alert(
             await fetch_slot_lag(conn), threshold_bytes=DRILL_THRESHOLD_BYTES
         )
-        assert any(s.slot_name == ddl.SLOT_NAME for s in breaching), "alert did not fire"
+        assert any(s.slot_name == DRILL_SLOT for s in breaching), "alert did not fire"
         log.append(
             f"ALERT FIRED: evaluate_lag_alert(threshold={DRILL_THRESHOLD_BYTES:,}) -> "
             f"{[s.slot_name for s in breaching]} (the CloudWatch alarm watches the same number)"
@@ -139,18 +157,18 @@ async def run_drill(dsn: str, log: list[str]) -> None:
         await conn.fetch(
             "SELECT * FROM pg_logical_slot_get_binary_changes($1, NULL, NULL, "
             "'proto_version', '1', 'publication_names', $2)",
-            ddl.SLOT_NAME,
+            DRILL_SLOT,
             ddl.PUBLICATION_NAME,
         )
         drained = await fetch_slot_lag(conn)
-        ours = next(s for s in drained if s.slot_name == ddl.SLOT_NAME)
+        ours = next(s for s in drained if s.slot_name == DRILL_SLOT)
         assert ours.lag_bytes < peak, f"drain did not reduce lag: {ours.lag_bytes} vs {peak}"
         log.append(
             f"RECOVERY: draining the slot dropped lag {peak:,} -> {ours.lag_bytes:,} bytes"
         )
 
-        await conn.execute("SELECT pg_drop_replication_slot($1)", ddl.SLOT_NAME)
-        log.append("slot dropped (cleanup)")
+        await conn.execute("SELECT pg_drop_replication_slot($1)", DRILL_SLOT)
+        log.append("drill slot dropped (cleanup); production slot untouched")
     finally:
         await conn.close()
 

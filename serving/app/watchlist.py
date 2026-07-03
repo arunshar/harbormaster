@@ -25,6 +25,7 @@ Online item layout (must match cdc/sinks/dynamo.py; drift-guarded by a test):
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -173,16 +174,35 @@ class WatchlistLookup:
 
     @classmethod
     def from_settings(cls, settings: Settings) -> WatchlistLookup:
-        """Build real clients from config; degrade to disabled when unset/missing."""
+        """Build real clients from config; degrade to disabled when unset/missing.
+
+        Both clients get tight timeouts: this lookup runs on the scoring path,
+        so a partitioned backend must raise (and fail open) in ~1 s, never hang
+        the scorer. Region always resolves (env fallback us-east-1) and the
+        DynamoDB Local endpoint gets placeholder credentials, matching the CDC
+        consumer's client construction.
+        """
         ddb = None
         redis_client = None
         if settings.online_table:
             try:
                 import boto3  # lazy optional dep (the [ingestor] extra)
+                from botocore.config import Config as BotoConfig
 
-                kwargs: dict[str, Any] = {}
+                kwargs: dict[str, Any] = {
+                    "region_name": os.environ.get(
+                        "AWS_REGION", os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
+                    ),
+                    "config": BotoConfig(
+                        connect_timeout=1,
+                        read_timeout=1,
+                        retries={"max_attempts": 2, "mode": "standard"},
+                    ),
+                }
                 if settings.ddb_endpoint_url:
                     kwargs["endpoint_url"] = settings.ddb_endpoint_url
+                    kwargs["aws_access_key_id"] = "local"
+                    kwargs["aws_secret_access_key"] = "local"
                 ddb = boto3.client("dynamodb", **kwargs)
             except Exception as exc:
                 log.warning("watchlist_ddb_unavailable_lookup_disabled", err=str(exc))
@@ -190,7 +210,9 @@ class WatchlistLookup:
             try:
                 import redis  # lazy optional dep (the [cdc] extra)
 
-                redis_client = redis.Redis.from_url(settings.redis_url)
+                redis_client = redis.Redis.from_url(
+                    settings.redis_url, socket_connect_timeout=0.5, socket_timeout=0.5
+                )
             except Exception as exc:
                 log.warning("watchlist_redis_unavailable_cache_disabled", err=str(exc))
         return cls(
@@ -199,6 +221,16 @@ class WatchlistLookup:
             table=settings.online_table,
             cache_ttl_s=settings.watchlist_cache_ttl_s,
         )
+
+    async def aget(self, mmsi: int) -> WatchlistStatus:
+        """Event-loop-safe lookup: the blocking redis/boto3 calls run in a
+        worker thread so one slow backend cannot stall every request on the
+        loop. Zero-cost when disabled."""
+        if not self.enabled:
+            return EMPTY_STATUS
+        import asyncio
+
+        return await asyncio.to_thread(self.get, mmsi)
 
     def get(self, mmsi: int) -> WatchlistStatus:
         if not self.enabled:

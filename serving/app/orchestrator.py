@@ -119,7 +119,8 @@ class Orchestrator:
         results = await self.run_plan(plan, payload, anchors)
         # The CDC-fed online watchlist runs on every score, outside the plan
         # graph: it is a lookup, not a kinematic agent, and it is fail-open.
-        results["watchlist"] = self.watchlist.get(payload.mmsi)
+        # aget keeps the blocking redis/boto3 clients off the event loop.
+        results["watchlist"] = await self.watchlist.aget(payload.mmsi)
         reasons = self._fuse(results, anchors)
 
         score = self._noisy_or([r.severity for r in reasons])

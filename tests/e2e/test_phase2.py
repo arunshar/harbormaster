@@ -1,8 +1,11 @@
 """Phase 2 end-to-end acceptance (gate C9, the phase gate).
 
 Runs ONLY with HM_CDC_E2E set, against a running CDC stack:
-  local plane: make cdc-up + the connector registered + the consumer running
-               (make cdc-smoke does all three), then `make cdc-e2e`
+  local plane: `make cdc-up`, then `make cdc-smoke` ONCE (it registers the
+               connector but stops its own consumer on exit), then keep
+               `make cdc-consumer` running in one terminal and the serving API
+               in another via `make serve-run-cdc` (the Phase 2 env), then
+               `make cdc-e2e`
   AWS showcase: the same tests with env pointed at the demo apply (Arun-run)
 
 Env contract:
@@ -144,10 +147,15 @@ def test_b_full_topic_replay_produces_no_duplicate_online_state():
     assert isinstance(loop._applier, Applier)
 
     idle_polls = 0
+    consumed_events = 0
     deadline = time.time() + BUDGET_S
     while idle_polls < 5 and time.time() < deadline:
-        idle_polls = idle_polls + 1 if loop.run_once() is None else 0
+        result = loop.run_once()
+        idle_polls = idle_polls + 1 if result is None else 0
+        consumed_events += result.events if result else 0
 
+    # guard against a vacuous pass: an empty replay proves nothing
+    assert consumed_events > 0, "fresh consumer group consumed nothing; replay never ran"
     after = online_state_hash(_scan_online())
     assert after == before, "replaying the CDC topics changed the online state"
 

@@ -102,17 +102,6 @@ locals {
 
 data "aws_caller_identity" "current" {}
 
-resource "aws_ecr_repository" "consumer" {
-  name                 = "${local.name_prefix}-cdc-consumer"
-  image_tag_mutability = "MUTABLE"
-
-  image_scanning_configuration {
-    scan_on_push = true
-  }
-
-  tags = merge(local.tags, { Name = "${local.name_prefix}-cdc-consumer" })
-}
-
 resource "aws_cloudwatch_log_group" "consumer" {
   name              = "/harbormaster/${var.environment}/cdc-consumer"
   retention_in_days = var.log_retention_days
@@ -304,10 +293,6 @@ resource "aws_ecs_service" "consumer" {
   }
 
   tags = local.tags
-}
-
-output "ecr_repository_url" {
-  value = aws_ecr_repository.consumer.repository_url
 }
 
 output "service_name" {

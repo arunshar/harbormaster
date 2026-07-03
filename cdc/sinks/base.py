@@ -10,8 +10,11 @@ Three sink roles, matching docs/phases/PHASE_2.md:
   state a function of the max-LSN event delivered per key, so any delivery
   order with any duplication converges to the same state (the property the
   gate-C4 tests assert).
-- EffectSink: side effects driven by applied changes only (Redis invalidation).
-  Not a state store; it has no guard of its own.
+- EffectSink: idempotent side effects fired for EVERY delivered data event,
+  applied or guard-rejected (Redis invalidation: a rejected redelivery is the
+  signal that a prior attempt may have died between the store write and the
+  invalidation, so re-firing is the safe direction). Not a state store; it has
+  no guard of its own, so its operations must be idempotent.
 - AuditSink: the transport-level trail. Every data event appends, redeliveries
   included, with the guard's verdict in `applied`.
 
@@ -46,7 +49,7 @@ class StateSink(Protocol):
 
 
 class EffectSink(Protocol):
-    def on_applied(self, event: ChangeEvent) -> None: ...
+    def on_change(self, event: ChangeEvent) -> None: ...
     def flush(self) -> None: ...
 
 

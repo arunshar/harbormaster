@@ -122,12 +122,76 @@ def test_delete_marker_is_canonical_regardless_of_arrival_order():
 # ------------------------------------------------------------- invariant 4
 
 
-def test_snapshot_then_identical_streamed_row_applies_once():
+def _mk(op: str, lsn: int, after=None, pk=None) -> ChangeEvent:
+    return ChangeEvent(
+        table="watchlist",
+        pk=pk or {"mmsi": 1},
+        op=op,
+        lsn=lsn,
+        ts_ms=0,
+        before=None,
+        after=after if after is not None else {"reason": "x"},
+    )
+
+
+def test_snapshot_writes_at_the_floor_and_stream_always_outranks():
+    """Snapshot rows apply at guard LSN 0: a streamed change whose transaction
+    spanned the snapshot consistent point (source.lsn below the snapshot LSN)
+    still applies, so no update is lost; a re-snapshot no-ops over existing
+    state and cannot clobber streamed data (invariant 4)."""
     store = MemorySink()
-    pk = {"mmsi": 1}
-    assert store.upsert("watchlist", pk, {"reason": "x"}, lsn=1000) is True  # op=r
-    assert store.upsert("watchlist", pk, {"reason": "x"}, lsn=1000) is False  # re-snapshot
-    assert store.upsert("watchlist", pk, {"reason": "y"}, lsn=2000) is True  # stream
+    applier = Applier(store=store, audit=MemoryAudit())
+
+    # snapshot seeds at floor 0 even though its real LSN is high
+    r1 = applier.apply_batch([_mk("r", 5000)], commit=lambda: None)
+    assert r1.applied == 1
+    assert store.final_state()['watchlist|{"mmsi":1}']["last_applied_lsn"] == 0
+
+    # a spanning-transaction stream event with a LOWER source.lsn still wins
+    r2 = applier.apply_batch([_mk("u", 4000, after={"reason": "y"})], commit=lambda: None)
+    assert r2.applied == 1
+    assert store.final_state()['watchlist|{"mmsi":1}']["row"]["reason"] == "y"
+
+    # a re-snapshot after the stream cannot clobber streamed state
+    r3 = applier.apply_batch([_mk("r", 9000)], commit=lambda: None)
+    assert r3.applied == 0 and r3.guard_rejected == 1
+    assert store.final_state()['watchlist|{"mmsi":1}']["row"]["reason"] == "y"
+
+    # and a duplicate snapshot into an otherwise-empty key applies exactly once
+    store2 = MemorySink()
+    a2 = Applier(store=store2, audit=MemoryAudit())
+    rr = a2.apply_batch([_mk("r", 5000), _mk("r", 5000)], commit=lambda: None)
+    assert rr.applied == 1 and rr.guard_rejected == 1
+
+
+def test_content_error_is_counted_audited_and_never_stalls_the_batch():
+    """A poison event (no key mapping can ever apply it) must not block the
+    partition: counted, audited applied=False, batch still commits."""
+
+    class PoisonStore(MemorySink):
+        def upsert(self, table, pk, row, lsn):
+            if pk == {"id": "367:"}:
+                raise ValueError("sanctions_flags id is not 'mmsi:regime'")
+            return super().upsert(table, pk, row, lsn)
+
+    poison = ChangeEvent(
+        table="sanctions_flags",
+        pk={"id": "367:"},
+        op="c",
+        lsn=7000,
+        ts_ms=0,
+        before=None,
+        after={"id": "367:"},
+    )
+    committed: list[int] = []
+    store, audit = PoisonStore(), MemoryAudit()
+    result = Applier(store=store, audit=audit).apply_batch(
+        [poison, _mk("c", 8000)], commit=lambda: committed.append(1)
+    )
+    assert result.content_errors == 1
+    assert result.applied == 1  # the healthy event behind the poison one landed
+    assert committed == [1]  # offsets advanced; no crash loop
+    assert [r["applied"] for r in audit.rows] == [False, True]
 
 
 # ------------------------------------------------- commit protocol (inv. 2)
@@ -177,11 +241,14 @@ def test_sink_failure_leaves_offsets_uncommitted_and_redelivery_converges():
 # ---------------------------------------------------------------- effects
 
 
-def test_effect_sink_fires_only_for_applied_events():
+def test_effect_sink_fires_for_every_delivered_data_event():
+    """Effects are idempotent and fire for guard-rejected redeliveries too: a
+    rejected redelivery is the signal a prior attempt may have died between
+    the store write and the invalidation."""
     fired: list[tuple[str, int]] = []
 
     class RecordingEffect:
-        def on_applied(self, event: ChangeEvent) -> None:
+        def on_change(self, event: ChangeEvent) -> None:
             fired.append((event.table, event.lsn))
 
         def flush(self) -> None:
@@ -190,8 +257,8 @@ def test_effect_sink_fires_only_for_applied_events():
     store = MemorySink()
     applier = Applier(store=store, effects=(RecordingEffect(),), audit=MemoryAudit())
     result = applier.apply_batch(_messages(), commit=lambda: None)
-    assert len(fired) == result.applied
-    assert (("watchlist", 2000) in fired) and fired.count(("watchlist", 2000)) == 1
+    assert len(fired) == result.events  # applied AND guard-rejected
+    assert fired.count(("watchlist", 2000)) == 2  # the redelivered dupe re-fires
 
 
 # ------------------------------------------------------------------- audit

@@ -21,7 +21,15 @@ class Settings(BaseSettings):
     version: str = "0.1.0"
 
     # storage (HITL queue + registry). Empty/unreachable -> in-memory backends.
+    # Either a full DSN, or the parts below (the ECS task definition injects
+    # HM_PG_USER / HM_PG_PASSWORD from the RDS-managed Secrets Manager secret
+    # and HM_PG_HOST from Terraform; the secret is JSON, never a DSN).
     pg_dsn: str = ""
+    pg_host: str = ""
+    pg_port: int = 5432
+    pg_db: str = "harbormaster"
+    pg_user: str = ""
+    pg_password: str = ""
 
     # Phase 2: the CDC-fed online watchlist read path. online_table empty keeps
     # the lookup disabled (Phase 1 behavior, golden outputs unchanged).
@@ -63,6 +71,22 @@ class Settings(BaseSettings):
     @property
     def vessel_v_max_mps(self) -> float:
         return self.vessel_v_max_kts * 0.514_444
+
+    def resolved_pg_dsn(self) -> str:
+        """The DSN to connect with: pg_dsn verbatim, else built from the parts
+        (password URL-quoted; RDS-managed passwords can contain reserved
+        characters). Empty when neither is configured -> memory backends."""
+        if self.pg_dsn:
+            return self.pg_dsn
+        if self.pg_host and self.pg_user and self.pg_password:
+            from urllib.parse import quote
+
+            return (
+                f"postgresql://{quote(self.pg_user, safe='')}:"
+                f"{quote(self.pg_password, safe='')}@"
+                f"{self.pg_host}:{self.pg_port}/{self.pg_db}"
+            )
+        return ""
 
 
 @lru_cache(maxsize=1)

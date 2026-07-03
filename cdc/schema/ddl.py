@@ -49,12 +49,14 @@ CREATE TABLE IF NOT EXISTS watchlist (
 
 # id is the deterministic "<mmsi>:<regime>" built by sanctions_flag_id(), so an
 # analyst re-adding the same regime upserts instead of duplicating, and the CDC
-# message key stays a single stable column.
+# message key stays a single stable column. The CHECK enforces the id shape at
+# the system of record, so no writer (this API or any out-of-band one) can mint
+# a "<mmsi>:" poison id the CDC key mapper would reject.
 _SANCTIONS = """
 CREATE TABLE IF NOT EXISTS sanctions_flags (
-    id          TEXT PRIMARY KEY,
+    id          TEXT PRIMARY KEY CHECK (id ~ '^[0-9]+:.'),
     mmsi        BIGINT NOT NULL,
-    regime      TEXT NOT NULL,
+    regime      TEXT NOT NULL CHECK (btrim(regime) <> ''),
     reference   TEXT NOT NULL DEFAULT '',
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -93,5 +95,10 @@ def ddl_sha256() -> str:
 
 
 def sanctions_flag_id(mmsi: int, regime: str) -> str:
-    """Deterministic sanctions_flags primary key: one row per (vessel, regime)."""
-    return f"{int(mmsi)}:{regime.strip().lower()}"
+    """Deterministic sanctions_flags primary key: one row per (vessel, regime).
+    A blank regime is refused: it would mint the "<mmsi>:" poison id the CDC
+    key mapper rejects (mirrored in serving/app/registry.py and the CHECK)."""
+    normalized = regime.strip().lower()
+    if not normalized:
+        raise ValueError("regime must not be blank")
+    return f"{int(mmsi)}:{normalized}"

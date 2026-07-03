@@ -123,7 +123,10 @@ resource "aws_db_instance" "this" {
   engine_version = "16"
   instance_class = var.instance_class
 
-  parameter_group_name = var.logical_replication ? aws_db_parameter_group.logical[0].name : null
+  # Explicit engine-default fallback, never null: null means "keep current" to
+  # the provider, which would leave the custom group attached (and block its
+  # destroy) when logical_replication flips back to false.
+  parameter_group_name = var.logical_replication ? aws_db_parameter_group.logical[0].name : "default.postgres16"
 
   allocated_storage = var.allocated_storage_gb
   storage_type      = "gp3"

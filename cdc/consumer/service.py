@@ -42,6 +42,10 @@ CDC_GUARD_REJECTED_TOTAL = Counter(
 CDC_PARSE_ERRORS_TOTAL = Counter(
     "hm_cdc_parse_errors_total", "Messages that failed envelope parsing (skipped, alarm-worthy)"
 )
+CDC_CONTENT_ERRORS_TOTAL = Counter(
+    "hm_cdc_content_errors_total",
+    "Events no sink mapping can apply (audited applied=false, skipped, alarm-worthy)",
+)
 CDC_BATCH_LATENCY = Histogram(
     "hm_cdc_batch_apply_seconds",
     "Batch apply latency (parse -> sinks -> commit)",
@@ -262,12 +266,15 @@ class ConsumerLoop:
                 CDC_EVENTS_TOTAL.labels(op=op).inc()
         CDC_APPLIED_TOTAL.inc(result.applied)
         CDC_GUARD_REJECTED_TOTAL.inc(result.guard_rejected)
+        if result.content_errors:
+            CDC_CONTENT_ERRORS_TOTAL.inc(result.content_errors)
         log.info(
             "cdc_batch_applied",
             events=result.events,
             applied=result.applied,
             guard_rejected=result.guard_rejected,
             tombstones=result.tombstones,
+            content_errors=result.content_errors,
         )
         return result
 

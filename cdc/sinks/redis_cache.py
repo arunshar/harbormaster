@@ -1,11 +1,17 @@
 """Redis invalidation sink (Phase 2, gate C5).
 
-Write-invalidate, not write-through: on any APPLIED change the consumer DELs
-the vessel's cache key and the scorer's next read-through (serving/app/
-watchlist.py) repopulates from DynamoDB. The DEL fires after the store write
-returned (the applier calls effects only for applied events), so a reader can
-never repopulate the cache from pre-change state. The TTL on the serving side
-is only the backstop for a lost invalidation.
+Write-invalidate, not write-through: on every DELIVERED change event the
+consumer DELs the vessel's cache key and the scorer's next read-through
+(serving/app/watchlist.py) repopulates from DynamoDB. Firing on guard-rejected
+redeliveries too (not just applied changes) is deliberate: DEL is idempotent,
+and a rejected redelivery is exactly the signal that a prior attempt may have
+died after the store write but before the invalidation.
+
+Honest staleness bound: cache-aside has an inherent race (a reader that missed
+just before the DEL can repopulate pre-change state just after it), and a DEL
+against a partitioned Redis can be lost outright. Both are bounded by the
+serving-side TTL (HM_WATCHLIST_CACHE_TTL_S, default 300 s); that bound, not
+"never stale", is the guarantee.
 
 The key rule is duplicated from serving/app/watchlist.py redis_key(); a test
 in cdc/tests/test_sinks.py holds the two identical.
@@ -40,12 +46,12 @@ def redis_key_for_event(event: ChangeEvent) -> str:
 
 
 class RedisInvalidationSink:
-    """EffectSink: DEL the vessel's online-status key on every applied change."""
+    """EffectSink: DEL the vessel's online-status key on every delivered change."""
 
     def __init__(self, *, client: Any) -> None:
         self._client = client  # needs only .delete(key)
 
-    def on_applied(self, event: ChangeEvent) -> None:
+    def on_change(self, event: ChangeEvent) -> None:
         key = redis_key_for_event(event)
         self._client.delete(key)
         log.debug("cdc_cache_invalidated", key=key, table=event.table, lsn=event.lsn)

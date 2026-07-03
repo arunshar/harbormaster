@@ -214,14 +214,16 @@ def test_redis_key_for_event_covers_all_three_tables():
     )
 
 
-def test_invalidation_fires_once_per_applied_event_only():
+def test_invalidation_fires_for_every_delivered_data_event():
     fake = FakeRedis()
     store = MemorySink()
     applier = Applier(
         store=store, effects=(RedisInvalidationSink(client=fake),), audit=MemoryAudit()
     )
     result = applier.apply_batch(_messages(), commit=lambda: None)
-    assert len(fake.deleted) == result.applied  # guard-rejected redelivery never DELs
+    # DEL is idempotent; guard-rejected redeliveries re-fire on purpose (the
+    # prior attempt may have died between the store write and the DEL)
+    assert len(fake.deleted) == result.events
     assert f"hm:online:{MMSI}" in fake.deleted
     assert "hm:online:367000001" in fake.deleted
 

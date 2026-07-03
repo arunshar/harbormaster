@@ -50,6 +50,28 @@ variable "lake_bucket_arn" {
   type = string
 }
 
+variable "rds_endpoint" {
+  description = "RDS Postgres endpoint; with the injected secret parts it forms the HM_ DSN."
+  type        = string
+  default     = ""
+}
+
+variable "cdc_online_enabled" {
+  description = <<-EOT
+    Phase 2: set true to point the scorer's WatchlistLookup at the online store
+    (HM_ONLINE_TABLE + HM_REDIS_URL env). Default false keeps the Phase 1 task
+    definition byte-identical (lookup disabled, goldens unchanged).
+  EOT
+  type        = bool
+  default     = false
+}
+
+variable "redis_url" {
+  description = "Redis URL for the watchlist cache (Phase 2; empty = no cache layer)."
+  type        = string
+  default     = ""
+}
+
 variable "rds_secret_arn" {
   type    = string
   default = ""
@@ -197,6 +219,27 @@ resource "aws_iam_role_policy_attachment" "execution" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
+# ECS injects the HM_PG_USER / HM_PG_PASSWORD secrets at task start using the
+# EXECUTION role (not the task role), so it needs to read the RDS secret.
+data "aws_iam_policy_document" "execution_secrets" {
+  count = var.rds_secret_arn != "" ? 1 : 0
+
+  statement {
+    sid       = "ReadPgSecretForInjection"
+    effect    = "Allow"
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = [var.rds_secret_arn]
+  }
+}
+
+resource "aws_iam_role_policy" "execution_secrets" {
+  count = var.rds_secret_arn != "" ? 1 : 0
+
+  name   = "${local.name_prefix}-serving-exec-secrets"
+  role   = aws_iam_role.execution.id
+  policy = data.aws_iam_policy_document.execution_secrets[0].json
+}
+
 # ---- IAM: task role (app permissions) -------------------------------------
 
 resource "aws_iam_role" "task" {
@@ -270,11 +313,23 @@ resource "aws_ecs_task_definition" "serving" {
           protocol      = "tcp"
         }
       ]
-      environment = [
-        { name = "AWS_REGION", value = var.aws_region },
-        { name = "FEAST_ONLINE_TABLE", value = var.feast_table_name },
-        { name = "DB_SECRET_ARN", value = var.rds_secret_arn },
-        { name = "PORT", value = tostring(var.container_port) },
+      # The app reads HM_-prefixed settings (serving/app/config.py). The DSN is
+      # assembled in-app from HM_PG_HOST + the two secret parts injected below;
+      # the RDS-managed secret is JSON ({username,password}), never a DSN.
+      environment = concat(
+        [
+          { name = "AWS_REGION", value = var.aws_region },
+          { name = "PORT", value = tostring(var.container_port) },
+          { name = "HM_PG_HOST", value = var.rds_endpoint },
+        ],
+        var.cdc_online_enabled ? [
+          { name = "HM_ONLINE_TABLE", value = var.feast_table_name },
+          { name = "HM_REDIS_URL", value = var.redis_url },
+        ] : []
+      )
+      secrets = [
+        { name = "HM_PG_USER", valueFrom = "${var.rds_secret_arn}:username::" },
+        { name = "HM_PG_PASSWORD", valueFrom = "${var.rds_secret_arn}:password::" },
       ]
       logConfiguration = {
         logDriver = "awslogs"

@@ -98,6 +98,59 @@ resource "aws_security_group" "slot_lag" {
   tags = merge(local.tags, { Name = "${local.name_prefix}-cdc-slotlag-sg" })
 }
 
+# The Lambda sits in NAT-less private subnets (the platform's no-NAT cost
+# posture), and the network module provides only S3/DynamoDB GATEWAY endpoints,
+# so Secrets Manager and CloudWatch need INTERFACE endpoints or the Lambda can
+# reach neither. Two endpoints ~ $0.02/hr, inside enable_phase2 demo windows
+# only; still far cheaper than a NAT gateway.
+resource "aws_security_group" "vpce" {
+  name        = "${local.name_prefix}-cdc-vpce-sg"
+  description = "HTTPS to the Secrets Manager / CloudWatch interface endpoints"
+  vpc_id      = var.vpc_id
+
+  ingress {
+    description     = "443 from the slot-lag Lambda"
+    from_port       = 443
+    to_port         = 443
+    protocol        = "tcp"
+    security_groups = [aws_security_group.slot_lag.id]
+  }
+
+  egress {
+    description = "all outbound"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = merge(local.tags, { Name = "${local.name_prefix}-cdc-vpce-sg" })
+}
+
+data "aws_region" "current" {}
+
+resource "aws_vpc_endpoint" "secretsmanager" {
+  vpc_id              = var.vpc_id
+  service_name        = "com.amazonaws.${data.aws_region.current.name}.secretsmanager"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = var.private_subnet_ids
+  security_group_ids  = [aws_security_group.vpce.id]
+  private_dns_enabled = true
+
+  tags = merge(local.tags, { Name = "${local.name_prefix}-cdc-vpce-secrets" })
+}
+
+resource "aws_vpc_endpoint" "monitoring" {
+  vpc_id              = var.vpc_id
+  service_name        = "com.amazonaws.${data.aws_region.current.name}.monitoring"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = var.private_subnet_ids
+  security_group_ids  = [aws_security_group.vpce.id]
+  private_dns_enabled = true
+
+  tags = merge(local.tags, { Name = "${local.name_prefix}-cdc-vpce-monitoring" })
+}
+
 data "aws_iam_policy_document" "lambda_assume" {
   statement {
     effect  = "Allow"

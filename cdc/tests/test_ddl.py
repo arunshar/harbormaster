@@ -45,15 +45,26 @@ def test_ddl_sha256_matches_the_pinned_expectation():
     )
 
 
-def test_sanctions_flag_id_is_deterministic_and_normalized():
+def test_sanctions_flag_id_is_deterministic_normalized_and_refuses_blank():
     assert ddl.sanctions_flag_id(367000003, "OFAC") == "367000003:ofac"
     assert ddl.sanctions_flag_id(367000003, "  ofac ") == "367000003:ofac"
+    # a blank regime would mint the "<mmsi>:" poison id the CDC key mapper
+    # rejects; every id producer refuses it, and the DDL CHECK backstops it
+    import pytest
+
+    with pytest.raises(ValueError):
+        ddl.sanctions_flag_id(367000003, "   ")
+    assert "CHECK (id ~ '^[0-9]+:.')" in ddl.canonical_ddl()
 
 
 def test_serving_registry_id_helper_stays_in_sync():
     # serving/app/registry.py duplicates the id rule so the wheel does not import
     # cdc at runtime; this test is the drift guard.
+    import pytest
+
     from app.registry import _sanctions_flag_id
 
     for mmsi, regime in ((1, "OFAC"), (999_999_999, " eu "), (367000003, "UN")):
         assert _sanctions_flag_id(mmsi, regime) == ddl.sanctions_flag_id(mmsi, regime)
+    with pytest.raises(ValueError):
+        _sanctions_flag_id(1, " ")

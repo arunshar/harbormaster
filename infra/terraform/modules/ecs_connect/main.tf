@@ -2,8 +2,8 @@
 #
 # Debezium Kafka Connect on Fargate (Phase 2, gate C7): the same
 # quay.io/debezium/connect image as the local plane, plus the aws-msk-iam-auth
-# jar (built by cdc/connect/Dockerfile, pushed to the ECR repo this module
-# creates). Worker state (configs/offsets/status) lives in MSK topics, so the
+# jar (built by cdc/connect/Dockerfile, pushed to the ECR repo envs/base
+# creates behind enable_phase2). Worker state (configs/offsets/status) lives in MSK topics, so the
 # service is stateless and demo-window disposable; a connector restart resumes
 # from the replication slot, which is exactly acceptance test 2.9(c).
 #
@@ -116,17 +116,6 @@ locals {
   }
 }
 
-resource "aws_ecr_repository" "connect" {
-  name                 = "${local.name_prefix}-cdc-connect"
-  image_tag_mutability = "MUTABLE"
-
-  image_scanning_configuration {
-    scan_on_push = true
-  }
-
-  tags = merge(local.tags, { Name = "${local.name_prefix}-cdc-connect" })
-}
-
 resource "aws_cloudwatch_log_group" "connect" {
   name              = "/harbormaster/${var.environment}/cdc-connect"
   retention_in_days = var.log_retention_days
@@ -208,6 +197,19 @@ data "aws_iam_policy_document" "task" {
       "kafka-cluster:DescribeGroup",
     ]
     resources = [var.msk_group_wildcard_arn]
+  }
+
+  statement {
+    sid    = "EcsExecSsmChannel"
+    effect = "Allow"
+    actions = [
+      "ssmmessages:CreateControlChannel",
+      "ssmmessages:CreateDataChannel",
+      "ssmmessages:OpenControlChannel",
+      "ssmmessages:OpenDataChannel",
+    ]
+    # ssmmessages actions do not support resource-level scoping
+    resources = ["*"]
   }
 }
 
@@ -310,6 +312,11 @@ resource "aws_ecs_service" "connect" {
   task_definition = aws_ecs_task_definition.connect.arn
   desired_count   = var.desired_count
 
+  # The documented connector-registration path is `aws ecs execute-command`
+  # into this task (the REST port is in-VPC only); exec needs this flag plus
+  # the ssmmessages permissions on the task role.
+  enable_execute_command = true
+
   capacity_provider_strategy {
     capacity_provider = "FARGATE_SPOT"
     weight            = 1
@@ -324,10 +331,6 @@ resource "aws_ecs_service" "connect" {
   }
 
   tags = local.tags
-}
-
-output "ecr_repository_url" {
-  value = aws_ecr_repository.connect.repository_url
 }
 
 output "service_name" {

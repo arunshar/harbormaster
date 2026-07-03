@@ -116,6 +116,16 @@ def test_registry_endpoint_input_validation():
         )
         # non-MMSI path values are rejected by the Path constraint
         assert c.put("/v1/registry/watchlist/9999999991", json={"reason": "x"}).status_code == 422
+        # blank-after-strip values are rejected: they would mint poison CDC ids
+        assert c.put(f"/v1/registry/sanctions/{MMSI}", json={"regime": "  "}).status_code == 422
+        assert c.put(f"/v1/registry/watchlist/{MMSI}", json={"reason": "  "}).status_code == 422
+        # unbounded strings are rejected: a DynamoDB item caps at 400 KB
+        assert (
+            c.put(
+                f"/v1/registry/watchlist/{MMSI}", json={"reason": "x" * 5000}
+            ).status_code
+            == 422
+        )
 
 
 # ---------------------------------------------------------- postgres (opt-in)

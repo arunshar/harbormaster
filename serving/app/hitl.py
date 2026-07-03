@@ -165,9 +165,10 @@ class HitlQueue:
 
     @classmethod
     async def connect(cls, settings: Settings) -> HitlQueue:
-        if settings.pg_dsn:
+        dsn = settings.resolved_pg_dsn()
+        if dsn:
             try:
-                backend: HitlBackend = await PostgresHitlBackend.connect(settings.pg_dsn)
+                backend: HitlBackend = await PostgresHitlBackend.connect(dsn)
                 log.info("hitl_backend", kind="postgres")
                 return cls(backend)
             except Exception as exc:  # asyncpg missing or DB unreachable -> degrade to memory
