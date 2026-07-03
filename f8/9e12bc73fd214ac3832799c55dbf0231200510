@@ -1,0 +1,21 @@
+infra/lambda/teardown/handler.py
+  s_c739fb2c80ca09::t_ced12178da0c1a 354,380
+infra/lambda/teardown/test_handler.py
+  s_c739fb2c80ca09::t_facb586944f548 129,189,202,321,324,327,329
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "f89e12bc73fd214ac3832799c55dbf0231200510",
+  "prompts": {},
+  "sessions": {
+    "s_c739fb2c80ca09": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fd41cdbb-bae6-4673-876e-f2e017957fa4",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
