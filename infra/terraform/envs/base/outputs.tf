@@ -90,3 +90,18 @@ output "rds_master_secret_arn" {
   description = "Secrets Manager ARN of the RDS-managed master credentials (Phase 1)."
   value       = one(module.rds[*].master_user_secret_arn)
 }
+
+output "serving_api_endpoint" {
+  description = "API Gateway HTTP API invoke URL for the scorer (Phase 1)."
+  value       = one(module.apigw[*].api_endpoint)
+}
+
+output "serving_ecr_repository_url" {
+  description = "ECR repo URL for the serving image (Phase 1)."
+  value       = one(module.ecs_serving[*].ecr_repository_url)
+}
+
+output "serving_cloudmap_dns" {
+  description = "In-VPC DNS name for the scorer (Phase 1)."
+  value       = one(module.ecs_serving[*].cloudmap_dns_name)
+}

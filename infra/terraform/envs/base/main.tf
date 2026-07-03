@@ -146,3 +146,48 @@ module "rds" {
 
   tags = local.common_tags
 }
+
+module "ecs_cluster" {
+  count  = var.enable_phase1 ? 1 : 0
+  source = "../../modules/ecs_cluster"
+
+  project     = var.project
+  environment = var.environment
+  tags        = local.common_tags
+}
+
+module "ecs_serving" {
+  count  = var.enable_phase1 ? 1 : 0
+  source = "../../modules/ecs_serving"
+
+  project     = var.project
+  environment = var.environment
+  aws_region  = var.aws_region
+
+  vpc_id             = module.network.vpc_id
+  private_subnet_ids = module.network.private_subnet_ids
+
+  cluster_arn  = module.ecs_cluster[0].cluster_arn
+  cluster_name = module.ecs_cluster[0].cluster_name
+
+  feast_table_name = module.state_stores.feast_online_table_name
+  lake_bucket_arn  = "arn:aws:s3:::${module.state_stores.lake_bucket_name}"
+  rds_secret_arn   = module.rds[0].master_user_secret_arn
+
+  tags = local.common_tags
+}
+
+module "apigw" {
+  count  = var.enable_phase1 ? 1 : 0
+  source = "../../modules/apigw"
+
+  project     = var.project
+  environment = var.environment
+
+  vpc_id             = module.network.vpc_id
+  private_subnet_ids = module.network.private_subnet_ids
+
+  cloudmap_service_arn = module.ecs_serving[0].cloudmap_service_arn
+
+  tags = local.common_tags
+}
