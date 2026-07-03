@@ -149,13 +149,22 @@ def build_applier(cfg: ConsumerConfig) -> Applier:  # pragma: no cover - needs [
     if not cfg.online_table:
         raise ValueError("HM_ONLINE_TABLE is required (the DynamoDB online store)")
 
+    # Drill-only escape hatch (war story P2): HM_DRILL_NO_GUARD=1 strips the
+    # LSN condition so redelivery visibly double-applies. Refused without
+    # HM_DRILL=1 so it can never be reached by ordinary misconfiguration.
+    no_guard = os.environ.get("HM_DRILL_NO_GUARD", "").strip().lower() in ("1", "true")
+    if no_guard and os.environ.get("HM_DRILL", "").strip() != "1":
+        raise ValueError("HM_DRILL_NO_GUARD requires HM_DRILL=1 (drill-only flag)")
+
     import boto3
 
     ddb_kwargs: dict[str, Any] = {"region_name": cfg.aws_region}
     if cfg.ddb_endpoint_url:
         ddb_kwargs["endpoint_url"] = cfg.ddb_endpoint_url
     store = OnlineStoreSink(
-        client=boto3.client("dynamodb", **ddb_kwargs), table_name=cfg.online_table
+        client=boto3.client("dynamodb", **ddb_kwargs),
+        table_name=cfg.online_table,
+        guard=not no_guard,
     )
 
     effects = []

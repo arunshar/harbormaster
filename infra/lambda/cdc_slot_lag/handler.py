@@ -63,14 +63,12 @@ def _fetch_rows() -> list:
         conn.close()
 
 
-def _publish(slots) -> None:
-    import boto3
-
-    cw = boto3.client("cloudwatch")
-    metric_data = []
+def metric_data(slots) -> list[dict]:
+    """The CloudWatch MetricData payload for one sample. Pure; unit-tested."""
+    out: list[dict] = []
     for s in slots:
         dims = [{"Name": "SlotName", "Value": s.slot_name}]
-        metric_data.append(
+        out.append(
             {
                 "MetricName": "ReplicationSlotLagBytes",
                 "Dimensions": dims,
@@ -78,7 +76,7 @@ def _publish(slots) -> None:
                 "Unit": "Bytes",
             }
         )
-        metric_data.append(
+        out.append(
             {
                 "MetricName": "SlotActive",
                 "Dimensions": dims,
@@ -86,8 +84,15 @@ def _publish(slots) -> None:
                 "Unit": "Count",
             }
         )
-    if metric_data:
-        cw.put_metric_data(Namespace=METRIC_NAMESPACE, MetricData=metric_data)
+    return out
+
+
+def _publish(slots) -> None:
+    import boto3
+
+    data = metric_data(slots)
+    if data:
+        boto3.client("cloudwatch").put_metric_data(Namespace=METRIC_NAMESPACE, MetricData=data)
 
 
 def handler(event, context):

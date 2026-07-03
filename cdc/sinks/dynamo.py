@@ -119,20 +119,24 @@ def _is_conditional_check_failure(exc: Exception) -> bool:
 
 class OnlineStoreSink:
     """StateSink over DynamoDB. The boto3 client is injected (endpoint_url from
-    config points it at DynamoDB Local on the kind stack)."""
+    config points it at DynamoDB Local on the kind stack).
 
-    def __init__(self, *, client: Any, table_name: str) -> None:
+    guard=False strips the ConditionExpression: DRILL-ONLY (war story P2 shows
+    what at-least-once delivery does to an unguarded sink). The consumer
+    refuses to build it unless HM_DRILL=1 (cdc/consumer/service.py)."""
+
+    def __init__(self, *, client: Any, table_name: str, guard: bool = True) -> None:
         self._client = client
         self._table = table_name
+        self._guard = guard
 
     def _put(self, item: dict[str, Any], lsn: int) -> bool:
+        kwargs: dict[str, Any] = {"TableName": self._table, "Item": item}
+        if self._guard:
+            kwargs["ConditionExpression"] = CONDITION_EXPRESSION
+            kwargs["ExpressionAttributeValues"] = {":lsn": {"N": str(int(lsn))}}
         try:
-            self._client.put_item(
-                TableName=self._table,
-                Item=item,
-                ConditionExpression=CONDITION_EXPRESSION,
-                ExpressionAttributeValues={":lsn": {"N": str(int(lsn))}},
-            )
+            self._client.put_item(**kwargs)
         except Exception as exc:
             if _is_conditional_check_failure(exc):
                 return False  # stale or duplicate delivery; the guard held
