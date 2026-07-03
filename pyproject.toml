@@ -23,6 +23,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=8", "pytest-asyncio>=0.23", "httpx>=0.27", "ruff>=0.5"]
 postgres = ["asyncpg>=0.29"]
+ingestor = ["boto3>=1.34"]
 
 # Map the in-repo source dirs onto importable top-level packages so the
 # vendored GeoTrace modules keep their `from app.* import ...` paths unchanged
@@ -35,7 +36,7 @@ exclude = ["**/tests", "**/tests/**", "**/test_*.py"]
 [tool.pytest.ini_options]
 pythonpath = ["serving", "streaming"]
 asyncio_mode = "auto"
-testpaths = ["serving/tests", "streaming/features/tests", "streaming/replay/tests"]
+testpaths = ["serving/tests", "streaming/features/tests", "streaming/replay/tests", "streaming/ingestor/tests"]
 markers = [
   "postgres: integration test that needs a live Postgres (set HM_TEST_PG_DSN to run)",
 ]
