@@ -81,10 +81,22 @@ make apply   # type yes
 No Terraform resource for the job itself (deliberate, gate 3.2): submit it
 directly via the CLI, Arun-run.
 
+Package and upload the job first (scripted, `scripts/package_lake_for_emr.sh`;
+the venv build needs Docker running since it packs linux/amd64 wheels inside
+the real EMR base image, matched to the module's `release_label`):
+
+```
+make lake-package-venv   # entrypoint + lake_pkg.zip + pyspark_venv.tar.gz
+bash scripts/package_lake_for_emr.sh --with-venv --upload "s3://${LAKE_BUCKET}/code"
+```
+
+Then submit:
+
 ```
 APP_ID=$(terraform -chdir=infra/terraform/envs/base output -raw emr_backfill_application_id)
 ROLE_ARN=$(terraform -chdir=infra/terraform/envs/base output -raw emr_backfill_execution_role_arn)
 LAKE_BUCKET=$(terraform -chdir=infra/terraform/envs/base output -raw lake_bucket_name)
+CODE="s3://${LAKE_BUCKET}/code"
 
 aws emr-serverless start-job-run --region us-east-1 \
   --application-id "$APP_ID" \
@@ -92,23 +104,21 @@ aws emr-serverless start-job-run --region us-east-1 \
   --name hm-lake-backfill-demo \
   --job-driver '{
     "sparkSubmit": {
-      "entryPoint": "s3://'"$LAKE_BUCKET"'/code/lake_backfill_job.py",
+      "entryPoint": "'"$CODE"'/lake_backfill_job.py",
       "entryPointArguments": [
         "s3://'"$LAKE_BUCKET"'/raw/marinecadastre/marinecadastre_raw.parquet",
         "glue",
         "s3://'"$LAKE_BUCKET"'/iceberg"
-      ]
+      ],
+      "sparkSubmitParameters": "--py-files '"$CODE"'/lake_pkg.zip --archives '"$CODE"'/pyspark_venv.tar.gz#environment --conf spark.emr-serverless.driverEnv.PYSPARK_DRIVER_PYTHON=./environment/bin/python --conf spark.emr-serverless.driverEnv.PYSPARK_PYTHON=./environment/bin/python --conf spark.executorEnv.PYSPARK_PYTHON=./environment/bin/python"
     }
   }'
 ```
 
-(`lake/backfill/job.py` needs to be uploaded to `s3://$LAKE_BUCKET/code/` as
-its own step, along with a PySpark-compatible packaging of `lake/` and its
-`lake` extra dependencies; scripted the same way `make flink-package` zips
-`streaming/flink` for Managed Flink. Not yet scripted here, since gate 3.2's
-finding was that this Mac cannot exercise PySpark locally to validate the
-packaging step; write the packaging script at demo time against the real
-EMR Serverless Spark version.)
+(The packaging is validated locally as far as a JVM-less Mac allows: the
+py-files zip is proven importable via zipimport and the upload command
+shapes are tested against a stubbed aws CLI; the venv archive itself can
+only prove out against a real EMR job run, expect possible iteration here.)
 
 ### 1.4 Watch it run, then verify in Athena
 
