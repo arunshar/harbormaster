@@ -13,5 +13,22 @@
   "golden_manifest_entry": {
     "note": "save(Path(d), 0, b'golden-example-checkpoint-bytes', meta=..., now=lambda: 1719878400.0)",
     "line": "{\"meta\": {\"config_hash\": \"cfg0001\", \"data_fingerprint\": \"fp0001\", \"git_sha\": \"deadbeef\", \"mirror_synthetic_anomaly_version\": \"v1\", \"wandb_run_id\": \"wandb-golden-0001\"}, \"path\": \"step_0000000/188d0609060a35e1.bin\", \"sha\": \"188d0609060a35e1\", \"step\": 0, \"ts\": 1719878400.0}"
+  },
+  "promotion_state_machine": {
+    "note": "run_promotion with PASSING_GATE + CLEAN_SHADOW; clean_run never burns; rollback_run_burns_at_25 burns exactly at canary weight 25",
+    "clean_run": [
+      {"stage": "gate", "action": "pass"},
+      {"stage": "shadow", "action": "pass"},
+      {"stage": "canary_5", "action": "advance"},
+      {"stage": "canary_25", "action": "advance"},
+      {"stage": "canary_50", "action": "advance"},
+      {"stage": "canary_100", "action": "advance"}
+    ],
+    "rollback_run_burns_at_25": [
+      {"stage": "gate", "action": "pass"},
+      {"stage": "shadow", "action": "pass"},
+      {"stage": "canary_5", "action": "advance"},
+      {"stage": "canary_25", "action": "revert"}
+    ]
   }
 }
