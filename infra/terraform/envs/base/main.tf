@@ -444,3 +444,24 @@ module "sagemaker_pidpm" {
 
   tags = local.common_tags
 }
+
+# Phase 4 (gate 4.6): the drift-alerting plane. Depends only on Phase 0 (the
+# lake bucket + the finops SNS topic), not Phase 1/3, so it is gated purely
+# on enable_phase4 with no enable_phase1 requirement, unlike Phase 2/3. NOT
+# applied during the 2026-07-04 sprint: authored, validate + plan-checksum
+# verified only, per docs/phases/PHASE_4.md.
+module "drift_watch" {
+  count  = var.enable_phase4 ? 1 : 0
+  source = "../../modules/drift_watch"
+
+  project     = var.project
+  environment = var.environment
+
+  lake_bucket_arn  = "arn:aws:s3:::${module.state_stores.lake_bucket_name}"
+  lake_bucket_name = module.state_stores.lake_bucket_name
+  sns_topic_arn    = module.finops.sns_topic_arn
+
+  lambda_source_dir = "${path.module}/../../../lambda/drift_watch/build"
+
+  tags = local.common_tags
+}

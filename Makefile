@@ -192,3 +192,12 @@ lake-package-venv:    ## lake-package + linux/amd64 venv archive via Docker (pul
 
 drift-smoke:          ## gate 4.1: check_input_drift against the committed fixture pair
 	$(PY) scripts/drift_smoke.py
+
+DRIFT_LAMBDA_BUILD := infra/lambda/drift_watch/build
+
+drift-lambda-package: ## gate 4.6: vendor mlops/drift.py + pandas/pyarrow into the drift-watch Lambda build dir
+	rm -rf $(DRIFT_LAMBDA_BUILD) && mkdir -p $(DRIFT_LAMBDA_BUILD)/mlops
+	cp infra/lambda/drift_watch/handler.py $(DRIFT_LAMBDA_BUILD)/
+	cp mlops/__init__.py mlops/drift.py $(DRIFT_LAMBDA_BUILD)/mlops/
+	$(PY) -m pip install --quiet --target $(DRIFT_LAMBDA_BUILD) -r infra/lambda/drift_watch/requirements.txt
+	@echo "packaged $(DRIFT_LAMBDA_BUILD); terraform archives it via modules/drift_watch (not applied this sprint)"
