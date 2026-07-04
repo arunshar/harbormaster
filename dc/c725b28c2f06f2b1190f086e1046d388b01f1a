@@ -1,0 +1,53 @@
+mlops/pidpm_container/server.py
+  s_a2e22b769416de::t_3100b624d38d30 1-50
+serving/app/metrics.py
+  s_a2e22b769416de::t_8a599d8a66ca83 30-35
+serving/tests/test_gap_detector_pidpm.py
+  s_a2e22b769416de::t_3c94a9fe57f433 1-66
+serving/app/config.py
+  s_a2e22b769416de::t_728d1ef69f9958 71-76
+serving/app/agents/gap_detector.py
+  s_a2e22b769416de::t_f76ed5277a7538 16-23,30
+  s_a2e22b769416de::t_afe8aca31f97cf 58-64,67
+  s_a2e22b769416de::t_eca1a064b92677 123-127
+serving/tests/test_pidpm_client.py
+  s_a2e22b769416de::t_a192880b30e164 1-163
+serving/app/pidpm_client.py
+  s_a2e22b769416de::t_4792c9ceb60d0c 103-105
+  s_a2e22b769416de::t_9d751844638f4f 1-102,106-173
+infra/terraform/modules/sagemaker_pidpm/main.tf
+  s_a2e22b769416de::t_545f0de57c3f78 1-258
+infra/terraform/envs/base/main.tf
+  s_a2e22b769416de::t_69b6c95c65f9bb 419-437
+infra/terraform/envs/base/outputs.tf
+  s_a2e22b769416de::t_54c8b1277083eb 160-164
+serving/tests/test_orchestrator_pidpm_wiring.py
+  s_a2e22b769416de::t_310b97b69baace 1-49
+mlops/pidpm_container/Dockerfile
+  s_a2e22b769416de::t_203343f85bea47 1-36
+serving/app/orchestrator.py
+  s_a2e22b769416de::t_70e28ea4b158bf 28
+  s_a2e22b769416de::t_77e5a4efcf1232 105,110
+  s_a2e22b769416de::t_b6caf1a64ed2de 61-75
+  s_a2e22b769416de::t_cdca9104ea3890 54
+infra/terraform/envs/base/variables.tf
+  s_a2e22b769416de::t_4f313cf49c9166 125-146
+docs/phases/PHASE_3.md
+  s_a2e22b769416de::t_2b76dda2f74f1b 77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "dcc725b28c2f06f2b1190f086e1046d388b01f1a",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
