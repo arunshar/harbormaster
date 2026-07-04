@@ -1,0 +1,24 @@
+infra/terraform/envs/base/variables.tf
+  s_a2e22b769416de::t_75f04f84305739 104-124
+infra/terraform/envs/base/terraform.tfvars.example
+  s_a2e22b769416de::t_c77d2d9f86eee8 51-57
+docs/phases/PHASE_3.md
+  s_a2e22b769416de::t_21dd9c4733b1c4 1-62,64-119
+  s_a2e22b769416de::t_c9f29105ba1acd 63
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "8c32a4cf608b722eccd9954f3a8b6c95f5326f63",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
