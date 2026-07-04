@@ -1,0 +1,27 @@
+streaming/flink/transforms.py
+  s_a2e22b769416de::t_f1498cde549ae5 78,85-90,94
+streaming/flink/tests/test_transforms.py
+  s_a2e22b769416de::t_e2586d9383ece6 84-89,91-94
+streaming/flink/job.py
+  s_a2e22b769416de::t_527d5bbff08028 263-269,271-273,275-276,283-288
+  s_a2e22b769416de::t_9addc093fd0095 311
+  s_a2e22b769416de::t_e31a3b4d0f1b2f 228,235-240,244
+  s_a2e22b769416de::t_b5c44bb49294c7 326-328,330,336
+  s_a2e22b769416de::t_0eb59877730ad4 289-290
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "2b787f21d711ac974d38d909a905d5095ecfc340",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
