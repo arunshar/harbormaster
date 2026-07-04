@@ -1,0 +1,42 @@
+mlops/tests/test_registry.py
+  s_a2e22b769416de::t_ab738e41f046c1 1-83
+  s_a2e22b769416de::t_552fa83dba0b87 84-91
+mlops/registry.py
+  s_a2e22b769416de::t_16aa3fb7c0dbec 1-54,57-90
+  s_a2e22b769416de::t_29cee2afb2f83b 55-56
+mlops/fixtures/expectations.json
+  s_a2e22b769416de::t_7f9e10d652e05f 16-32
+docs/phases/PHASE_3.md
+  s_a2e22b769416de::t_3852d067927478 79
+mlops/tests/test_holdout_gate.py
+  s_a2e22b769416de::t_ea97f2dee0545f 1-75,77-117,121,123-127,131-191
+  s_a2e22b769416de::t_af532eaa2e58af 76
+  s_a2e22b769416de::t_bb6091e993b454 118-120,122,128-130
+mlops/tests/test_shadow_diff.py
+  s_a2e22b769416de::t_de4bac6530d0b0 1-41
+mlops/shadow_diff.py
+  s_a2e22b769416de::t_a5afcc16820b7f 1-44
+mlops/holdout_gate.py
+  s_a2e22b769416de::t_3ceb90c643cf94 1-134
+mlops/promote.py
+  s_a2e22b769416de::t_a93659ce500584 1-72
+mlops/tests/test_promote.py
+  s_a2e22b769416de::t_d8b7d4030568d6 1-146
+  s_a2e22b769416de::t_9c0d99db3a688f 147-150
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "497c9ffe2cd179b00d9189703f55f196f85abe3c",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
