@@ -1,0 +1,29 @@
+mlops/tests/test_drift.py
+  s_a2e22b769416de::t_07d75169fa84f7 19-25
+  s_a2e22b769416de::t_04f327670393db 1-18,26-104
+Makefile
+  s_a2e22b769416de::t_cff3b041f25943 15
+  s_a2e22b769416de::t_679e06f7406acc 186-190
+scripts/drift_smoke.py
+  s_a2e22b769416de::t_cbdb85d468ec3e 1-38
+mlops/drift.py
+  s_a2e22b769416de::t_34455ed8df95aa 1-159
+mlops/fixtures/expectations.json
+  s_a2e22b769416de::t_f87b927c416da1 33-41
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "bc8504156d5fa00c1a72c8e07779f93d4d81d625",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
