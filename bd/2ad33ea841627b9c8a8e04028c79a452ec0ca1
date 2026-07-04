@@ -6,6 +6,7 @@ scripts/drill_l3_drift_classification.py
   s_a2e22b769416de::t_da657779ca7e31 173
 PLATFORM_WAR_STORIES.md
   s_a2e22b769416de::t_9213d669b132ca 174,343-345,347-353,355-357,359-362,364
+  s_a2e22b769416de::t_3c994c9d8269e2 342,346,354,358,363,365
 tests/e2e/test_phase4_helpers.py
   s_a2e22b769416de::t_9dd31b0f4952f6 1-39
 scripts/drill_l4_reward_hacking.py
