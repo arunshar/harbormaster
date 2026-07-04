@@ -105,8 +105,13 @@ def simplify_track(track: pd.DataFrame, *, epsilon_m: float) -> pd.DataFrame:
     x, y = _equirectangular_xy(
         track["lat"].to_numpy(), track["lon"].to_numpy(), lat0=lat0, lon0=lon0
     )
-    kept_xy = set(rdp_simplify(list(zip(x, y, strict=True)), epsilon_m))
-    mask = [(xi, yi) in kept_xy for xi, yi in zip(x, y, strict=True)]
+    # zip()'s strict= keyword needs Python 3.10+; EMR Serverless's emr-7.2.0
+    # Spark image ships Python 3.9, which raises "TypeError: zip() takes no
+    # keyword arguments" (a real, first-live-EMR-run finding, W2 sprint
+    # window, 2026-07-04). x and y come from the same _equirectangular_xy
+    # call and are always equal length, so plain zip() is equivalent here.
+    kept_xy = set(rdp_simplify(list(zip(x, y)), epsilon_m))  # noqa: B905
+    mask = [(xi, yi) in kept_xy for xi, yi in zip(x, y)]  # noqa: B905
     return track.loc[mask].copy()
 
 
@@ -154,10 +159,13 @@ def cluster_waypoints(simplified: pd.DataFrame, *, min_cluster_size: int = 2) ->
 
     # attach node_id back onto the working frame so derive_edges can walk each
     # vessel's ordered sequence of node assignments
+    # No strict= (Python 3.9 on EMR, see simplify_track's comment); nodes is
+    # built directly from the sorted unique cluster labels, so the two are
+    # always equal length.
     label_to_node_id = {
         cluster_label: node_id
-        for cluster_label, node_id in zip(
-            sorted(clustered["_cluster"].unique()), nodes["node_id"], strict=True
+        for cluster_label, node_id in zip(  # noqa: B905
+            sorted(clustered["_cluster"].unique()), nodes["node_id"]
         )
     }
     simplified.attrs["_cluster_labels"] = working["_cluster"].to_numpy()
@@ -186,7 +194,7 @@ def derive_edges(simplified: pd.DataFrame, nodes: pd.DataFrame) -> pd.DataFrame:
         ]
         # collapse consecutive repeats (lingering near one waypoint is not a transit)
         collapsed = [n for i, n in enumerate(node_seq) if i == 0 or n != node_seq[i - 1]]
-        for a, b in zip(collapsed, collapsed[1:], strict=False):
+        for a, b in zip(collapsed, collapsed[1:]):  # noqa: B905 (Python 3.9 on EMR)
             edge_counts[(a, b)] = edge_counts.get((a, b), 0) + 1
 
     if not edge_counts:

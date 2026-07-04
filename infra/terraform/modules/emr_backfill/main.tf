@@ -151,6 +151,28 @@ data "aws_iam_policy_document" "job_execution" {
   }
 
   statement {
+    # The job's own entry point script, --py-files zip, and venv archive are
+    # uploaded to <lake_bucket>/code/ (scripts/package_lake_for_emr.sh --upload,
+    # the runbook's Part 1.3), a path this role never had read access to: the
+    # first live EMR run failed at driver startup with
+    # "FileNotFoundException: File s3://.../code/lake_backfill_job.py does not
+    # exist" even though the object existed, because IAM silently denied the
+    # GetObject and Spark surfaces that as FileNotFoundException, not
+    # AccessDenied (a real first-live-run finding, W2 sprint window,
+    # 2026-07-04).
+    sid    = "ReadJobCode"
+    effect = "Allow"
+    actions = [
+      "s3:GetObject",
+      "s3:ListBucket",
+    ]
+    resources = [
+      var.lake_bucket_arn,
+      "${var.lake_bucket_arn}/code/*",
+    ]
+  }
+
+  statement {
     sid    = "IcebergGlueCatalog"
     effect = "Allow"
     actions = [

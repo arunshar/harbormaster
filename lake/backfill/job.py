@@ -51,6 +51,7 @@ def run(spark, *, raw_extract_s3_uri: str, catalog_props: dict[str, str]) -> Non
         StringType,
         StructField,
         StructType,
+        TimestampType,
     )
 
     raw_schema = StructType(
@@ -66,11 +67,30 @@ def run(spark, *, raw_extract_s3_uri: str, catalog_props: dict[str, str]) -> Non
 
     raw = spark.read.schema(raw_schema).parquet(raw_extract_s3_uri)
 
+    # canonicalize_positions() (lake/backfill/transforms.py) parses "t" into a
+    # real UTC timestamp as part of canonicalization; the mapInPandas output
+    # schema must reflect that shape, not the raw input's. Reusing raw.schema
+    # here (StringType for "t") made Spark try to convert the returned
+    # datetime64 column back to Arrow as a string and fail with
+    # "PySparkTypeError: ... datetime64[ns, UTC] ... Expected a string or
+    # bytes dtype" -- a real, first-live-EMR-run finding (this glue code has
+    # no local JVM to catch it against), W2 sprint window, 2026-07-04.
+    canonical_schema = StructType(
+        [
+            StructField("mmsi", LongType(), False),
+            StructField("t", TimestampType(), False),
+            StructField("lat", DoubleType(), False),
+            StructField("lon", DoubleType(), False),
+            StructField("sog", DoubleType(), True),
+            StructField("cog", DoubleType(), True),
+        ]
+    )
+
     # gate + canonicalize per partition; a failure here raises inside the Spark
     # executor and fails the job (no partial write)
     canonical = raw.mapInPandas(
         lambda it: (_gate_and_canonicalize_partition(pdf) for pdf in it),
-        schema=raw.schema,
+        schema=canonical_schema,
     )
 
     ais_history_rows = canonical.toPandas().to_dict(orient="records")
@@ -93,11 +113,27 @@ def run(spark, *, raw_extract_s3_uri: str, catalog_props: dict[str, str]) -> Non
 
 
 def main(argv: list[str]) -> int:
+    import os
+
     from pyspark.sql import SparkSession
 
     raw_extract_s3_uri, catalog_type, catalog_warehouse = argv[1], argv[2], argv[3]
+    aws_region = os.environ.get("AWS_REGION", "us-east-1")
     catalog_props = (
-        {"type": "glue", "warehouse": catalog_warehouse}
+        # pyiceberg's GlueCatalog resolves its boto3 client's region from the
+        # "glue.region" catalog property (falling back to the generic
+        # "client.region", which the S3 FileIO also checks), never from
+        # ambient EC2/ECS instance metadata; EMR Serverless's execution
+        # environment doesn't populate that for boto3, so an unset region
+        # here fails with "botocore.exceptions.NoRegionError: You must
+        # specify a region" the moment the writer opens its Glue client (a
+        # real, first-live-EMR-run finding, W2 sprint window, 2026-07-04).
+        {
+            "type": "glue",
+            "warehouse": catalog_warehouse,
+            "glue.region": aws_region,
+            "client.region": aws_region,
+        }
         if catalog_type == "glue"
         else {"type": "sql", "uri": catalog_type, "warehouse": catalog_warehouse}
     )
