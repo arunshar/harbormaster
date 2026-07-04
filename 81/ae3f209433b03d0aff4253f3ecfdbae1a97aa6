@@ -1,0 +1,35 @@
+mlops/manifest.py
+  s_a2e22b769416de::t_10b6053a5ff223 1-121
+pyproject.toml
+  s_a2e22b769416de::t_3584d91983d983 75
+  s_a2e22b769416de::t_caecd92d05606d 83
+mlops/fixtures/expectations.json
+  s_a2e22b769416de::t_38e12b3a23afa1 1-17
+scripts/export_checkpoint.sh
+  s_a2e22b769416de::t_db4784d88b1219 1-69,71,73-75,79-100
+  s_a2e22b769416de::t_c1165842244cba 70,72,76-78
+docs/phases/PHASE_3.md
+  s_a2e22b769416de::t_fefccdb0419a52 73
+mlops/tests/test_manifest.py
+  s_a2e22b769416de::t_cd5d94a810e91b 3-6,18-19
+  s_a2e22b769416de::t_401716599d77a1 1-2,7-11,13-17,20-92,122-131
+  s_a2e22b769416de::t_b780af1462f39c 12
+  s_a2e22b769416de::t_044560f538fb19 93-95,98-121
+  s_a2e22b769416de::t_4ce661d5baa81c 96-97
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "81ae3f209433b03d0aff4253f3ecfdbae1a97aa6",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
