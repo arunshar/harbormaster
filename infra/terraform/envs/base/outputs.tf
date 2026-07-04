@@ -157,3 +157,8 @@ output "emr_backfill_execution_role_arn" {
   description = "IAM role EMR Serverless job runs assume for this application (Phase 3)."
   value       = one(module.emr_backfill[*].execution_role_arn)
 }
+
+output "pidpm_endpoint_name" {
+  description = "SageMaker async endpoint name for the Pi-DPM head (Phase 3, gate 3.6). Feed this to HM_PIDPM_ENDPOINT."
+  value       = one(module.sagemaker_pidpm[*].endpoint_name)
+}

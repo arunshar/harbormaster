@@ -13,15 +13,21 @@ reconstruction-error tail probability for that gap. lambda is 0.6 by default.
 
 Vendored from GeoTrace-Agent and trimmed for the Harbormaster serving slice:
 the R*-tree DRM index is replaced by an O(n^2) bounding-box union (faithful for
-the demo cardinality; swap rtree.index back in for scale), and the Pi-DPM scorer
-uses the numpy surrogate. The real diffusion Pi-DPM is trained on MSI and
-promoted into this plane later, replacing `_pi_dpm_score` behind the same call.
+the demo cardinality; swap rtree.index back in for scale). P_data defaults to
+the numpy surrogate `_pi_dpm_score`; Phase 3 (gate 3.6) wires an optional
+async `pi_dpm_scorer` callable (the real SageMaker Pi-DPM endpoint via
+`app.pidpm_client.PiDpmClient.ascore`) that, when it returns a real score,
+overrides the analytic estimate for that gap. The analytic estimate is
+always computed first and is the guaranteed fallback: a disabled or failed
+SageMaker call (the callable returns None) never blocks or empties a score,
+it just falls back to exactly the Phase 1/2 behavior.
 """
 
 from __future__ import annotations
 
 import itertools
 import math
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -49,9 +55,16 @@ class Gap:
 
 
 class GapDetectorAgent:
-    def __init__(self, settings: Settings, lam: float = 0.6) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        lam: float = 0.6,
+        *,
+        pi_dpm_scorer: Callable[[Prism], Awaitable[float | None]] | None = None,
+    ) -> None:
         self.settings = settings
         self.lam = lam
+        self._pi_dpm_scorer = pi_dpm_scorer
 
     async def detect(self, inputs: dict[str, Any]) -> list[Gap]:
         traj: list[Anchor] = [
@@ -107,7 +120,11 @@ class GapDetectorAgent:
             poly = Prism.merge_dynamic(ellipses, members[0].pair)
             head = members[0]
             p_phys = self._physical_plausibility(head)
-            p_data = self._pi_dpm_score(head)
+            p_data = self._pi_dpm_score(head)  # the guaranteed fallback, always computed
+            if self._pi_dpm_scorer is not None:
+                real_p_data = await self._pi_dpm_scorer(head)
+                if real_p_data is not None:
+                    p_data = real_p_data
             agm = self.lam * (1.0 - p_phys) + (1.0 - self.lam) * p_data
             gaps.append(
                 Gap(

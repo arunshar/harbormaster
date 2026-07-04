@@ -25,7 +25,7 @@ from app.agents.gap_detector import Gap, GapDetectorAgent
 from app.agents.heuristic_planner import HeuristicPlanner
 from app.agents.space_time_reasoner import SpaceTimeReasoner
 from app.agents.validator import ValidatorAgent
-from app.components.space_time_prism import haversine_m
+from app.components.space_time_prism import Prism, haversine_m
 from app.config import Settings, get_settings
 from app.cost import CostTracker
 from app.errors import CorruptInput
@@ -51,10 +51,26 @@ from app.models import (
     ReasonCode,
     ScoreReason,
 )
+from app.pidpm_client import PiDpmClient
 from app.registry import RegistryStore
 from app.watchlist import WatchlistLookup, WatchlistStatus
 
 log = structlog.get_logger(__name__)
+
+
+def _pidpm_scorer_adapter(client: PiDpmClient):
+    """None when disabled (PiDpmClient.from_settings degrades gracefully),
+    so GapDetectorAgent's pi_dpm_scorer stays None and Phase 1/2 goldens are
+    unaffected; otherwise a closure adapting a Prism into the frozen scorer's
+    (T, >=2) trajectory shape (here: the gap's two endpoint fixes as [lat, lon])."""
+    if not client.enabled:
+        return None
+
+    async def score(prism: Prism) -> float | None:
+        a, b = prism.pair.a, prism.pair.b
+        return await client.ascore([[a.lat, a.lon], [b.lat, b.lon]])
+
+    return score
 
 
 class Orchestrator:
@@ -86,11 +102,12 @@ class Orchestrator:
     @classmethod
     async def bootstrap(cls, settings: Settings | None = None) -> Orchestrator:
         s = settings or get_settings()
+        pidpm_client = PiDpmClient.from_settings(s)
         return cls(
             settings=s,
             planner=HeuristicPlanner(),
             st_reasoner=SpaceTimeReasoner(s),
-            gap_detector=GapDetectorAgent(s),
+            gap_detector=GapDetectorAgent(s, pi_dpm_scorer=_pidpm_scorer_adapter(pidpm_client)),
             validator=ValidatorAgent(s),
             corridor=CorridorDeviationDetector(s),
             hitl=await HitlQueue.connect(s),

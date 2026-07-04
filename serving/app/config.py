@@ -68,6 +68,12 @@ class Settings(BaseSettings):
     # a course change within this distance of a node is expected, not anomalous
     waypoint_radius_m: float = Field(5_000.0, gt=0)
 
+    # Phase 3: the SageMaker async Pi-DPM endpoint. Empty keeps the existing
+    # analytic P_data estimator (Phase 1/2 goldens unchanged), matching the
+    # online_table-empty-disables-lookup convention from Phase 2.
+    pidpm_endpoint: str = ""
+    pidpm_input_bucket: str = ""
+
     @property
     def vessel_v_max_mps(self) -> float:
         return self.vessel_v_max_kts * 0.514_444

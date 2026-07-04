@@ -27,3 +27,9 @@ WATCHLIST_LOOKUP_ERRORS = Counter(
     "hm_watchlist_lookup_errors_total",
     "Online watchlist lookups that failed (the scorer fails open and scores anyway)",
 )
+
+# Phase 3 (gate 3.6): the SageMaker async Pi-DPM scoring path.
+PIDPM_LOOKUP_ERRORS = Counter(
+    "hm_pidpm_lookup_errors_total",
+    "Pi-DPM SageMaker calls that failed or timed out (falls back to the analytic estimate)",
+)

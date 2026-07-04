@@ -416,3 +416,22 @@ module "emr_backfill" {
 
   tags = local.common_tags
 }
+
+# Phase 3 (gate 3.6): the Pi-DPM async endpoint. Additionally gated on both
+# image vars being set (the flink_code_s3_key pattern): an apply before the
+# container is built and the checkpoint is exported creates no
+# half-configured model/endpoint.
+module "sagemaker_pidpm" {
+  count  = var.enable_phase3 && var.pidpm_image != "" && var.pidpm_model_data_url != "" ? 1 : 0
+  source = "../../modules/sagemaker_pidpm"
+
+  project     = var.project
+  environment = var.environment
+  aws_region  = var.aws_region
+
+  container_image   = var.pidpm_image
+  model_data_url    = var.pidpm_model_data_url
+  models_bucket_arn = "arn:aws:s3:::${module.state_stores.models_bucket_name}"
+
+  tags = local.common_tags
+}

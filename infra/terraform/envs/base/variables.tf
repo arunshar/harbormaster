@@ -122,6 +122,28 @@ variable "enable_phase3" {
   }
 }
 
+variable "pidpm_image" {
+  description = <<-EOT
+    ECR image URI wrapping the frozen PiDpmScorer contract (built from
+    mlops/pidpm_container/Dockerfile and pushed at demo time). Empty skips
+    the SageMaker model/endpoint, the flink_code_s3_key pattern, so an apply
+    before the image push and the checkpoint export creates no
+    half-configured endpoint.
+  EOT
+  type        = string
+  default     = ""
+}
+
+variable "pidpm_model_data_url" {
+  description = <<-EOT
+    S3 URI to the exported Pi-DPM checkpoint artifact (from
+    mlops/manifest.py's one-way export). Empty skips the SageMaker
+    model/endpoint, same reasoning as pidpm_image.
+  EOT
+  type        = string
+  default     = ""
+}
+
 variable "cdc_connect_image" {
   description = <<-EOT
     ECR image URI for Debezium Connect (built from cdc/connect/Dockerfile and
