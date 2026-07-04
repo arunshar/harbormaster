@@ -67,6 +67,15 @@ mlops = [
   "wandb>=0.17",
   "boto3>=1.34",
 ]
+# mlops/pidpm_container/demo/ only: the real, locally-testable, buildable
+# stand-in Pi-DPM container for the Phase 3 AWS showcase (docs/runbooks/
+# PHASE_3_AWS_SHOWCASE.md), distinct from the `mlops` extra above since this
+# one IS installed and unit-tested here, not just declared for a real image
+# build elsewhere.
+pidpm-demo = [
+  "flask>=3.0",
+  "gunicorn>=22.0",
+]
 
 # Map the in-repo source dirs onto importable top-level packages so the
 # vendored GeoTrace modules keep their `from app.* import ...` paths unchanged
@@ -80,7 +89,7 @@ exclude = ["**/tests", "**/tests/**", "**/test_*.py"]
 # "." puts the repo root on sys.path so the cdc package imports as `cdc`.
 pythonpath = ["serving", "streaming", "tests", "."]
 asyncio_mode = "auto"
-testpaths = ["serving/tests", "streaming/features/tests", "streaming/replay/tests", "streaming/ingestor/tests", "streaming/flink/tests", "serving/frontend/tests", "cdc/tests", "lake/tests", "mlops/tests", "tests/e2e"]
+testpaths = ["serving/tests", "streaming/features/tests", "streaming/replay/tests", "streaming/ingestor/tests", "streaming/flink/tests", "serving/frontend/tests", "cdc/tests", "lake/tests", "mlops/tests", "mlops/pidpm_container/demo/tests", "tests/e2e"]
 markers = [
   "postgres: integration test that needs a live Postgres (set HM_TEST_PG_DSN to run)",
 ]
