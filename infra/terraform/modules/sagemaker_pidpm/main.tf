@@ -202,10 +202,25 @@ resource "aws_appautoscaling_policy" "backlog_target_tracking" {
   target_tracking_scaling_policy_configuration {
     target_value = var.backlog_target_value
 
+    # ApproximateBacklogSizePerInstance is published per-endpoint under the
+    # EndpointName dimension. Application Auto Scaling's own rule: if a
+    # metric is published with dimensions, the policy must specify the same
+    # ones, or it queries a metric series that doesn't exist. Without this,
+    # the target-tracking alarms sit in INSUFFICIENT_DATA forever and
+    # scale-in to zero never fires -- with initial_instance_count = 1 on
+    # ml.g4dn.xlarge (~$0.74/hr, ~$530/mo), that's a standing GPU cost that
+    # breaches the $75/mo cap. Caught by an external audit before this was
+    # ever applied against real AWS; verified fixed in the live W2 window,
+    # 2026-07-04.
     customized_metric_specification {
       metric_name = "ApproximateBacklogSizePerInstance"
       namespace   = "AWS/SageMaker"
       statistic   = "Average"
+
+      dimensions {
+        name  = "EndpointName"
+        value = aws_sagemaker_endpoint.pidpm.name
+      }
     }
   }
 }
