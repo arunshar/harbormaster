@@ -81,12 +81,17 @@ def test_score_request_matches_serving_schema():
     assert req["history"] == []
 
 
-def test_score_request_includes_prev_as_history():
-    prev = Fix(lat=40.3, lon=-74.1, t=T0 - timedelta(minutes=1), sog=9.0)
+def test_score_request_includes_full_history():
+    history = [
+        Fix(lat=40.2, lon=-74.2, t=T0 - timedelta(minutes=3), sog=9.0),
+        Fix(lat=40.3, lon=-74.1, t=T0 - timedelta(minutes=2), sog=9.0),
+        Fix(lat=40.35, lon=-74.05, t=T0 - timedelta(minutes=1), sog=9.5),
+    ]
     fix = Fix(lat=40.4, lon=-74.0, t=T0, sog=9.7)
-    req = score_request(367000001, fix, prev)
-    assert len(req["history"]) == 1
-    assert req["history"][0]["t"] == (T0 - timedelta(minutes=1)).isoformat().replace("+00:00", "Z")
+    req = score_request(367000001, fix, history)
+    assert len(req["history"]) == 3
+    assert req["history"][0]["t"] == (T0 - timedelta(minutes=3)).isoformat().replace("+00:00", "Z")
+    assert req["history"][-1]["t"] == (T0 - timedelta(minutes=1)).isoformat().replace("+00:00", "Z")
 
 
 def test_v_max_pinned_to_serving_config():

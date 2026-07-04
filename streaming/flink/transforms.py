@@ -75,18 +75,21 @@ def _fix_dict(f: Fix) -> dict:
     }
 
 
-def score_request(mmsi: int, fix: Fix, prev: Fix | None = None) -> dict:
+def score_request(mmsi: int, fix: Fix, history: list[Fix] | None = None) -> dict:
     """The POST /v1/score-ais body for one gated event, matching serving's
     AisScoreIn schema: {mmsi, fix, history}. The scorer recomputes its own
     anomaly features server-side from fix + history; it has no features field
     (an earlier version of this function sent Flink's own precomputed
     WindowFeatures under "features", which the real schema never had -- every
     scorer call 422'd, a real first-live-run finding, W1 sprint window,
-    2026-07-04). prev, when available, is Flink's own keyed state (the vessel's
-    last fix), passed as one-entry history so the scorer sees the same two
-    points Flink used for its own cheap gate."""
+    2026-07-04). history is Flink's own keyed state: the vessel's recent prior
+    fixes, oldest first. serving's HeuristicPlanner only routes to abnormal-gap
+    detection when n_history (len(history)) is >= 3 (app/agents/
+    heuristic_planner.py); sending fewer means gap anomalies are silently never
+    evaluated, not just under-scored -- also a real first-live-run finding, W1
+    sprint window, 2026-07-04."""
     return {
         "mmsi": mmsi,
         "fix": _fix_dict(fix),
-        "history": [_fix_dict(prev)] if prev is not None else [],
+        "history": [_fix_dict(f) for f in (history or [])],
     }

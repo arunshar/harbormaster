@@ -225,20 +225,23 @@ def _fix_dict(f: Fix) -> dict:
     }
 
 
-def score_request(mmsi: int, fix: Fix, prev: Fix | None = None) -> dict:
+def score_request(mmsi: int, fix: Fix, history: list[Fix] | None = None) -> dict:
     """The POST /v1/score-ais body for one gated event, matching serving's
     AisScoreIn schema: {mmsi, fix, history}. The scorer recomputes its own
     anomaly features server-side from fix + history; it has no features field
     (an earlier version of this function sent Flink's own precomputed
     WindowFeatures under "features", which the real schema never had -- every
     scorer call 422'd, a real first-live-run finding, W1 sprint window,
-    2026-07-04). prev, when available, is Flink's own keyed state (the vessel's
-    last fix), passed as one-entry history so the scorer sees the same two
-    points Flink used for its own cheap gate."""
+    2026-07-04). history is Flink's own keyed state: the vessel's recent prior
+    fixes, oldest first. serving's HeuristicPlanner only routes to abnormal-gap
+    detection when n_history (len(history)) is >= 3 (app/agents/
+    heuristic_planner.py); sending fewer means gap anomalies are silently never
+    evaluated, not just under-scored -- also a real first-live-run finding, W1
+    sprint window, 2026-07-04."""
     return {
         "mmsi": mmsi,
         "fix": _fix_dict(fix),
-        "history": [_fix_dict(prev)] if prev is not None else [],
+        "history": [_fix_dict(f) for f in (history or [])],
     }
 
 
@@ -257,19 +260,32 @@ def _property_group(properties: list[dict], group_id: str) -> dict:
     raise KeyError(f"no PropertyGroupId={group_id!r} in {APPLICATION_PROPERTIES_FILE_PATH}")
 
 
-def _fix_to_json(f: Fix) -> str:
-    return json.dumps(
-        {"lat": f.lat, "lon": f.lon, "t": f.t.isoformat(), "sog": f.sog, "cog": f.cog,
-         "heading": f.heading}
-    )
+# serving's HeuristicPlanner only routes to abnormal-gap detection (STAGD + AGM)
+# once n_history (the vessel's prior-fix count) is >= 3; sending fewer means gap
+# anomalies are silently never evaluated, not merely under-scored (see
+# score_request()'s docstring). 5 gives comfortable headroom above that
+# threshold without growing the per-key state or the scorer payload much.
+HISTORY_WINDOW = 5
 
 
-def _fix_from_json(s: str) -> Fix:
-    d = json.loads(s)
+def _fix_to_dict(f: Fix) -> dict:
+    return {"lat": f.lat, "lon": f.lon, "t": f.t.isoformat(), "sog": f.sog, "cog": f.cog,
+            "heading": f.heading}
+
+
+def _fix_from_dict(d: dict) -> Fix:
     return Fix(
         lat=d["lat"], lon=d["lon"], t=datetime.fromisoformat(d["t"]),
         sog=d["sog"], cog=d["cog"], heading=d["heading"],
     )
+
+
+def _history_to_json(fixes: list[Fix]) -> str:
+    return json.dumps([_fix_to_dict(f) for f in fixes])
+
+
+def _history_from_json(s: str) -> list[Fix]:
+    return [_fix_from_dict(d) for d in json.loads(s)]
 
 
 class FeatureProcess(KeyedProcessFunction):
@@ -292,7 +308,7 @@ class FeatureProcess(KeyedProcessFunction):
         self._ddb = None
 
     def open(self, ctx: RuntimeContext):
-        self._prev = ctx.get_state(ValueStateDescriptor("prev_fix", Types.STRING()))
+        self._history = ctx.get_state(ValueStateDescriptor("history", Types.STRING()))
 
     def _dynamo(self):
         if self._ddb is None:
@@ -307,16 +323,17 @@ class FeatureProcess(KeyedProcessFunction):
         except ValueError:
             return  # drop malformed records (a dead-letter sink can capture these)
 
-        prev_json = self._prev.value()
-        prev = _fix_from_json(prev_json) if prev_json else None
+        history_json = self._history.value()
+        history = _history_from_json(history_json) if history_json else []
+        prev = history[-1] if history else None
         feats: WindowFeatures = window_features(fix, prev)
-        self._prev.update(_fix_to_json(fix))
+        self._history.update(_history_to_json((history + [fix])[-HISTORY_WINDOW:]))
 
         if not passes_gate(feats):
             return
 
         item = feature_item(mmsi, feats, fix.t)
-        request = score_request(mmsi, fix, prev)
+        request = score_request(mmsi, fix, history)
         # feature_item()'s ttl is computed from fix.t (the AIS event time), correct
         # for real live data but not for a replayed fixture whose timestamps are
         # historical (2024): that ttl is already years in the past, so DynamoDB's
