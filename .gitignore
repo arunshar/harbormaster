@@ -74,3 +74,7 @@ infra/terraform/modules/cdc_monitoring/.build/
 
 # local lake drill/smoke artifacts (Phase 3)
 .lake-warehouse/
+
+# Maven build output (gate 1.5's Flink Kinesis-connector fat-jar, make flink-jar)
+streaming/flink/target/
+streaming/flink/dependency-reduced-pom.xml

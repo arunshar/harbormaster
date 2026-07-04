@@ -10,7 +10,17 @@ The per-record logic reuses the pure, unit-tested helpers in streaming.features
 and streaming.flink.transforms; this module is the Flink wiring, verified by the
 gate-1.5 deploy smoke on the KDA runtime (there is no local Flink to test it).
 Records flow as JSON strings so no custom-type serialization is needed; state is a
-JSON string too. Config comes from the KDA app's runtime properties / env.
+JSON string too.
+
+Config comes from Managed Flink's real Runtime Properties mechanism: AWS writes
+/etc/flink/application_properties.json at container start (generated from the
+Terraform module's environment_properties.property_group blocks), NOT plain OS
+environment variables. Confirmed against AWS's own PyFlink example (aws-samples/
+amazon-managed-service-for-apache-flink-examples), whose main.py reads this exact
+path via a PropertyGroupId lookup; this repo's earlier os.environ[...] reads were
+never validated against the real runtime (first-ever live KDA deploy, W1 sprint
+window, 2026-07-04) and would have failed identically to the missing-JAR error
+this same window caught.
 
 A true 1-minute event-time tumbling window can replace the per-fix keyed process
 below; per-fix processing against keyed prev-state is the equivalent realization
@@ -20,7 +30,6 @@ used for the demo and keeps the operator to standard, portable PyFlink APIs.
 from __future__ import annotations
 
 import json
-import os
 import urllib.error
 import urllib.request
 
@@ -33,6 +42,21 @@ from pyflink.datastream.state import ValueStateDescriptor
 
 from features.features import Fix, WindowFeatures, window_features
 from flink.transforms import feature_item, parse_ais_json, passes_gate, score_request
+
+APPLICATION_PROPERTIES_FILE_PATH = "/etc/flink/application_properties.json"
+FLINK_JOB_PROPERTY_GROUP = "FlinkJob"
+
+
+def _read_application_properties() -> list[dict]:
+    with open(APPLICATION_PROPERTIES_FILE_PATH) as f:
+        return json.load(f)
+
+
+def _property_group(properties: list[dict], group_id: str) -> dict:
+    for group in properties:
+        if group["PropertyGroupId"] == group_id:
+            return group["PropertyMap"]
+    raise KeyError(f"no PropertyGroupId={group_id!r} in {APPLICATION_PROPERTIES_FILE_PATH}")
 
 
 def _fix_to_json(f: Fix) -> str:
@@ -113,10 +137,11 @@ class FeatureSink(SinkFunction):
 
 
 def main() -> None:
-    region = os.environ.get("AWS_REGION", "us-east-1")
-    stream = os.environ["KINESIS_STREAM_NAME"]
-    table = os.environ["FEAST_ONLINE_TABLE"]
-    scorer_url = os.environ["SERVING_ENDPOINT"]  # API Gateway invoke URL or Cloud Map DNS
+    props = _property_group(_read_application_properties(), FLINK_JOB_PROPERTY_GROUP)
+    region = props.get("aws_region", "us-east-1")
+    stream = props["kinesis_stream_name"]
+    table = props["feast_online_table"]
+    scorer_url = props["serving_endpoint"]  # API Gateway invoke URL or Cloud Map DNS
 
     env = StreamExecutionEnvironment.get_execution_environment()
     consumer = FlinkKinesisConsumer(

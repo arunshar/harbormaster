@@ -25,8 +25,19 @@ variable "kinesis_stream_arn" {
   type = string
 }
 
+variable "kinesis_stream_name" {
+  description = "Plain stream name (not ARN); FlinkKinesisConsumer's constructor takes a name, and job.py reads it from Runtime Properties, not the ARN."
+  type        = string
+}
+
 variable "feast_table_name" {
   type = string
+}
+
+variable "serving_endpoint" {
+  description = "The serving API's invoke URL (API Gateway) job.py POSTs scored events to. Empty until the Phase 1 apply that creates module.apigw completes."
+  type        = string
+  default     = ""
 }
 
 variable "lake_bucket_arn" {
@@ -167,6 +178,34 @@ resource "aws_kinesisanalyticsv2_application" "flink" {
     flink_application_configuration {
       parallelism_configuration {
         configuration_type = "DEFAULT"
+      }
+    }
+
+    # Runtime Properties: NOT plain OS env vars (confirmed against AWS's own
+    # PyFlink example, docs/phases/PHASE_1.md's real-run finding). AWS writes
+    # these to /etc/flink/application_properties.json at container start;
+    # job.py reads them via PropertyGroupId lookup, never os.environ.
+    environment_properties {
+      # Mandatory for a PyFlink (non-Studio) application: tells Managed Flink
+      # which script is the entry point and where the fat-jar (Kinesis
+      # connector) lives inside the zip. Without these two keys the app
+      # fails to start even after CreateApplication succeeds.
+      property_group {
+        property_group_id = "kinesis.analytics.flink.run.options"
+        property_map = {
+          python  = "main.py"
+          jarfile = "lib/pyflink-dependencies.jar"
+        }
+      }
+
+      property_group {
+        property_group_id = "FlinkJob"
+        property_map = {
+          kinesis_stream_name = var.kinesis_stream_name
+          feast_online_table  = var.feast_table_name
+          serving_endpoint    = var.serving_endpoint
+          aws_region          = var.aws_region
+        }
       }
     }
   }

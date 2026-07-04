@@ -229,9 +229,11 @@ module "kda_flink" {
   environment = var.environment
   aws_region  = var.aws_region
 
-  kinesis_stream_arn = module.kinesis[0].stream_arn
-  feast_table_name   = module.state_stores.feast_online_table_name
-  lake_bucket_arn    = "arn:aws:s3:::${module.state_stores.lake_bucket_name}"
+  kinesis_stream_arn  = module.kinesis[0].stream_arn
+  kinesis_stream_name = module.kinesis[0].stream_name
+  feast_table_name    = module.state_stores.feast_online_table_name
+  lake_bucket_arn     = "arn:aws:s3:::${module.state_stores.lake_bucket_name}"
+  serving_endpoint    = module.apigw[0].api_endpoint
 
   # flink_code_s3_key stays empty until gate 1.5 uploads the job artifact, so the
   # Flink application (and its KPU cost) is not created by a 1.3 demo apply.
