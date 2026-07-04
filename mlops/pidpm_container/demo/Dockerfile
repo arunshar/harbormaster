@@ -9,12 +9,17 @@ FROM python:3.11-slim
 
 WORKDIR /opt/pidpm-demo
 
-COPY server.py /opt/pidpm-demo/server.py
+COPY server.py entrypoint.sh /opt/pidpm-demo/
 
-RUN pip install --no-cache-dir "flask>=3.0" "gunicorn>=22.0"
+RUN pip install --no-cache-dir "flask>=3.0" "gunicorn>=22.0" \
+    && chmod +x /opt/pidpm-demo/entrypoint.sh
 
 ENV MODEL_PATH=/opt/ml/model/checkpoint.json
 EXPOSE 8080
 
 # SageMaker's contract: /ping (health) and /invocations (score) on :8080.
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "1", "server:app"]
+# SageMaker invokes real-time containers as `docker run <image> serve`; with
+# no ENTRYPOINT that argument replaced CMD entirely instead of being passed
+# to it (CannotStartContainerError, a real first-live-run finding, W2 sprint
+# window, 2026-07-04). entrypoint.sh ignores whatever argument it's given.
+ENTRYPOINT ["/opt/pidpm-demo/entrypoint.sh"]
