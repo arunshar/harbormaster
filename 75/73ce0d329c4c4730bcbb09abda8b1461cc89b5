@@ -1,0 +1,19 @@
+infra/terraform/modules/sagemaker_pidpm/main.tf
+  s_a2e22b769416de::t_5d1de124db1872 205-214,219-223
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "7573ce0d329c4c4730bcbb09abda8b1461cc89b5",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
