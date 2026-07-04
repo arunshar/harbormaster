@@ -1,0 +1,24 @@
+infra/terraform/envs/base/outputs.tf
+  s_a2e22b769416de::t_d3996086d33b50 114-118
+docs/runbooks/SPRINT_W1_SHOWCASE.md
+  s_a2e22b769416de::t_4253df422ad259 1-39,45-47,49-71,73-90,92-143
+  s_a2e22b769416de::t_38c67032c25992 91
+  s_a2e22b769416de::t_6d6c8d47c0d240 40-44,48
+  s_a2e22b769416de::t_c1ed5542067133 72
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "175b7f14911e20aa4fad8495a76995bffeb335b9",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
