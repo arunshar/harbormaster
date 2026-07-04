@@ -1,0 +1,21 @@
+mlops/pidpm_container/demo/Dockerfile
+  s_a2e22b769416de::t_6f89337eae5de3 12,14-15,21-25
+mlops/pidpm_container/demo/entrypoint.sh
+  s_a2e22b769416de::t_e4e2c5ec75fe8f 1-11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "290ce85080063c03907ad80415b063a45ea0d9a9",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
