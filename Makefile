@@ -11,7 +11,7 @@ COST_CAP := 75
         serve-install serve-lint serve-test serve-run serve-fixture serve-docker flink-package e2e \
         cdc-up cdc-down cdc-smoke cdc-consumer cdc-lambda-package cdc-e2e \
         lake-quality-smoke lake-backfill-smoke lake-training-export-smoke \
-        drill-l1-training-serving-skew drill-l2-canary-rollback
+        drill-l1-training-serving-skew drill-l2-canary-rollback lake-e2e
 
 help:
 	@echo "Harbormaster Phase 0 targets (operate on $(TF_DIR)):"
@@ -170,3 +170,6 @@ drill-l1-training-serving-skew: ## drill: holdout passes a skew, shadow catches 
 
 drill-l2-canary-rollback:       ## drill: clean gate+shadow, canary catches a regression + reverts (docs/drills/L2)
 	$(PY) scripts/drill_l2_canary_rollback.py
+
+lake-e2e:             ## Phase 3 e2e acceptance: all 5 criteria, pure functions + fakes, no live stack
+	$(PY) -m pytest tests/e2e/test_phase3.py tests/e2e/test_lake_helpers.py -v
