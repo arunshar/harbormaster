@@ -78,3 +78,7 @@ infra/terraform/modules/cdc_monitoring/.build/
 # Maven build output (gate 1.5's Flink Kinesis-connector fat-jar, make flink-jar)
 streaming/flink/target/
 streaming/flink/dependency-reduced-pom.xml
+
+# real HITL-derived preference data (trace_id/mmsi/reviewer); the fixture
+# under mlops/fixtures/ is synthetic and stays committed (Phase 4)
+mlops/preference_data/

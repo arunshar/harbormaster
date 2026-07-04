@@ -194,6 +194,9 @@ lake-package-venv:    ## lake-package + linux/amd64 venv archive via Docker (pul
 drift-smoke:          ## gate 4.1: check_input_drift against the committed fixture pair
 	$(PY) scripts/drift_smoke.py
 
+preference-smoke:     ## gate 4.4: build_from_hitl against the committed fixture, counts per source
+	$(PY) scripts/preference_smoke.py
+
 DRIFT_LAMBDA_BUILD := infra/lambda/drift_watch/build
 
 drift-lambda-package: ## gate 4.6: vendor mlops/drift.py + pandas/pyarrow into the drift-watch Lambda build dir
