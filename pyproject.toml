@@ -36,14 +36,18 @@ cdc = [
 ]
 # Phase 3 lake + promotion plane (lake/, mlops/). Unit tests need only these:
 # great_expectations (a lightweight PandasDataset, no DataContext/Checkpoint
-# project scaffolding), pandas, and scikit-learn (HDBSCAN waypoint clustering).
-# pyiceberg/pyarrow are already covered by the cdc extra above (lake/iceberg.py
-# reuses the same catalog pattern). RDP simplification is hand-rolled, no
-# library. See lake-emr below for the real, EMR-only, not-locally-runnable half.
+# project scaffolding), pandas, scikit-learn (HDBSCAN waypoint clustering),
+# and pyarrow (lake/iceberg.py's schema functions are unit-tested directly,
+# unlike its build_lake_writer, which needs a real pyiceberg catalog and is
+# deliberately excluded from the unit suite, matching cdc's own convention -
+# pyiceberg itself is NOT needed here, only pyarrow for the schema shapes).
+# RDP simplification is hand-rolled, no library. See lake-emr below for the
+# real, EMR-only, not-locally-runnable half.
 lake = [
   "great-expectations>=0.18,<1.0",
   "pandas>=2.0",
   "scikit-learn>=1.3",
+  "pyarrow>=15",
 ]
 # The real, AWS-showcase-only half of Phase 3: lake/backfill/job.py's PySpark
 # EMR entrypoint (needs a JVM this dev machine does not have, see the
