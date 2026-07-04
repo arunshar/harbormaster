@@ -29,6 +29,7 @@ import os
 import time
 import uuid
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
 import structlog
@@ -37,6 +38,19 @@ from app.config import Settings
 from app.metrics import PIDPM_LOOKUP_ERRORS
 
 log = structlog.get_logger(__name__)
+
+
+@dataclass(frozen=True)
+class PiDpmScore:
+    """Phase 4 gate 4.3: the additive SageMaker payload contract. The
+    endpoint's response may now carry {"score", "epistemic_variance"};
+    epistemic_variance is None whenever the payload omits it (the current
+    demo stand-in and any checkpoint without an uncertainty head both do),
+    never a stand-in numeric value. Callers must treat None as "no signal",
+    not "zero uncertainty"."""
+
+    score: float
+    epistemic_variance: float | None = None
 
 
 def _parse_s3_uri(uri: str) -> tuple[str, str]:
@@ -128,6 +142,27 @@ class PiDpmClient:
         return await asyncio.to_thread(self.score, trajectory)
 
     def score(self, trajectory: list[list[float]]) -> float | None:
+        """Pre-Phase-4 contract, byte-for-byte unchanged: unwraps
+        score_full's PiDpmScore down to the bare float every existing
+        caller (gap_detector.py's adapter) still expects."""
+        result = self.score_full(trajectory)
+        return result.score if result is not None else None
+
+    async def ascore_full(self, trajectory: list[list[float]]) -> PiDpmScore | None:
+        """Phase 4 gate 4.3: async counterpart to score_full, same
+        off-event-loop dispatch as ascore."""
+        if not self.enabled:
+            return None
+        import asyncio
+
+        return await asyncio.to_thread(self.score_full, trajectory)
+
+    def score_full(self, trajectory: list[list[float]]) -> PiDpmScore | None:
+        """Phase 4 gate 4.3: the additive path. Returns the full
+        {"score", "epistemic_variance"} contract; epistemic_variance is
+        None whenever the endpoint's payload omits it. Old-shape payloads
+        (a bare {"score": float}, exactly what the Phase 3 demo stand-in
+        emits) parse here unchanged."""
         if not self.enabled:
             return None
 
@@ -154,7 +189,11 @@ class PiDpmClient:
             try:
                 obj = self._s3.get_object(Bucket=output_bucket, Key=output_key)
                 payload = json.loads(obj["Body"].read())
-                return float(payload["score"])
+                variance = payload.get("epistemic_variance")
+                return PiDpmScore(
+                    score=float(payload["score"]),
+                    epistemic_variance=float(variance) if variance is not None else None,
+                )
             except self._not_found_error():
                 self._sleep(self._poll_interval_s)
             except Exception as exc:
