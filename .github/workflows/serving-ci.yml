@@ -1,17 +1,31 @@
 name: serving-ci
 
-# Phase 1.1 CI gate: lint + unit + container build. No deploy, no AWS.
+# CI gate: lint + unit + container build. No deploy, no AWS.
+# Covers all phases now (was "Phase 1.1" only at authoring time): serving +
+# streaming (Phase 1), cdc (Phase 2), lake + mlops (Phase 3). cdc's own tests
+# need none of the [cdc] extra (all real I/O is injected, per PHASE_2.md), so
+# it is deliberately not installed here; lake/mlops's tests DO need pandas/
+# great_expectations/scikit-learn/flask as core dependencies of their pure
+# functions (not optional real-infra clients), so those extras are.
 on:
   push:
     paths:
       - "serving/**"
       - "streaming/**"
+      - "cdc/**"
+      - "lake/**"
+      - "mlops/**"
+      - "tests/**"
       - "pyproject.toml"
       - ".github/workflows/serving-ci.yml"
   pull_request:
     paths:
       - "serving/**"
       - "streaming/**"
+      - "cdc/**"
+      - "lake/**"
+      - "mlops/**"
+      - "tests/**"
       - "pyproject.toml"
       - ".github/workflows/serving-ci.yml"
   workflow_dispatch:
@@ -28,9 +42,9 @@ jobs:
       - name: Install
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+          pip install -e ".[dev,lake,mlops,pidpm-demo]"
       - name: Lint (ruff)
-        run: ruff check serving streaming
+        run: ruff check serving streaming cdc lake mlops tests scripts
       - name: Verify recorded fixture checksum
         run: python -c "from replay.loader import verify_fixture; assert verify_fixture()"
         env:
