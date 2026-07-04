@@ -64,20 +64,29 @@ def feature_item(mmsi: int, feats: WindowFeatures, ts: datetime, ttl_days: int =
     }
 
 
-def score_request(mmsi: int, feats: WindowFeatures, fix: Fix) -> dict:
-    """The POST /v1/score-ais body for one gated event."""
+def _fix_dict(f: Fix) -> dict:
+    return {
+        "lat": f.lat,
+        "lon": f.lon,
+        "t": f.t.isoformat().replace("+00:00", "Z"),
+        "sog": f.sog,
+        "cog": f.cog,
+        "heading": f.heading,
+    }
+
+
+def score_request(mmsi: int, fix: Fix, prev: Fix | None = None) -> dict:
+    """The POST /v1/score-ais body for one gated event, matching serving's
+    AisScoreIn schema: {mmsi, fix, history}. The scorer recomputes its own
+    anomaly features server-side from fix + history; it has no features field
+    (an earlier version of this function sent Flink's own precomputed
+    WindowFeatures under "features", which the real schema never had -- every
+    scorer call 422'd, a real first-live-run finding, W1 sprint window,
+    2026-07-04). prev, when available, is Flink's own keyed state (the vessel's
+    last fix), passed as one-entry history so the scorer sees the same two
+    points Flink used for its own cheap gate."""
     return {
         "mmsi": mmsi,
-        "lat": fix.lat,
-        "lon": fix.lon,
-        "t": fix.t.isoformat().replace("+00:00", "Z"),
-        "sog": fix.sog,
-        "cog": fix.cog,
-        "heading": fix.heading,
-        "features": {
-            "gap_since_last_s": feats.gap_since_last_s,
-            "distance_m": feats.distance_m,
-            "v_required_mps": feats.v_required_mps,
-            "p_physical": feats.p_physical,
-        },
+        "fix": _fix_dict(fix),
+        "history": [_fix_dict(prev)] if prev is not None else [],
     }

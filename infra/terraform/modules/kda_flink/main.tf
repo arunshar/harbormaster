@@ -195,6 +195,15 @@ resource "aws_kinesisanalyticsv2_application" "flink" {
         property_map = {
           python  = "main.py"
           jarfile = "lib/pyflink-dependencies.jar"
+          # No pyFiles: job.py inlines the streaming.features/streaming.flink.transforms
+          # logic directly (byte-identical duplicate, see job.py's module docstring) so
+          # cloudpickle serializes FeatureProcess by value as a __main__ construct,
+          # instead of needing a separate Python dependency shipped to the worker.
+          # Three attempts to ship those packages as a runtime dependency (env.
+          # add_python_file, pyFiles as two comma-separated paths, pyFiles as one merged
+          # directory) each hit a real, confirmed bug in Managed Flink's Python
+          # dependency staging; real first-live-run findings, W1 sprint window,
+          # 2026-07-04.
         }
       }
 

@@ -72,13 +72,21 @@ def test_feature_item_shape_and_ttl():
     assert item["p_physical"] == 1.0
 
 
-def test_score_request_carries_features():
+def test_score_request_matches_serving_schema():
     fix = Fix(lat=40.4, lon=-74.0, t=T0, sog=9.7)
-    feats = window_features(fix, None)
-    req = score_request(367000001, feats, fix)
+    req = score_request(367000001, fix)
     assert req["mmsi"] == 367000001
-    assert req["features"]["p_physical"] == 1.0
-    assert req["t"] == "2024-06-01T00:00:00Z"
+    assert req["fix"]["t"] == "2024-06-01T00:00:00Z"
+    assert req["fix"]["lat"] == 40.4
+    assert req["history"] == []
+
+
+def test_score_request_includes_prev_as_history():
+    prev = Fix(lat=40.3, lon=-74.1, t=T0 - timedelta(minutes=1), sog=9.0)
+    fix = Fix(lat=40.4, lon=-74.0, t=T0, sog=9.7)
+    req = score_request(367000001, fix, prev)
+    assert len(req["history"]) == 1
+    assert req["history"][0]["t"] == (T0 - timedelta(minutes=1)).isoformat().replace("+00:00", "Z")
 
 
 def test_v_max_pinned_to_serving_config():
