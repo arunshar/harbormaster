@@ -8,6 +8,7 @@ import pytest
 
 from mlops.holdout_gate import HoldoutGateResult
 from mlops.promote import CANARY_WEIGHTS, PromotionResult, run_promotion
+from mlops.reward_hacking_probe import RewardHackingProbeResult
 from mlops.shadow_diff import ShadowDiffResult
 
 EXPECTATIONS = Path(__file__).parent.parent / "fixtures" / "expectations.json"
@@ -148,3 +149,83 @@ def test_promotion_result_defaults_are_sane():
     empty = PromotionResult()
     assert empty.steps == []
     assert empty.final_status == "rejected_gate"
+
+
+# ---- Phase 4 gate 4.5: reward_hacking_result wiring ------------------------
+
+PASSING_PROBE = RewardHackingProbeResult(
+    baseline_mean_reward=5.0,
+    candidate_mean_reward=8.0,
+    baseline_hard_violation_rate=0.1,
+    candidate_hard_violation_rate=0.1,
+    blocked=False,
+    reason=None,
+)
+BLOCKED_PROBE = RewardHackingProbeResult(
+    baseline_mean_reward=5.0,
+    candidate_mean_reward=8.0,
+    baseline_hard_violation_rate=0.1,
+    candidate_hard_violation_rate=0.3,
+    blocked=True,
+    reason="gamed",
+)
+
+
+def test_none_reward_hacking_result_reproduces_the_pinned_clean_sequence_unchanged():
+    # supervised-retrain candidates pass reward_hacking_result=None; the
+    # sequence must be byte-identical to the pre-Phase-4 pinned clean run.
+    result = run_promotion(
+        holdout_result=PASSING_GATE,
+        shadow_result=CLEAN_SHADOW,
+        burn_check=lambda w: False,
+        set_canary_weight=lambda w: None,
+        revert_to_champion=lambda: None,
+        reward_hacking_result=None,
+    )
+    pinned = json.loads(EXPECTATIONS.read_text())["promotion_state_machine"]["clean_run"]
+    assert [asdict(s) for s in result.steps] == pinned
+    assert result.final_status == "promoted"
+
+
+def test_a_blocked_reward_hacking_probe_halts_before_shadow():
+    rec = _Recorder()
+    result = run_promotion(
+        holdout_result=PASSING_GATE,
+        shadow_result=CLEAN_SHADOW,
+        burn_check=lambda w: False,
+        set_canary_weight=rec.set_canary_weight,
+        revert_to_champion=rec.revert_to_champion,
+        reward_hacking_result=BLOCKED_PROBE,
+    )
+    assert result.final_status == "rejected_reward_probe"
+    assert [s.stage for s in result.steps] == ["gate", "reward_probe"]
+    assert result.steps[-1].action == "fail"
+    assert rec.weights_set == []  # never reached canary
+
+
+def test_a_passing_reward_hacking_probe_proceeds_to_shadow_and_promotes():
+    result = run_promotion(
+        holdout_result=PASSING_GATE,
+        shadow_result=CLEAN_SHADOW,
+        burn_check=lambda w: False,
+        set_canary_weight=lambda w: None,
+        revert_to_champion=lambda: None,
+        reward_hacking_result=PASSING_PROBE,
+    )
+    assert [s.stage for s in result.steps][:2] == ["gate", "reward_probe"]
+    assert result.steps[1].action == "pass"
+    assert result.final_status == "promoted"
+
+
+def test_a_blocked_probe_never_reached_when_holdout_gate_already_failed():
+    result = run_promotion(
+        holdout_result=FAILING_GATE,
+        shadow_result=None,
+        burn_check=lambda w: False,
+        set_canary_weight=lambda w: None,
+        revert_to_champion=lambda: None,
+        reward_hacking_result=BLOCKED_PROBE,
+    )
+    # the gate is checked first; a failed gate never even looks at the probe
+    assert [s.stage for s in result.steps] == ["gate"]
+    assert result.final_status == "rejected_gate"
