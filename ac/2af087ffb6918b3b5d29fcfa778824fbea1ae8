@@ -1,0 +1,25 @@
+infra/terraform/modules/sagemaker_pidpm/main.tf
+  s_a2e22b769416de::t_324d1ea552b43b 156-169
+  s_a2e22b769416de::t_e4373c97e71ed2 297-300
+  s_a2e22b769416de::t_ca5db4deaf059e 74-76
+docs/runbooks/PHASE_3_AWS_SHOWCASE.md
+  s_a2e22b769416de::t_31920d41e68565 258-267
+docs/phases/PHASE_3.md
+  s_a2e22b769416de::t_90a8d72af5508c 115-123
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "ac2af087ffb6918b3b5d29fcfa778824fbea1ae8",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
