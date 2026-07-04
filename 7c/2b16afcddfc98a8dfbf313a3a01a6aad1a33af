@@ -1,0 +1,30 @@
+infra/terraform/modules/emr_backfill/main.tf
+  s_a2e22b769416de::t_7fa34903683cc8 154-174
+  s_a2e22b769416de::t_90f62fc7f0cba8 153
+lake/backfill/job.py
+  s_a2e22b769416de::t_8393e11ba36df4 121,124-126,134-135
+  s_a2e22b769416de::t_0201763289e88c 54,70-88,93
+  s_a2e22b769416de::t_d2cb95c7426f24 116-117,123,127-133,136
+lake/backfill/transforms.py
+  s_a2e22b769416de::t_945107fd9bc61a 197
+  s_a2e22b769416de::t_50d6534d871517 113-114
+  s_a2e22b769416de::t_3402d70a4d6445 167-168
+  s_a2e22b769416de::t_fa13f661d70c45 108-112
+  s_a2e22b769416de::t_0d534b3bd6416e 162-164
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "7c2b16afcddfc98a8dfbf313a3a01a6aad1a33af",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
