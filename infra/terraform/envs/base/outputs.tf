@@ -111,6 +111,11 @@ output "ingestor_task_definition_arn" {
   value       = one(module.ecs_ingestor[*].task_definition_arn)
 }
 
+output "ingestor_ecr_repository_url" {
+  description = "ECR repo URL for the ingestor image (Phase 1; the module always exposed this, the env never surfaced it, found while prepping the W1 showcase runbook)."
+  value       = one(module.ecs_ingestor[*].ecr_repository_url)
+}
+
 output "flink_role_arn" {
   description = "Managed Flink service execution role ARN (Phase 1)."
   value       = one(module.kda_flink[*].role_arn)
