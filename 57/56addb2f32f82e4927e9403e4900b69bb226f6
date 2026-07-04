@@ -1,0 +1,32 @@
+mlops/tests/test_concept_proxy.py
+  s_a2e22b769416de::t_3f116a15ac4f18 1-64
+mlops/drift_decision.py
+  s_a2e22b769416de::t_92b32d2cd96be5 1-78
+mlops/tests/test_drift_decision.py
+  s_a2e22b769416de::t_b59757a0a29f7e 1-98
+  s_a2e22b769416de::t_9bc914457cc8a3 99-109
+serving/app/pidpm_client.py
+  s_a2e22b769416de::t_84772c200041cd 145-165,192-196
+  s_a2e22b769416de::t_1b23ecfa07fe2b 32,43-53
+  s_a2e22b769416de::t_aa594e5d884370 54-55
+serving/tests/test_pidpm_client_score_full.py
+  s_a2e22b769416de::t_b63fbb49b84a1e 1-129
+mlops/concept_proxy.py
+  s_a2e22b769416de::t_e3db5a3dfe5104 1-70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "5756addb2f32f82e4927e9403e4900b69bb226f6",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
