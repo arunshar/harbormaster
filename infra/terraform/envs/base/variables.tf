@@ -122,6 +122,22 @@ variable "enable_phase3" {
   }
 }
 
+variable "enable_phase4" {
+  description = <<-EOT
+    Gate for the Phase 4 drift-watch plane (modules/drift_watch: an
+    EventBridge schedule -> Lambda running mlops/drift.py's input-drift check
+    against two lake-bucket parquet snapshots -> the existing Phase 0 finops
+    SNS topic). Default false; no resources exist behind this toggle yet
+    (added at gate 4.6). Depends only on Phase 0 (the lake bucket and SNS
+    topic), not Phase 1/3, since the module reads S3 snapshots rather than
+    calling any Phase 1/3 service directly. Not applied during the 24-hour
+    completion sprint (2026-07-04): authored, `terraform validate`- and
+    plan-checksum-verified only, per docs/phases/PHASE_4.md gate 4.6.
+  EOT
+  type        = bool
+  default     = false
+}
+
 variable "pidpm_image" {
   description = <<-EOT
     ECR image URI wrapping the frozen PiDpmScorer contract (built from

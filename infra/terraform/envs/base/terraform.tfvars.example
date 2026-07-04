@@ -55,3 +55,9 @@ enable_phase2 = false
 # require enable_phase2. Watch the EMR auto-terminate and the SageMaker
 # endpoint's zero-minimum scaling; flip back to false after a demo.
 enable_phase3 = false
+
+# Phase 4 drift-watch plane (EventBridge -> Lambda -> the existing Phase 0 SNS
+# topic). Depends only on Phase 0 (lake bucket + SNS topic). No resources
+# exist behind this toggle yet as of the 2026-07-04 sprint (gate 4.6 adds
+# modules/drift_watch; authored and plan-verified only, never applied).
+enable_phase4 = false
