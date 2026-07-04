@@ -1,0 +1,41 @@
+scripts/lake_quality_smoke.py
+  s_a2e22b769416de::t_51238e6f35937f 1-37
+Makefile
+  s_a2e22b769416de::t_1a76a53e6d1010 72-73
+  s_a2e22b769416de::t_2fddb6de6f1a57 152-156
+  s_a2e22b769416de::t_0d3ee6d6b009a0 12-13
+lake/quality/marinecadastre_suite.py
+  s_a2e22b769416de::t_176177beabb3f7 1-104,106-181
+  s_a2e22b769416de::t_29b92843c64fa5 105
+  s_a2e22b769416de::t_4d44216cb1db0e 182-185
+lake/tests/test_marinecadastre_suite.py
+  s_a2e22b769416de::t_e3d50f1a8e5c60 86-88,92
+  s_a2e22b769416de::t_0e2c1c6fcb74ff 153-154,160-168
+  s_a2e22b769416de::t_6d9df205a566f5 1-2,6-15,18-25,27-33,35-41,43-85,89-91,93-102,104-110,112-152,155-159
+  s_a2e22b769416de::t_62d8f501026985 3-5,16-17
+  s_a2e22b769416de::t_ffc346b41be8bc 26,34,42,103,111,169-170
+lake/fixtures/expectations.json
+  s_a2e22b769416de::t_21249b0ab4bbf9 1-13
+pyproject.toml
+  s_a2e22b769416de::t_ff43a59326c482 37-44
+  s_a2e22b769416de::t_fb50eed9799a50 58
+  s_a2e22b769416de::t_68ddee9ed4294b 66
+lake/fixtures/marinecadastre_sample.jsonl
+  s_a2e22b769416de::t_af82e950a51c1a 1-10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "c742ad0ffbdec10c00dccca44296899846bc5391",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
