@@ -31,7 +31,7 @@ See `docs/ARCHITECTURE.md` for the full diagram and the opinionated tradeoffs.
 | `docs/HONESTY.md` | The locked honesty framing, real-vs-simulated labeling rules, gap talk-track. |
 | `docs/ARCHITECTURE.md` | Hybrid architecture diagram and the key tradeoffs. |
 | `docs/SYSTEM_DESIGN_DECISIONS.md` (+ `docs/system-design-decisions.html`) | Staff-level decision records: each component mapped to its canonical pattern and source (Fowler/Joshi, Kleppmann DDIA, Newman, Richardson, Nygard, Google SRE, HelloInterview), a SAGA deep-dive, AIS capacity sizing, and a 45-minute interview walkthrough. The HTML is an interactive learning companion. |
-| `PLATFORM_WAR_STORIES.md` | Debugging war stories (P1-P8), anticipated until grounded in real artifacts. |
+| `PLATFORM_WAR_STORIES.md` | Debugging war stories (P1-P28), most grounded in live runs; a handful still anticipated. |
 | `Makefile` | `fmt`, `validate`, `plan`, `apply`, `destroy` over `infra/terraform/envs/base`. |
 | `.gitignore` | Terraform, Python, env, and OS ignores. |
 | `infra/terraform/versions.tf` | Provider pinning (aws ~> 5.x, archive, random). |
@@ -41,11 +41,13 @@ See `docs/ARCHITECTURE.md` for the full diagram and the opinionated tradeoffs.
 | `infra/terraform/envs/base/` | The base environment that wires the modules together. |
 | `infra/terraform/envs/demo/` | The demo environment (ephemeral, teardown-friendly). |
 | `infra/lambda/teardown/` | Teardown Lambda invoked by the cost guardrail. |
-| `deploy/helm/` | Kubernetes / EKS Helm charts (later phase). |
-| `streaming/flink/` | Flink streaming jobs (later phase). |
-| `cdc/` | Change-data-capture configuration (later phase). |
-| `serving/` | Model serving and the inference front door (later phase). |
-| `fde/` | Forward-deployed-engineer simulated case studies (later phase). |
+| `deploy/helm/` | Kubernetes / EKS Helm charts (Phase 5, not yet built). |
+| `streaming/flink/` | Flink streaming jobs (Phase 1, built and run live on AWS). |
+| `cdc/` | Change-data-capture pipeline (Phase 2, local-stack accepted; AWS showcase not yet run). |
+| `serving/` | Model serving and the inference front door (Phase 1, built and run live on AWS). |
+| `lake/` | EMR Spark backfill + Iceberg lake + training-set export (Phase 3, built and run live on AWS). |
+| `mlops/` | Model registry, promotion pipeline, drift/HITL/preference flywheel (Phases 3-4). |
+| `fde/` | Forward-deployed-engineer simulated case studies (Phase 5, not yet built). |
 
 ## Phase status
 
@@ -55,11 +57,11 @@ originally predated it); per-phase detail lives in `docs/phases/`.
 | Phase | Scope | Status |
 | --- | --- | --- |
 | Phase 0 | Foundations: networking, state stores, FinOps guardrails, $75 hard cap. | Deployed (live in AWS since 2026-07-03) |
-| Phase 1 | Streaming + serving vertical slice: ingestor, Kinesis, Flink features, ECS front door, HITL console, observability. | Code-complete (gates 1.1-1.9); AWS showcase pending |
-| Phase 2 | CDC: Postgres -> Debezium -> Kafka -> online store, slot-lag monitoring. | Local stack accepted (e2e 5/5); AWS showcase pending |
-| Phase 3 | Lake + promotion: EMR backfill -> Iceberg, Feast export, SageMaker async Pi-DPM endpoint, holdout/shadow/canary promotion. | Code-complete (gates 3.0-3.9); AWS showcase pending |
-| Phase 4 | Drift -> HITL -> RL flywheel: drift taxonomy, preference triples, reward-hacking probe. | Design sketch (`docs/phases/PHASE_4_SKETCH.md`) |
-| Phase 5 | Multi-tenant + scale: EKS/KEDA, tenant isolation, FDE case studies, explanation layer. | Planned |
+| Phase 1 | Streaming + serving vertical slice: ingestor, Kinesis, Flink features, ECS front door, HITL console, observability. | AWS showcase run live 2026-07-04: a real planted anomaly reached the HITL queue end to end |
+| Phase 2 | CDC: Postgres -> Debezium -> Kafka -> online store, slot-lag monitoring. | Local stack accepted (e2e 5/5, 0.57s smoke); AWS MSK showcase not yet run |
+| Phase 3 | Lake + promotion: EMR backfill -> Iceberg, Feast export, SageMaker async Pi-DPM endpoint, holdout/shadow/canary promotion. | AWS showcase run live 2026-07-04 (EMR backfill, SageMaker scale-to-zero both directions, live promotion pipeline); torn down clean |
+| Phase 4 | Drift -> HITL -> RL flywheel: drift taxonomy, preference triples, reward-hacking probe. | Code-complete (gates 4.0-4.7, `phase4-flywheel`, local-plane only); adversarially reviewed |
+| Phase 5 | Multi-tenant + scale: EKS/KEDA, tenant isolation, FDE case studies, explanation layer. | Planned and signed off (`docs/phases/PHASE_5.md`); build is a later sprint |
 
 ## Phase 0 quickstart
 
