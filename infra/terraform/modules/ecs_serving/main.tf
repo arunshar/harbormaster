@@ -165,11 +165,21 @@ resource "aws_service_discovery_private_dns_namespace" "this" {
 resource "aws_service_discovery_service" "serving" {
   name = local.service
 
+  # SRV, not A: confirmed against AWS's own API Gateway docs ("Create a
+  # private integration using AWS Cloud Map service discovery" -- "If you use
+  # Amazon ECS to populate entries in AWS Cloud Map, you must configure your
+  # Amazon ECS task to use SRV records... The registered resources'
+  # attributes must include IP addresses AND PORTS"). An A record carries
+  # only the IP, so API Gateway's HTTP_PROXY+VPC_LINK+Cloud-Map integration
+  # had no port to route to and every request 500'd at the gateway before
+  # ever reaching the container (a real, first-live-run finding, W1 sprint
+  # window, 2026-07-04: zero access-log entries for the failing requests
+  # proved the request never reached the app).
   dns_config {
     namespace_id = aws_service_discovery_private_dns_namespace.this.id
 
     dns_records {
-      type = "A"
+      type = "SRV"
       ttl  = 10
     }
 
@@ -382,7 +392,9 @@ resource "aws_ecs_service" "serving" {
   }
 
   service_registries {
-    registry_arn = aws_service_discovery_service.serving.arn
+    registry_arn   = aws_service_discovery_service.serving.arn
+    container_name = local.service
+    container_port = var.container_port
   }
 
   # Ignore desired_count drift so autoscaling owns it after the first apply.
