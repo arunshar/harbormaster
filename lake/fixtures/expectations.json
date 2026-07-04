@@ -20,5 +20,9 @@
     "note": "lake/tests/test_backfill_transforms.py's synthetic multi-vessel zigzag, epsilon_m=200.0, min_cluster_size=3",
     "n_vessels_3": {"nodes": 2, "edges": 1, "edge_frequency": 3},
     "n_vessels_4": {"nodes": 2, "edges": 1, "edge_frequency": 4}
+  },
+  "training_export_smoke": {
+    "row_count": 3,
+    "data_fingerprint_sha256": "217131e4b9478ae88c43288918ba5592ebe50b459a3a55e808e53f83a6c19fcb"
   }
 }

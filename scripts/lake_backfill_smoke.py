@@ -25,10 +25,17 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from lake.backfill.transforms import canonicalize_positions, derive_corridor_graph
-from lake.iceberg import AIS_HISTORY_TABLE, CORRIDOR_EDGES_TABLE, CORRIDOR_NODES_TABLE, build_lake_writer
+from lake.iceberg import (
+    AIS_HISTORY_TABLE,
+    CORRIDOR_EDGES_TABLE,
+    CORRIDOR_NODES_TABLE,
+    build_lake_writer,
+)
 from lake.quality.marinecadastre_suite import validate_marinecadastre_batch
 
-FIXTURE = Path(__file__).resolve().parent.parent / "lake" / "fixtures" / "marinecadastre_sample.jsonl"
+FIXTURE = (
+    Path(__file__).resolve().parent.parent / "lake" / "fixtures" / "marinecadastre_sample.jsonl"
+)
 WAREHOUSE_DIR = Path(__file__).resolve().parent.parent / ".lake-warehouse"
 
 
@@ -48,7 +55,8 @@ def main() -> int:
     print(f"[PASS] canonicalize_positions: {len(canonical)} ais_history rows")
 
     nodes, edges = derive_corridor_graph(canonical)
-    print(f"[PASS] derive_corridor_graph: {len(nodes)} nodes, {len(edges)} edges (expected 0/0: single-vessel fixture)")
+    print(f"[PASS] derive_corridor_graph: {len(nodes)} nodes, {len(edges)} edges")
+    print("        (expected 0/0: a single vessel cannot produce a shared waypoint)")
 
     if WAREHOUSE_DIR.exists():
         shutil.rmtree(WAREHOUSE_DIR)

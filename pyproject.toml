@@ -45,13 +45,19 @@ lake = [
   "pandas>=2.0",
   "scikit-learn>=1.3",
 ]
-# lake/backfill/job.py only: the real PySpark EMR entrypoint. Needs a JVM this
-# dev machine does not have (see docs/phases/PHASE_3.md's no-local-JVM
-# finding), so this extra is declared but not installed/exercised here; it is
-# what a real EMR Serverless job image or a JVM-equipped dev box would need.
+# The real, AWS-showcase-only half of Phase 3: lake/backfill/job.py's PySpark
+# EMR entrypoint (needs a JVM this dev machine does not have, see the
+# no-local-JVM finding) and lake/offline_store.py's Feast AthenaOfflineStore
+# declarations (needs live Athena; Feast has no native/contrib Iceberg store,
+# so Athena, itself Iceberg-native, is the real integration point). Declared
+# but not installed/exercised locally; also NOT combined into the `lake`
+# extra above, since feast[aws] pulled numpy>=2 in a quick local check, which
+# conflicts with great_expectations' numpy<2 pin (tests still passed, but the
+# two are kept in separate extras rather than relying on that working by luck).
 lake-emr = [
   "pyspark>=3.5",
   "boto3>=1.34",
+  "feast[aws]>=0.40",
 ]
 
 # Map the in-repo source dirs onto importable top-level packages so the

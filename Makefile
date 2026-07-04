@@ -10,7 +10,7 @@ COST_CAP := 75
 .PHONY: help fmt init validate plan apply destroy cost \
         serve-install serve-lint serve-test serve-run serve-fixture serve-docker flink-package e2e \
         cdc-up cdc-down cdc-smoke cdc-consumer cdc-lambda-package cdc-e2e \
-        lake-quality-smoke lake-backfill-smoke
+        lake-quality-smoke lake-backfill-smoke lake-training-export-smoke
 
 help:
 	@echo "Harbormaster Phase 0 targets (operate on $(TF_DIR)):"
@@ -160,3 +160,6 @@ lake-quality-smoke:   ## run the MarineCadastre GE suite against the committed f
 
 lake-backfill-smoke:  ## GE gate -> transforms -> real Iceberg write, end to end, no Spark
 	$(PY) scripts/lake_backfill_smoke.py
+
+lake-training-export-smoke: ## point-in-time training-set export against the committed fixture
+	$(PY) scripts/lake_training_export_smoke.py

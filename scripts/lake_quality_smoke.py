@@ -15,7 +15,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from lake.quality.marinecadastre_suite import validate_marinecadastre_batch
 
-FIXTURE = Path(__file__).resolve().parent.parent / "lake" / "fixtures" / "marinecadastre_sample.jsonl"
+FIXTURE = (
+    Path(__file__).resolve().parent.parent / "lake" / "fixtures" / "marinecadastre_sample.jsonl"
+)
 
 
 def main() -> int:
