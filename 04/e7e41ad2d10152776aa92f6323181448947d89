@@ -1,0 +1,31 @@
+README.md
+  s_a2e22b769416de::t_90af8fd9112074 35
+docs/PLATFORM_BOOK.md
+  s_a2e22b769416de::t_81fa3bb971104f 209-221
+  s_a2e22b769416de::t_508e7e0a650705 305,307-311,313-331
+  s_a2e22b769416de::t_d6e2b6e0892cf3 87-91
+  s_a2e22b769416de::t_3f51c0648e5fca 268-297
+  s_a2e22b769416de::t_253e892da03d8d 1-77,82-86,92-100,114-125,139-152,166-181,193-194,196-208,222-267,298-304,306,312,332-346
+  s_a2e22b769416de::t_78e7edb1765927 101-113
+  s_a2e22b769416de::t_03099c8d8f2331 153-165
+  s_a2e22b769416de::t_a56c6707c1fe79 195
+  s_a2e22b769416de::t_146ec585fbcd60 126-138
+  s_a2e22b769416de::t_48dc65e70c0bdf 78-81
+  s_a2e22b769416de::t_82a736ab710869 182-192
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "04e7e41ad2d10152776aa92f6323181448947d89",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
