@@ -12,7 +12,7 @@ COST_CAP := 75
         cdc-up cdc-down cdc-smoke cdc-consumer cdc-lambda-package cdc-e2e \
         lake-quality-smoke lake-backfill-smoke lake-training-export-smoke \
         drill-l1-training-serving-skew drill-l2-canary-rollback lake-e2e \
-        pidpm-demo-checkpoint lake-package lake-package-venv
+        pidpm-demo-checkpoint lake-package lake-package-venv drift-smoke
 
 help:
 	@echo "Harbormaster Phase 0 targets (operate on $(TF_DIR)):"
@@ -187,3 +187,8 @@ lake-package:         ## package the EMR backfill entrypoint + --py-files zip ->
 
 lake-package-venv:    ## lake-package + linux/amd64 venv archive via Docker (pulls the EMR image, slow)
 	bash scripts/package_lake_for_emr.sh --with-venv
+
+# ---- Phase 4: drift -> HITL -> RL flywheel (pure Python locally, no AWS, $0) ----
+
+drift-smoke:          ## gate 4.1: check_input_drift against the committed fixture pair
+	$(PY) scripts/drift_smoke.py

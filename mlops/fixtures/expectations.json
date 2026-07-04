@@ -30,5 +30,14 @@
       {"stage": "canary_5", "action": "advance"},
       {"stage": "canary_25", "action": "revert"}
     ]
+  },
+  "drift_check": {
+    "note": "psi/ks/pvalue pinned against MIRROR's own serving/monitoring/drift.py, not this port; see mlops/tests/test_drift.py's module docstring for the exact independent-verification call",
+    "fixture": "np.linspace(0, 10, 50) reference vs np.linspace(0, 10, 50) [feature_a, unchanged] / np.linspace(5, 15, 50) [feature_b, +5 shift] current",
+    "feature_a_drifted": false,
+    "feature_b_drifted": true,
+    "feature_b_psi": 6.652284902471817,
+    "feature_b_ks": 0.5,
+    "feature_b_ks_pvalue": 3.6276162006545173e-06
   }
 }
