@@ -1,0 +1,35 @@
+PLATFORM_WAR_STORIES.md
+  s_a2e22b769416de::t_18a01b91b73c1f 150-173
+scripts/drill_l1_training_serving_skew.py
+  s_a2e22b769416de::t_02f707308b3e77 1-102
+Makefile
+  s_a2e22b769416de::t_65ff2e32fdbd10 13-14
+  s_a2e22b769416de::t_73fc20614638dd 167-172
+scripts/drill_l2_canary_rollback.py
+  s_a2e22b769416de::t_c492cc00836ade 105-108
+  s_a2e22b769416de::t_a58157c175ea90 1-97,111,114-128,130-139
+  s_a2e22b769416de::t_4fba4d10c131a9 99-104,109-110,112-113,129
+  s_a2e22b769416de::t_469fdba91ac5f9 98
+docs/phases/PHASE_3.md
+  s_a2e22b769416de::t_cce528cb5a4bf4 81
+docs/drills/L1_training_serving_skew.md
+  s_a2e22b769416de::t_cbc833ce715b7b 1-12
+docs/drills/L2_canary_rollback.md
+  s_a2e22b769416de::t_b863e25d350b25 1-17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "640d879282b25f0bf1912eedcfa0237b6394c1e3",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
