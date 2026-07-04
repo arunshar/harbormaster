@@ -1,0 +1,35 @@
+mlops/fixtures/preference_expectations.json
+  s_c739fb2c80ca09::t_eb0f6d6f202f7b 1-5
+Makefile
+  s_c739fb2c80ca09::t_5519c0b6555917 193-195
+mlops/fixtures/preference_hitl_rows.json
+  s_c739fb2c80ca09::t_a5da7d658c8ba2 1-11
+.gitignore
+  s_c739fb2c80ca09::t_588add4155ea0e 77-80
+docs/phases/PHASE_4.md
+  s_c739fb2c80ca09::t_c704b416f79d06 91
+  s_c739fb2c80ca09::t_f931b04eb0107a 73-77,79-80,82-83,85-90,92
+  s_c739fb2c80ca09::t_aceef03c790622 78
+  s_c739fb2c80ca09::t_77ddc419ca3d4a 81
+  s_c739fb2c80ca09::t_8edfaeabcfa3fa 84
+  s_c739fb2c80ca09::t_5592e41e9ece4b 93
+scripts/preference_smoke.py
+  s_c739fb2c80ca09::t_a25e6602eb3e03 1-16,20-54
+  s_c739fb2c80ca09::t_b8ea60544ae63d 17-19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "8f38325972d7d6e38250a6e3797ea16c25802102",
+  "prompts": {},
+  "sessions": {
+    "s_c739fb2c80ca09": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fd41cdbb-bae6-4673-876e-f2e017957fa4",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
