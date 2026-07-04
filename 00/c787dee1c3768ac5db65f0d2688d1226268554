@@ -1,0 +1,41 @@
+Makefile
+  s_a2e22b769416de::t_c2f3290cec465e 163-165
+  s_a2e22b769416de::t_6b8cf0b180834e 13
+lake/tests/test_export_training_set.py
+  s_a2e22b769416de::t_ac67534ace143f 1-106
+pyproject.toml
+  s_a2e22b769416de::t_210361d5374f74 48-56,60
+docs/phases/PHASE_3.md
+  s_a2e22b769416de::t_97ddb3d7c5e0a1 71
+scripts/lake_training_export_smoke.py
+  s_a2e22b769416de::t_ec9c0ff75455ac 1-63
+  s_a2e22b769416de::t_c3a83dedcc91b7 64-65
+scripts/lake_backfill_smoke.py
+  s_a2e22b769416de::t_a5675d5822a1ae 58-59
+lake/offline_store.py
+  s_a2e22b769416de::t_656ba46b0854c1 1-74,76
+  s_a2e22b769416de::t_ca40cda15ae353 75
+lake/export_training_set.py
+  s_a2e22b769416de::t_a2f6241aeb13d0 1-83
+lake/fixtures/expectations.json
+  s_a2e22b769416de::t_35104c0bccf776 23-24
+  s_a2e22b769416de::t_a31c0b80a0eed7 25-26
+scripts/lake_quality_smoke.py
+  s_a2e22b769416de::t_f5788dd1d93e15 18-20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "00c787dee1c3768ac5db65f0d2688d1226268554",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
