@@ -1,0 +1,19 @@
+sessions/SESSION_HANDOFF_2026-07-04_sprint_closeout.md
+  s_a2e22b769416de::t_94eb15861d5ca3 1-68
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "1e3b435105a757506b862c270952f685a887c4ea",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
