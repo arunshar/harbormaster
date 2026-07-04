@@ -1,0 +1,45 @@
+scripts/drill_l3_drift_classification.py
+  s_a2e22b769416de::t_6fbfeed6f067a5 171-172
+  s_a2e22b769416de::t_1331cfd8cda881 1-161,163-165,167-170,174-194
+  s_a2e22b769416de::t_6e85b16feace69 162
+  s_a2e22b769416de::t_41d97694e433c5 166
+  s_a2e22b769416de::t_da657779ca7e31 173
+PLATFORM_WAR_STORIES.md
+  s_a2e22b769416de::t_9213d669b132ca 174,343-345,347-353,355-357,359-362,364
+tests/e2e/test_phase4_helpers.py
+  s_a2e22b769416de::t_9dd31b0f4952f6 1-39
+scripts/drill_l4_reward_hacking.py
+  s_a2e22b769416de::t_3cbe0a101d4d32 1-129
+  s_a2e22b769416de::t_9b8010b86d802f 130-133
+tests/e2e/phase4_helpers.py
+  s_a2e22b769416de::t_dd0a507500f23d 1-28
+  s_a2e22b769416de::t_f82d0cad23b831 29-30
+tests/e2e/test_phase4.py
+  s_a2e22b769416de::t_b19c632332bef5 1-165
+  s_a2e22b769416de::t_f2c6ac9b538a85 166-175
+Makefile
+  s_a2e22b769416de::t_e38cc377b18c57 15-16
+  s_a2e22b769416de::t_8bed876f2fbbad 205-213
+docs/phases/PHASE_4.md
+  s_a2e22b769416de::t_2c46e035f4379c 3
+docs/drills/L3_drift_classification.md
+  s_a2e22b769416de::t_f2a696ecb91a68 1-19
+docs/drills/L4_reward_hacking_probe.md
+  s_a2e22b769416de::t_c8ce780a9050fb 1-17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "bd2ad33ea841627b9c8a8e04028c79a452ec0ca1",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}

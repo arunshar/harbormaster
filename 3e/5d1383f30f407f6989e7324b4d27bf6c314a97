@@ -1,0 +1,29 @@
+mlops/promote.py
+  s_a2e22b769416de::t_fe5bc35e36cf7f 23,38,48,54-64,71-78
+  s_a2e22b769416de::t_5f8a069c431690 79
+mlops/reward_hacking_probe.py
+  s_a2e22b769416de::t_2d93e33962d19b 1-70
+  s_a2e22b769416de::t_7d2b8382e56041 71-82
+mlops/tests/test_reward_hacking_probe.py
+  s_a2e22b769416de::t_0510be514107e8 1-55
+  s_a2e22b769416de::t_3ad0c7c78738ed 56-59
+mlops/tests/test_promote.py
+  s_a2e22b769416de::t_55fb0ca50400df 152-231
+  s_a2e22b769416de::t_f27b153c61b289 11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "3e5d1383f30f407f6989e7324b4d27bf6c314a97",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}

@@ -1,0 +1,22 @@
+mlops/calibration_watch.py
+  s_a2e22b769416de::t_3557b220538cb2 1-82
+mlops/tests/test_calibration_watch.py
+  s_a2e22b769416de::t_4dfe03caaa32a6 43-44
+  s_a2e22b769416de::t_5aec37c844df7d 1-42,45-53
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "327f7fdde61a34d6787ce70bd24a691653f54ce0",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}

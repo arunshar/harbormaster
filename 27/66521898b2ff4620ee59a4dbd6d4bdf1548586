@@ -1,0 +1,23 @@
+mlops/tests/test_preference_builder.py
+  s_a2e22b769416de::t_47727f067420be 1-107
+  s_a2e22b769416de::t_acf9fb145b4b4d 108-109
+mlops/preference_builder.py
+  s_a2e22b769416de::t_a06df75efdfd43 1-227
+  s_a2e22b769416de::t_5dc3efb62dc9b0 228-229
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "2766521898b2ff4620ee59a4dbd6d4bdf1548586",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}

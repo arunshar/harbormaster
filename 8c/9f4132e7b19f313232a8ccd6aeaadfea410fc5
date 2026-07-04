@@ -1,0 +1,27 @@
+mlops/reward_hacking_probe.py
+  s_a2e22b769416de::t_62e9c01ba9ca4b 47-61,76-83,85-88,90,95-100
+  s_a2e22b769416de::t_eb7337fbbb2a46 101
+mlops/tests/test_reward_hacking_probe.py
+  s_a2e22b769416de::t_91fb131aee1252 52-58,60,63
+  s_a2e22b769416de::t_be5bce202a7b4c 142-149
+docs/phases/PHASE_4.md
+  s_a2e22b769416de::t_b6e4a01ad3f1ea 85
+  s_a2e22b769416de::t_016cf42b1546d1 79
+  s_a2e22b769416de::t_91859d6f2f96e7 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "8c9f4132e7b19f313232a8ccd6aeaadfea410fc5",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}

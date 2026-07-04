@@ -1,0 +1,22 @@
+docs/phases/PHASE_4.md
+  s_c739fb2c80ca09::t_b19264db15c3fb 85
+mlops/tests/test_reward_hacking_probe.py
+  s_c739fb2c80ca09::t_2036b1d7f0b0df 5-7
+  s_c739fb2c80ca09::t_1b90b17eb1aff1 62-157
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "9bffea5ef63394ba8673d4aced8d0928d6691797",
+  "prompts": {},
+  "sessions": {
+    "s_c739fb2c80ca09": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fd41cdbb-bae6-4673-876e-f2e017957fa4",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
