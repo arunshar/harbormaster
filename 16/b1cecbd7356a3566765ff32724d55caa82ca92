@@ -1,0 +1,25 @@
+pyproject.toml
+  s_a2e22b769416de::t_2097ba1c1b1b67 62-69
+mlops/tests/test_wandb_adapter.py
+  s_a2e22b769416de::t_c62a352ec48002 36-43,52-61
+  s_a2e22b769416de::t_4cdbf304c784d7 1-35,44-51
+  s_a2e22b769416de::t_42d2e7fb2fc130 62-63
+mlops/wandb_adapter.py
+  s_a2e22b769416de::t_58d39fe30ef36f 1-62
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "16b1cecbd7356a3566765ff32724d55caa82ca92",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
