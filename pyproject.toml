@@ -34,6 +34,14 @@ cdc = [
   "pyiceberg[sql-sqlite]>=0.7",
   "pyarrow>=15",
 ]
+# Phase 3 lake + promotion plane (lake/, mlops/). Unit tests need only
+# great_expectations + pandas (a lightweight PandasDataset, no DataContext/
+# Checkpoint project scaffolding); pyspark/boto3/sagemaker are needed only by
+# the real EMR job and the AWS showcase, added as this phase's later gates land.
+lake = [
+  "great-expectations>=0.18,<1.0",
+  "pandas>=2.0",
+]
 
 # Map the in-repo source dirs onto importable top-level packages so the
 # vendored GeoTrace modules keep their `from app.* import ...` paths unchanged
@@ -47,7 +55,7 @@ exclude = ["**/tests", "**/tests/**", "**/test_*.py"]
 # "." puts the repo root on sys.path so the cdc package imports as `cdc`.
 pythonpath = ["serving", "streaming", "tests", "."]
 asyncio_mode = "auto"
-testpaths = ["serving/tests", "streaming/features/tests", "streaming/replay/tests", "streaming/ingestor/tests", "streaming/flink/tests", "serving/frontend/tests", "cdc/tests", "tests/e2e"]
+testpaths = ["serving/tests", "streaming/features/tests", "streaming/replay/tests", "streaming/ingestor/tests", "streaming/flink/tests", "serving/frontend/tests", "cdc/tests", "lake/tests", "tests/e2e"]
 markers = [
   "postgres: integration test that needs a live Postgres (set HM_TEST_PG_DSN to run)",
 ]
@@ -55,7 +63,7 @@ markers = [
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-src = ["serving", "streaming", "cdc", "."]
+src = ["serving", "streaming", "cdc", "lake", "."]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]

@@ -9,7 +9,8 @@ COST_CAP := 75
 
 .PHONY: help fmt init validate plan apply destroy cost \
         serve-install serve-lint serve-test serve-run serve-fixture serve-docker flink-package e2e \
-        cdc-up cdc-down cdc-smoke cdc-consumer cdc-lambda-package cdc-e2e
+        cdc-up cdc-down cdc-smoke cdc-consumer cdc-lambda-package cdc-e2e \
+        lake-quality-smoke
 
 help:
 	@echo "Harbormaster Phase 0 targets (operate on $(TF_DIR)):"
@@ -68,8 +69,8 @@ serve-install:        ## create .venv and install the serving package + dev deps
 	$(PY) -m pip install --upgrade pip
 	$(PY) -m pip install -e ".[dev]"
 
-serve-lint:           ## ruff lint serving + streaming + cdc + tests
-	$(PY) -m ruff check serving streaming cdc tests
+serve-lint:           ## ruff lint serving + streaming + cdc + lake + tests
+	$(PY) -m ruff check serving streaming cdc lake tests
 
 serve-test:           ## run the unit + golden test suite
 	$(PY) -m pytest -q
@@ -148,3 +149,8 @@ cdc-lambda-package:   ## vendor pg8000 + the shared monitor into the slot-lag La
 	cp infra/lambda/cdc_slot_lag/handler.py cdc/monitor/slot_lag.py $(LAMBDA_BUILD)/
 	$(PY) -m pip install --quiet --target $(LAMBDA_BUILD) "pg8000>=1.31"
 	@echo "packaged $(LAMBDA_BUILD); terraform archives it via modules/cdc_monitoring"
+
+# ---- Lake + promotion plane (Phase 3; local fakes/local-mode Spark, $0) ----
+
+lake-quality-smoke:   ## run the MarineCadastre GE suite against the committed fixture
+	$(PY) scripts/lake_quality_smoke.py
