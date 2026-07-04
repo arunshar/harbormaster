@@ -247,12 +247,21 @@ resource "aws_appautoscaling_policy" "scale_out_from_zero" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "has_backlog_without_capacity" {
-  alarm_name          = "${local.name_prefix}-pidpm-has-backlog-without-capacity"
-  namespace           = "AWS/SageMaker"
-  metric_name         = "HasBacklogWithoutCapacity"
+  alarm_name  = "${local.name_prefix}-pidpm-has-backlog-without-capacity"
+  namespace   = "AWS/SageMaker"
+  metric_name = "HasBacklogWithoutCapacity"
+  # EndpointName only, matching AWS's own canonical scale-from-zero example
+  # (docs.aws.amazon.com/sagemaker/latest/dg/async-inference-autoscale.html)
+  # exactly. An extra VariantName dimension here queries a metric series
+  # AWS doesn't publish (unlike ApproximateBacklogSize, which SageMaker
+  # does emit per-variant): the alarm sat with zero datapoints for 15+
+  # minutes with real, persistent backlog the whole time, so the 0-to-1
+  # scale-out from absolute zero would never have fired. A real, first-
+  # live-run finding, W2 sprint window, 2026-07-04 -- caught live, not by
+  # the prior audit (whose HM3-AUDIT-01 finding was the separate
+  # target-tracking scale-IN policy's missing EndpointName dimension).
   dimensions = {
     EndpointName = aws_sagemaker_endpoint.pidpm.name
-    VariantName  = local.variant_name
   }
   statistic           = "Average"
   period              = 60
