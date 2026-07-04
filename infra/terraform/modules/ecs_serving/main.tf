@@ -77,6 +77,20 @@ variable "rds_secret_arn" {
   default = ""
 }
 
+variable "attach_rds_secret_policy" {
+  description = <<-EOT
+    Whether to attach the execution-role policy that reads rds_secret_arn.
+    This exists separately from rds_secret_arn because the ARN arrives as an
+    RDS module output, which is unknown at plan time on a fresh apply; gating
+    count on it makes an untargeted plan fail with "count depends on resource
+    attributes that cannot be determined until apply". The caller knows
+    statically whether it creates RDS (both are behind enable_phase1), so it
+    passes that knowledge here as a plan-time-known bool.
+  EOT
+  type        = bool
+  default     = false
+}
+
 variable "container_port" {
   type    = number
   default = 8000
@@ -222,7 +236,7 @@ resource "aws_iam_role_policy_attachment" "execution" {
 # ECS injects the HM_PG_USER / HM_PG_PASSWORD secrets at task start using the
 # EXECUTION role (not the task role), so it needs to read the RDS secret.
 data "aws_iam_policy_document" "execution_secrets" {
-  count = var.rds_secret_arn != "" ? 1 : 0
+  count = var.attach_rds_secret_policy ? 1 : 0
 
   statement {
     sid       = "ReadPgSecretForInjection"
@@ -233,7 +247,7 @@ data "aws_iam_policy_document" "execution_secrets" {
 }
 
 resource "aws_iam_role_policy" "execution_secrets" {
-  count = var.rds_secret_arn != "" ? 1 : 0
+  count = var.attach_rds_secret_policy ? 1 : 0
 
   name   = "${local.name_prefix}-serving-exec-secrets"
   role   = aws_iam_role.execution.id

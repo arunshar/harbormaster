@@ -178,6 +178,9 @@ module "ecs_serving" {
   lake_bucket_arn  = "arn:aws:s3:::${module.state_stores.lake_bucket_name}"
   rds_secret_arn   = module.rds[0].master_user_secret_arn
   rds_endpoint     = module.rds[0].db_endpoint
+  # Plan-time-known bool (RDS and serving are both behind enable_phase1), so
+  # the module's secret-policy count never depends on an apply-time RDS output.
+  attach_rds_secret_policy = true
 
   # Phase 2: point the scorer at the CDC-fed online store. The redis DNS name
   # is deterministic (Cloud Map name in the serving namespace), so no reference
