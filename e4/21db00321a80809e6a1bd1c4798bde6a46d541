@@ -1,0 +1,23 @@
+infra/terraform/envs/base/main.tf
+  s_a2e22b769416de::t_2608d94d053c4b 181-183
+infra/terraform/modules/ecs_serving/main.tf
+  s_a2e22b769416de::t_c5a06f65539983 239
+  s_a2e22b769416de::t_4448bd082aa659 80-93
+  s_a2e22b769416de::t_d0199d2173328b 250
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "e421db00321a80809e6a1bd1c4798bde6a46d541",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
