@@ -1,0 +1,27 @@
+scripts/package_lake_for_emr.sh
+  s_a2e22b769416de::t_590fe8d67b0af0 1-68,74-124
+  s_a2e22b769416de::t_51e89db9c8673f 69-73
+Makefile
+  s_a2e22b769416de::t_1498c5fd1f9060 180-185
+  s_a2e22b769416de::t_f232e0e9580e54 15
+docs/phases/PHASE_3.md
+  s_a2e22b769416de::t_fac4b093082aca 3
+docs/runbooks/PHASE_3_AWS_SHOWCASE.md
+  s_a2e22b769416de::t_b6e994257ecab1 84-94,99,107,112-113,118-121
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "ed12ff4b7d96fa636fcaef04fffa18130c5633e3",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
