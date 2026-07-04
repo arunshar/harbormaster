@@ -10,7 +10,8 @@ COST_CAP := 75
 .PHONY: help fmt init validate plan apply destroy cost \
         serve-install serve-lint serve-test serve-run serve-fixture serve-docker flink-package e2e \
         cdc-up cdc-down cdc-smoke cdc-consumer cdc-lambda-package cdc-e2e \
-        lake-quality-smoke lake-backfill-smoke lake-training-export-smoke
+        lake-quality-smoke lake-backfill-smoke lake-training-export-smoke \
+        drill-l1-training-serving-skew drill-l2-canary-rollback
 
 help:
 	@echo "Harbormaster Phase 0 targets (operate on $(TF_DIR)):"
@@ -163,3 +164,9 @@ lake-backfill-smoke:  ## GE gate -> transforms -> real Iceberg write, end to end
 
 lake-training-export-smoke: ## point-in-time training-set export against the committed fixture
 	$(PY) scripts/lake_training_export_smoke.py
+
+drill-l1-training-serving-skew: ## drill: holdout passes a skew, shadow catches it (docs/drills/L1)
+	$(PY) scripts/drill_l1_training_serving_skew.py
+
+drill-l2-canary-rollback:       ## drill: clean gate+shadow, canary catches a regression + reverts (docs/drills/L2)
+	$(PY) scripts/drill_l2_canary_rollback.py
