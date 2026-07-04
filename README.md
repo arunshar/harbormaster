@@ -49,14 +49,17 @@ See `docs/ARCHITECTURE.md` for the full diagram and the opinionated tradeoffs.
 
 ## Phase status
 
+The scopes below reflect the master plan's real phase structure (this table
+originally predated it); per-phase detail lives in `docs/phases/`.
+
 | Phase | Scope | Status |
 | --- | --- | --- |
-| Phase 0 | Foundations: networking, state stores, FinOps guardrails, $75 hard cap. | In progress |
-| Phase 1 | Streaming ingestion: AISStream to Fargate to Kinesis to Flink, feature plane. | Planned |
-| Phase 2 | Serving: EKS GeoTrace front door with STAGD/TGARD/S-KBM and SageMaker async MME for Pi-DPM. | Planned |
-| Phase 3 | Lakehouse and CDC: Firehose to S3/Iceberg, RDS with Debezium CDC. | Planned |
-| Phase 4 | Observability: metrics, traces, dashboards, alerting across both planes. | Planned |
-| Phase 5 | FDE case studies: simulated customer scenarios and forward-deployed workflows. | Planned |
+| Phase 0 | Foundations: networking, state stores, FinOps guardrails, $75 hard cap. | Deployed (live in AWS since 2026-07-03) |
+| Phase 1 | Streaming + serving vertical slice: ingestor, Kinesis, Flink features, ECS front door, HITL console, observability. | Code-complete (gates 1.1-1.9); AWS showcase pending |
+| Phase 2 | CDC: Postgres -> Debezium -> Kafka -> online store, slot-lag monitoring. | Local stack accepted (e2e 5/5); AWS showcase pending |
+| Phase 3 | Lake + promotion: EMR backfill -> Iceberg, Feast export, SageMaker async Pi-DPM endpoint, holdout/shadow/canary promotion. | Code-complete (gates 3.0-3.9); AWS showcase pending |
+| Phase 4 | Drift -> HITL -> RL flywheel: drift taxonomy, preference triples, reward-hacking probe. | Design sketch (`docs/phases/PHASE_4_SKETCH.md`) |
+| Phase 5 | Multi-tenant + scale: EKS/KEDA, tenant isolation, FDE case studies, explanation layer. | Planned |
 
 ## Phase 0 quickstart
 
