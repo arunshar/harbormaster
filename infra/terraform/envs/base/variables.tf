@@ -163,3 +163,20 @@ variable "cdc_consumer_image" {
   type        = string
   default     = ""
 }
+
+variable "flink_code_s3_key" {
+  description = <<-EOT
+    S3 key (in the lake bucket) of the packaged Flink job zip (make
+    flink-package, uploaded to s3://<lake_bucket>/flink/flink-app.zip at
+    demo time). Empty skips creating the Managed Flink application (gate
+    1.5's modules/kda_flink gates create_app on this being non-empty), so a
+    Phase 1 apply before the artifact is uploaded creates no
+    half-configured Flink app. Despite three comments elsewhere in this
+    repo referring to "the flink_code_s3_key pattern" as an existing
+    env-level toggle (mirroring pidpm_image/cdc_connect_image), this
+    variable and its wiring into module.kda_flink never actually existed
+    until the first live Phase 1 W1 sprint-window run found the gap.
+  EOT
+  type        = string
+  default     = ""
+}

@@ -235,6 +235,10 @@ module "kda_flink" {
 
   # flink_code_s3_key stays empty until gate 1.5 uploads the job artifact, so the
   # Flink application (and its KPU cost) is not created by a 1.3 demo apply.
+  # code_bucket_arn is the same lake bucket the artifact is uploaded to
+  # (s3://<lake_bucket>/flink/flink-app.zip), not a separate bucket.
+  code_bucket_arn   = "arn:aws:s3:::${module.state_stores.lake_bucket_name}"
+  flink_code_s3_key = var.flink_code_s3_key
 
   tags = local.common_tags
 }
