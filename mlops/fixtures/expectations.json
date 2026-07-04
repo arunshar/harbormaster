@@ -1,0 +1,17 @@
+{
+  "manifest_schema": {
+    "required_meta_fields": [
+      "git_sha",
+      "config_hash",
+      "data_fingerprint",
+      "mirror_synthetic_anomaly_version",
+      "wandb_run_id"
+    ],
+    "entry_fields": ["step", "sha", "path", "meta", "ts"],
+    "path_layout": "step_<n:07d>/<sha256[:16]>.bin"
+  },
+  "golden_manifest_entry": {
+    "note": "save(Path(d), 0, b'golden-example-checkpoint-bytes', meta=..., now=lambda: 1719878400.0)",
+    "line": "{\"meta\": {\"config_hash\": \"cfg0001\", \"data_fingerprint\": \"fp0001\", \"git_sha\": \"deadbeef\", \"mirror_synthetic_anomaly_version\": \"v1\", \"wandb_run_id\": \"wandb-golden-0001\"}, \"path\": \"step_0000000/188d0609060a35e1.bin\", \"sha\": \"188d0609060a35e1\", \"step\": 0, \"ts\": 1719878400.0}"
+  }
+}
