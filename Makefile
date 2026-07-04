@@ -12,7 +12,8 @@ COST_CAP := 75
         cdc-up cdc-down cdc-smoke cdc-consumer cdc-lambda-package cdc-e2e \
         lake-quality-smoke lake-backfill-smoke lake-training-export-smoke \
         drill-l1-training-serving-skew drill-l2-canary-rollback lake-e2e \
-        pidpm-demo-checkpoint lake-package lake-package-venv drift-smoke
+        pidpm-demo-checkpoint lake-package lake-package-venv drift-smoke \
+        drift-lambda-package drill-l3-drift-classification drill-l4-reward-hacking phase4-e2e
 
 help:
 	@echo "Harbormaster Phase 0 targets (operate on $(TF_DIR)):"
@@ -201,3 +202,12 @@ drift-lambda-package: ## gate 4.6: vendor mlops/drift.py + pandas/pyarrow into t
 	cp mlops/__init__.py mlops/drift.py $(DRIFT_LAMBDA_BUILD)/mlops/
 	$(PY) -m pip install --quiet --target $(DRIFT_LAMBDA_BUILD) -r infra/lambda/drift_watch/requirements.txt
 	@echo "packaged $(DRIFT_LAMBDA_BUILD); terraform archives it via modules/drift_watch (not applied this sprint)"
+
+drill-l3-drift-classification: ## drill: all 4 decision-table rows classify correctly, incl. the false-alarm row (docs/drills/L3)
+	$(PY) scripts/drill_l3_drift_classification.py
+
+drill-l4-reward-hacking:       ## drill: a gamed candidate is blocked before shadow, an honest one promotes (docs/drills/L4)
+	$(PY) scripts/drill_l4_reward_hacking.py
+
+phase4-e2e:           ## Phase 4 e2e acceptance: all 5 criteria, pure functions + fakes, no live stack
+	$(PY) -m pytest tests/e2e/test_phase4.py -v
