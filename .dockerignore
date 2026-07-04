@@ -9,7 +9,10 @@ cdc
 fde
 deploy
 docs
-streaming/replay
+# NOT streaming/replay: streaming/ingestor/Dockerfile COPYs it (the ingestor
+# imports replay.loader); excluding it broke the first-ever ingestor image
+# build (never built before this sprint's W1 prep). streaming/flink and
+# streaming/fixtures stay ignored; neither image needs them.
 streaming/flink
 streaming/fixtures
 *.md
