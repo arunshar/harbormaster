@@ -48,3 +48,10 @@ enable_phase1 = false
 # enable_phase1 = true. MSK Serverless left running is ~$18/day: always flip
 # back to false after a demo. The local kind/Strimzi CDC plane needs neither.
 enable_phase2 = false
+
+# Phase 3 lake + promotion plane (transient EMR backfill, Feast offline export,
+# MSI->S3 checkpoint manifest, SageMaker async Pi-DPM endpoint + promotion
+# pipeline). Demo windows only; also requires enable_phase1 = true. Does NOT
+# require enable_phase2. Watch the EMR auto-terminate and the SageMaker
+# endpoint's zero-minimum scaling; flip back to false after a demo.
+enable_phase3 = false

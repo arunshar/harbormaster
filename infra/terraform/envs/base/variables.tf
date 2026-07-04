@@ -101,6 +101,27 @@ variable "enable_phase2" {
   }
 }
 
+variable "enable_phase3" {
+  description = <<-EOT
+    Gate for the Phase 3 lake + promotion plane (transient EMR backfill, the
+    Feast offline store export, the MSI->S3 checkpoint manifest path, and the
+    SageMaker async Pi-DPM endpoint + promotion pipeline). Default false keeps
+    a base apply Phase-0-only. Requires enable_phase1 = true (the SageMaker
+    endpoint sits in the Phase 1 VPC; the lake export reuses the Phase 0 lake
+    bucket and Glue catalog). Does NOT require enable_phase2 (CDC is
+    orthogonal to training/promotion). Set true for a demo window, then back
+    to false: an EMR job left running and a SageMaker endpoint left above its
+    zero-minimum auto-scaling capacity are this phase's budget threats.
+  EOT
+  type        = bool
+  default     = false
+
+  validation {
+    condition     = !var.enable_phase3 || var.enable_phase1
+    error_message = "enable_phase3 requires enable_phase1 = true (the VPC, lake bucket, and Glue catalog it depends on are Phase 0/1 resources)."
+  }
+}
+
 variable "cdc_connect_image" {
   description = <<-EOT
     ECR image URI for Debezium Connect (built from cdc/connect/Dockerfile and
