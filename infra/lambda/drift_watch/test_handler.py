@@ -25,6 +25,7 @@ for p in (HERE, REPO_ROOT):
         sys.path.insert(0, p)
 
 import handler  # noqa: E402
+
 from mlops.drift import DriftResult  # noqa: E402
 
 STABLE = DriftResult(feature="a", psi=0.0, ks=0.0, ks_pvalue=1.0, drifted=False)
