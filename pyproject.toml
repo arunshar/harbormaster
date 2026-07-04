@@ -59,6 +59,14 @@ lake-emr = [
   "boto3>=1.34",
   "feast[aws]>=0.40",
 ]
+# mlops/ live-service half: wandb's real SDK (mlops/wandb_adapter.py falls
+# back to structlog without WANDB_API_KEY, so unit tests need none of this)
+# and boto3 for the gate 3.6 SageMaker client. Kept separate from `lake-emr`
+# (thematically EMR/Feast) though both are "declared, not locally exercised."
+mlops = [
+  "wandb>=0.17",
+  "boto3>=1.34",
+]
 
 # Map the in-repo source dirs onto importable top-level packages so the
 # vendored GeoTrace modules keep their `from app.* import ...` paths unchanged
