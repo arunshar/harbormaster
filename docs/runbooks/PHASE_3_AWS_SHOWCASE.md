@@ -255,6 +255,16 @@ weight-setter, then call `mlops.promote.run_promotion` exactly as
 Confirm the transition sequence printed matches the pinned clean-run
 sequence in `mlops/fixtures/expectations.json`.
 
+Note: this sketch calls `run_promotion` directly (matching the fakes-based
+`tests/e2e/test_phase3.py` path), not `mlops.registry.register_candidate`,
+so it never needed a Model Package Group to exist. If a future demo window
+exercises the registry path instead (HM3-AUDIT-02, fixed 2026-07-04):
+`modules/sagemaker_pidpm` now provisions `aws_sagemaker_model_package_group.pidpm`
+(output `model_package_group_name`) automatically on `enable_phase3 = true`,
+so `register_candidate(model_package_group_name=<that output>, ...)` works
+against real AWS with no manual pre-creation step. Verify with
+`aws sagemaker describe-model-package-group --model-package-group-name harbormaster-base-pidpm`.
+
 ## Part 3: teardown (END OF DEMO WINDOW, always)
 
 Flip in `terraform.tfvars` (leave the image vars; they are inert once the

@@ -71,9 +71,9 @@ variable "tags" {
 }
 
 locals {
-  name_prefix  = "${var.project}-${var.environment}"
-  tags         = merge(var.tags, { Module = "sagemaker_pidpm" })
-  variant_name = "champion"
+  name_prefix   = "${var.project}-${var.environment}"
+  tags          = merge(var.tags, { Module = "sagemaker_pidpm" })
+  variant_name  = "champion"
   models_bucket = replace(var.models_bucket_arn, "arn:aws:s3:::", "")
 }
 
@@ -151,6 +151,20 @@ resource "aws_sagemaker_model" "pidpm" {
   }
 
   tags = local.tags
+}
+
+# The promotion registry (mlops/registry.py's register_candidate) calls
+# create_model_package with a ModelPackageGroupName, which creates a
+# VERSIONED model package; SageMaker requires that named group to already
+# exist (create_model_package does not create it). Provisioning it here,
+# not via a manual runbook CLI step, so it tears down with the rest of the
+# module on enable_phase3=false, matching this repo's "guardrails/resources
+# as code, not a checklist" convention (HM3-AUDIT-02, ~/code/sagemaker-
+# deepdive/audit/HANDOFF_PHASE3_AUDIT_2026-07-04.md, option (b)).
+resource "aws_sagemaker_model_package_group" "pidpm" {
+  model_package_group_name        = "${local.name_prefix}-pidpm"
+  model_package_group_description = "Pi-DPM promotion approval group (Phase 3)"
+  tags                            = local.tags
 }
 
 resource "aws_sagemaker_endpoint_configuration" "pidpm" {
@@ -279,4 +293,8 @@ output "endpoint_name" {
 
 output "model_name" {
   value = aws_sagemaker_model.pidpm.name
+}
+
+output "model_package_group_name" {
+  value = aws_sagemaker_model_package_group.pidpm.model_package_group_name
 }
