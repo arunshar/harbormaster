@@ -392,3 +392,27 @@ module "cdc_monitoring" {
 
   tags = local.common_tags
 }
+
+# -----------------------------------------------------------------------------
+# Phase 3 (gate 3.2): the transient MarineCadastre lake backfill. Whole-module
+# gate behind enable_phase3 (default false; requires enable_phase1 for the
+# VPC and the lake bucket/Glue catalog Phase 0 already wires up). No job run
+# is Terraform-managed (transient, submitted via `aws emr-serverless
+# start-job-run`, Arun-run, at demo-apply time); only the application + its
+# execution role are standing infra, and the application itself auto-stops
+# after idle_timeout_minutes with no job running.
+# -----------------------------------------------------------------------------
+
+module "emr_backfill" {
+  count  = var.enable_phase3 ? 1 : 0
+  source = "../../modules/emr_backfill"
+
+  project     = var.project
+  environment = var.environment
+  aws_region  = var.aws_region
+
+  raw_extract_s3_uri = "arn:aws:s3:::${module.state_stores.lake_bucket_name}/raw/marinecadastre"
+  lake_bucket_arn    = "arn:aws:s3:::${module.state_stores.lake_bucket_name}"
+
+  tags = local.common_tags
+}

@@ -9,5 +9,16 @@
     "path": "lake/fixtures/marinecadastre_sample.jsonl",
     "row_count": 10,
     "expected_result": "pass"
+  },
+  "backfill_smoke": {
+    "ais_history_rows": 10,
+    "corridor_graph_nodes": 0,
+    "corridor_graph_edges": 0,
+    "note": "single-vessel fixture: 0/0 is the correct result (HDBSCAN needs multiple vessels sharing a waypoint), not a failure"
+  },
+  "corridor_graph_synthetic_fixture": {
+    "note": "lake/tests/test_backfill_transforms.py's synthetic multi-vessel zigzag, epsilon_m=200.0, min_cluster_size=3",
+    "n_vessels_3": {"nodes": 2, "edges": 1, "edge_frequency": 3},
+    "n_vessels_4": {"nodes": 2, "edges": 1, "edge_frequency": 4}
   }
 }

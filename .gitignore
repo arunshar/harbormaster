@@ -71,3 +71,6 @@ docs/internship/
 # slot-lag Lambda build dir (make cdc-lambda-package)
 infra/lambda/cdc_slot_lag/build/
 infra/terraform/modules/cdc_monitoring/.build/
+
+# local lake drill/smoke artifacts (Phase 3)
+.lake-warehouse/

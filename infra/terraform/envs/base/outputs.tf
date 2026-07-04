@@ -145,3 +145,15 @@ output "cdc_slot_lag_alarm_name" {
   description = "CloudWatch alarm on replication-slot lag (Phase 2)."
   value       = one(module.cdc_monitoring[*].alarm_name)
 }
+
+# ---- Phase 3 (null when enable_phase3 = false) ------------------------------
+
+output "emr_backfill_application_id" {
+  description = "EMR Serverless application id for the transient MarineCadastre backfill (Phase 3). Job runs are submitted against this id, Arun-run, not Terraform-managed."
+  value       = one(module.emr_backfill[*].application_id)
+}
+
+output "emr_backfill_execution_role_arn" {
+  description = "IAM role EMR Serverless job runs assume for this application (Phase 3)."
+  value       = one(module.emr_backfill[*].execution_role_arn)
+}
