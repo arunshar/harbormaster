@@ -1,0 +1,21 @@
+docs/INTERVIEW_DEEPDIVE.md
+  s_a2e22b769416de::t_3f3b1e090697c8 1-38,43-116,121-157
+  s_a2e22b769416de::t_5ef82d486292b6 117-120
+  s_a2e22b769416de::t_1a034a94f676af 39-42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "f8e547c2578cdee4713358c8ca5d7d675f402f3d",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
