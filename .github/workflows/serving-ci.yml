@@ -34,8 +34,8 @@ jobs:
   lint-and-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -55,7 +55,7 @@ jobs:
   container-build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Build serving image (no push)
         run: docker build -f serving/Dockerfile -t harbormaster-serving:ci .
       - name: Smoke the image
