@@ -32,7 +32,7 @@ An entry graduates from ANTICIPATED to grounded only when it is backed by a real
 
 **Tags:** [PLATFORM / personal-build] CONCURRENCY
 
-**Status:** ANTICIPATED, not yet hit; to be grounded in a real artifact once the build reaches it.
+**Status: ANTICIPATED (not yet observed in a live run)**; hypothetical, not tied to a real observed run, commit, log, or `file:line`; to be grounded in a real artifact once the build reaches it.
 
 - **Symptom:** one Kinesis shard runs hot and throttles (`ProvisionedThroughputExceededException`) while sibling shards sit nearly idle; end-to-end feature latency spikes for a subset of vessels.
 - **Wrong first hypothesis:** the stream is under-provisioned overall; add more shards.
@@ -44,7 +44,7 @@ An entry graduates from ANTICIPATED to grounded only when it is backed by a real
 
 **Tags:** [PLATFORM / personal-build] CORRECTNESS
 
-**Status:** ANTICIPATED, not yet hit; to be grounded in a real artifact once the build reaches it.
+**Status: ANTICIPATED (not yet observed in a live run)**; hypothetical, not tied to a real observed run, commit, log, or `file:line`; to be grounded in a real artifact once the build reaches it.
 
 - **Symptom:** per-vessel feature windows in Flink stop emitting; the online feature store goes stale even though raw events keep arriving.
 - **Wrong first hypothesis:** the Flink job is wedged or the sink is down; restart it.
@@ -56,7 +56,7 @@ An entry graduates from ANTICIPATED to grounded only when it is backed by a real
 
 **Tags:** [PLATFORM / personal-build] CONCURRENCY
 
-**Status:** ANTICIPATED, not yet hit; to be grounded in a real artifact once the build reaches it.
+**Status: ANTICIPATED (not yet observed in a live run)**; hypothetical, not tied to a real observed run, commit, log, or `file:line`; to be grounded in a real artifact once the build reaches it.
 
 - **Symptom:** when CDC is first enabled, queries against the operational RDS Postgres slow sharply and the connector takes a long time to reach streaming mode.
 - **Wrong first hypothesis:** RDS is undersized; scale the instance up.
@@ -68,7 +68,7 @@ An entry graduates from ANTICIPATED to grounded only when it is backed by a real
 
 **Tags:** [PLATFORM / personal-build] CORRECTNESS
 
-**Status:** ANTICIPATED, not yet hit; to be grounded in a real artifact once the build reaches it.
+**Status: ANTICIPATED (not yet observed in a live run)**; hypothetical, not tied to a real observed run, commit, log, or `file:line`; to be grounded in a real artifact once the build reaches it.
 
 - **Symptom:** during traffic bursts, some Pi-DPM inference requests produce no result and no error surfaces to the caller.
 - **Wrong first hypothesis:** the model container is crashing on certain inputs.
@@ -80,7 +80,7 @@ An entry graduates from ANTICIPATED to grounded only when it is backed by a real
 
 **Tags:** [PLATFORM / personal-build] CONCURRENCY
 
-**Status:** ANTICIPATED, not yet hit; to be grounded in a real artifact once the build reaches it.
+**Status: ANTICIPATED (not yet observed in a live run)**; hypothetical, not tied to a real observed run, commit, log, or `file:line`; to be grounded in a real artifact once the build reaches it.
 
 - **Symptom:** the GeoTrace front door sees elevated p99 latency and `ProvisionedThroughputExceeded` on first lookups for vessels not seen recently.
 - **Wrong first hypothesis:** the table needs a fixed higher provisioned capacity.
@@ -92,7 +92,7 @@ An entry graduates from ANTICIPATED to grounded only when it is backed by a real
 
 **Tags:** [PLATFORM / personal-build] CORRECTNESS
 
-**Status:** ANTICIPATED, not yet hit; to be grounded in a real artifact once the build reaches it.
+**Status: ANTICIPATED (not yet observed in a live run)**; hypothetical, not tied to a real observed run, commit, log, or `file:line`; to be grounded in a real artifact once the build reaches it.
 
 - **Symptom:** lakehouse query times degrade steadily over days; reproducible training pulls back to MSI get slower and slower.
 - **Wrong first hypothesis:** the queries need better partition predicates.
@@ -104,7 +104,7 @@ An entry graduates from ANTICIPATED to grounded only when it is backed by a real
 
 **Tags:** [PLATFORM / personal-build] CORRECTNESS
 
-**Status:** ANTICIPATED, not yet hit; to be grounded in a real artifact once the build reaches it.
+**Status: ANTICIPATED (not yet observed in a live run)**; hypothetical, not tied to a real observed run, commit, log, or `file:line`; to be grounded in a real artifact once the build reaches it.
 
 - **Symptom:** the $75 budget action fires and attaches the deny policy to the platform role, but spend continues for a while afterward.
 - **Wrong first hypothesis:** the budget action did not actually fire; the guardrail is broken.
@@ -116,7 +116,7 @@ An entry graduates from ANTICIPATED to grounded only when it is backed by a real
 
 **Tags:** [PLATFORM / personal-build] TOOLING
 
-**Status:** ANTICIPATED, not yet hit; to be grounded in a real artifact once the build reaches it.
+**Status: ANTICIPATED (not yet observed in a live run)**; hypothetical, not tied to a real observed run, commit, log, or `file:line`; to be grounded in a real artifact once the build reaches it.
 
 - **Symptom:** an unrelated `terraform plan` proposes to destroy and recreate live resources after a routine `terraform init` upgraded a provider.
 - **Wrong first hypothesis:** someone changed the resource configuration; find the offending edit.
