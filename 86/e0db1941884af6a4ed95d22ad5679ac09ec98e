@@ -1,0 +1,21 @@
+docs/runbooks/IAM_BOUNDARY_APPLY.md
+  s_a2e22b769416de::t_8b0fd27233339e 1-142
+infra/aws/bootstrap.sh
+  s_a2e22b769416de::t_cd31f8b4db8ab0 140-161
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "86e0db1941884af6a4ed95d22ad5679ac09ec98e",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
