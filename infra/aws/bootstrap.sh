@@ -137,7 +137,28 @@ fi
 # ---- step 2: platform IAM role ----------------------------------------------
 log "Step 2: IAM role '$ROLE_NAME' (the \$75 deny-on-breach target; NOT your admin identity)"
 if [ "$DRY_RUN" -eq 0 ] && aws iam get-role --role-name "$ROLE_NAME" >/dev/null 2>&1; then
-  info "role already exists; leaving it unchanged"
+  # The role already exists (Phase 0 bootstrap created it). Do NOT skip: an
+  # existing role kept its OLD inline policy, which for a pre-boundary role is
+  # the iam:*-on-Resource-* escalation. Reconcile the policies idempotently so a
+  # re-run actually applies the hardened, boundary-gated definitions (war story
+  # P32). attach-role-policy and put-role-policy are both idempotent.
+  info "role already exists; reconciling its managed + inline policies to the committed definitions"
+  info "plan: (re)attach PowerUserAccess and (re)put the scoped, boundary-gated inline"
+  info "      policy 'harbormaster-iam-management' from harbormaster-platform-permissions.json"
+  info "      (this overwrites any prior same-named inline policy, e.g. a pre-boundary version"
+  info "      with iam:* on Resource *). The trust policy is left unchanged."
+  if confirm "reconcile IAM policies on existing role '$ROLE_NAME'?"; then
+    run aws iam attach-role-policy \
+      --role-name "$ROLE_NAME" \
+      --policy-arn "arn:aws:iam::aws:policy/PowerUserAccess"
+    run aws iam put-role-policy \
+      --role-name "$ROLE_NAME" \
+      --policy-name "harbormaster-iam-management" \
+      --policy-document "file://$SCRIPT_DIR/harbormaster-platform-permissions.json"
+    info "done (policies reconciled)."
+  else
+    info "skipped."
+  fi
 else
   info "plan: create the role (trust = this account's identities, MFA required),"
   info "      attach the AWS-managed PowerUserAccess policy, and add the scoped,"
