@@ -1,0 +1,70 @@
+cdc/schema/ddl.py
+  s_a2e22b769416de::t_44fd4a32bde524 80
+lake/iceberg.py
+  s_a2e22b769416de::t_bacaf5abc46645 90
+.pre-commit-config.yaml
+  s_a2e22b769416de::t_ec1b35c8bb2923 56-58
+  s_a2e22b769416de::t_fb04614b5c5981 1-17,19-21,23-31,33-55,59-96
+  s_a2e22b769416de::t_80d21a89b748da 18,22
+  s_a2e22b769416de::t_ca52e0f4b197e4 32
+docs/AB_MASTERCLASS_AUDIT.md
+  s_a2e22b769416de::t_8cf2e60e355f2f 21
+.gitignore
+  s_a2e22b769416de::t_0beaf4007b84e1 42
+.github/workflows/serving-ci.yml
+  s_a2e22b769416de::t_58f9d04b294851 48-53,58-62
+pyproject.toml
+  s_a2e22b769416de::t_eb5da123917c2d 106-130
+  s_a2e22b769416de::t_15da2dd5b9f84d 24
+  s_a2e22b769416de::t_b02959ac518f0d 140-142,146-148,153-162,164-173
+  s_a2e22b769416de::t_b2afbad84adc06 143-145,149-152,163
+serving/app/main.py
+  s_a2e22b769416de::t_863e723f585a04 149
+serving/frontend/registry_client.py
+  s_a2e22b769416de::t_8b456ab9a83e80 65
+serving/frontend/hitl_client.py
+  s_a2e22b769416de::t_f4a957a7d6e061 67
+  s_a2e22b769416de::t_93d8e0ef1cdb15 77
+mlops/pidpm_container/demo/server.py
+  s_a2e22b769416de::t_75bbbb237ca558 79
+bench/bench_score.py
+  s_a2e22b769416de::t_827cbc6a397de8 44-45,47-54
+  s_a2e22b769416de::t_4e8882c561d2bf 36,43,46
+  s_a2e22b769416de::t_f46255e883d233 1-35,37-42,55-194,197-233
+  s_a2e22b769416de::t_3ce89fcb1c4d2d 195-196
+  s_a2e22b769416de::t_7edd152708fef5 234-235
+streaming/replay/generate.py
+  s_a2e22b769416de::t_b9cb4014c75080 127
+serving/app/watchlist.py
+  s_a2e22b769416de::t_195f1dc8497c59 284
+  s_a2e22b769416de::t_b27e02e5767029 216
+bench/SCORE_BENCH.md
+  s_a2e22b769416de::t_0673a6ddc94871 1-175
+cdc/sinks/iceberg_audit.py
+  s_a2e22b769416de::t_0731f5351a365a 132
+.github/workflows/iac-ci.yml
+  s_a2e22b769416de::t_2054ce9a48ffdf 3-8,26,35,37,39-41,54-59,63,65,69-76,78-82
+  s_a2e22b769416de::t_dad253d111ba0f 1-2,9-25,27-34,36,38,42-53,60-62,64,66-68,77
+streaming/flink/job.py
+  s_a2e22b769416de::t_0e941e73ff7d2f 200
+infra/terraform/.checkov.baseline
+  s_a2e22b769416de::t_a537e0fb382a9b 1-421
+streaming/ingestor/tests/test_ingest.py
+  s_a2e22b769416de::t_286420d474b03e 6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "5439d7b00738408fcd1e1b8538bacadb358f9aae",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
