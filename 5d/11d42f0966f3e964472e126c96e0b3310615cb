@@ -1,0 +1,88 @@
+infra/terraform/modules/redis_fargate/main.tf
+  s_a2e22b769416de::t_b692ab8aaea74a 52-57
+  s_a2e22b769416de::t_d6408f4e8bd489 82,84-85
+  s_a2e22b769416de::t_b0bc5dccc35638 83
+infra/terraform/modules/ecs_cdc_consumer/main.tf
+  s_a2e22b769416de::t_6d1a4a5e846797 96-101
+  s_a2e22b769416de::t_b95ecd81eb5301 129,131-132
+  s_a2e22b769416de::t_fcc4007d9a5cd2 130
+  s_a2e22b769416de::t_bf41a1d027005d 141,143-144
+  s_a2e22b769416de::t_2309c4754390fe 142
+infra/terraform/modules/sagemaker_pidpm/main.tf
+  s_a2e22b769416de::t_58cc09505f1a38 100-101
+  s_a2e22b769416de::t_16fd0abf539164 73-78
+  s_a2e22b769416de::t_3f28e13c5496cd 102-103
+infra/terraform/modules/finops/variables.tf
+  s_a2e22b769416de::t_9f7434732f9a03 123-128
+infra/terraform/modules/drift_watch/main.tf
+  s_a2e22b769416de::t_1e1a35060e986e 104
+  s_a2e22b769416de::t_18e3ae5635e19e 180-183
+  s_a2e22b769416de::t_d178968a9de52e 73-78
+  s_a2e22b769416de::t_58d64eed996d1d 102-103,105
+infra/terraform/modules/finops/main.tf
+  s_a2e22b769416de::t_d0d0d924041a23 336
+  s_a2e22b769416de::t_6b674236a6b660 171,173
+  s_a2e22b769416de::t_9fc4acd83c84f2 521
+  s_a2e22b769416de::t_5b48cf3b194968 172
+  s_a2e22b769416de::t_2704c2b68f57cd 335,337,520,522
+infra/terraform/modules/emr_backfill/main.tf
+  s_a2e22b769416de::t_b4c6d7e1035685 67-72
+  s_a2e22b769416de::t_f4ed3772984021 125-126
+  s_a2e22b769416de::t_e33e7bc6911d88 127-128
+infra/terraform/modules/kda_flink/main.tf
+  s_a2e22b769416de::t_1b2ac89961156a 78-83
+  s_a2e22b769416de::t_e82e51e6320f73 102-105
+infra/terraform/modules/cdc_monitoring/main.tf
+  s_a2e22b769416de::t_5387fae5e55e4d 74-79
+  s_a2e22b769416de::t_ed8b7ca838083c 172-175
+infra/terraform/modules/ecs_serving/main.tf
+  s_a2e22b769416de::t_f970a459d83833 129-134
+  s_a2e22b769416de::t_397feee871a0b6 242-245
+  s_a2e22b769416de::t_9e7061f35dac21 277-280
+infra/terraform/modules/ecs_ingestor/main.tf
+  s_a2e22b769416de::t_bf2d5e8188ddb1 54-59
+  s_a2e22b769416de::t_fc851caa786f64 95-98
+  s_a2e22b769416de::t_6dbc9a10efbb24 107-110
+infra/terraform/envs/base/main.tf
+  s_a2e22b769416de::t_e92d7b2016a28a 241
+  s_a2e22b769416de::t_cef3454274ca80 39-40,50-57
+  s_a2e22b769416de::t_72870c272e7b81 405
+  s_a2e22b769416de::t_c6005e7cafb721 378
+  s_a2e22b769416de::t_ca823b420c3fd4 456
+  s_a2e22b769416de::t_9eee66a2aad253 225
+  s_a2e22b769416de::t_9d7fd10010c315 437
+  s_a2e22b769416de::t_d15df22f6ca76f 477
+  s_a2e22b769416de::t_52492ba1a24abb 136
+  s_a2e22b769416de::t_7b446eaaa78cc4 352
+  s_a2e22b769416de::t_db02fff6685b37 306
+  s_a2e22b769416de::t_39488380d10acb 178
+  s_a2e22b769416de::t_c656bb335205eb 94
+  s_a2e22b769416de::t_1c631457e65338 93,134-135,176-177,223-224,239-240,304-305,350-351,376-377,403-404,435-436,454-455,475-476
+infra/terraform/modules/firehose/main.tf
+  s_a2e22b769416de::t_d3ec32281de794 40-45
+  s_a2e22b769416de::t_38eb5a671326c4 66-69
+infra/terraform/envs/base/variables.tf
+  s_a2e22b769416de::t_4392d739107809 199-213
+infra/terraform/modules/ecs_connect/main.tf
+  s_a2e22b769416de::t_e10b6e6f3d6dc1 105-110
+  s_a2e22b769416de::t_7bc0066878fbbc 172
+  s_a2e22b769416de::t_c840458dbdd610 143,145-146,173-174
+  s_a2e22b769416de::t_6025ed90d36162 144
+  s_a2e22b769416de::t_e4452977e8d355 171
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "5d11d42f0966f3e964472e126c96e0b3310615cb",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
