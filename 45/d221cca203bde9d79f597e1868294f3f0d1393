@@ -1,0 +1,39 @@
+infra/aws/bootstrap.sh
+  s_a2e22b769416de::t_84ae48bd49e13b 109,111-138
+  s_a2e22b769416de::t_bb1c5903367e62 6,9-12,15-18
+  s_a2e22b769416de::t_7d3d1050393429 143-145
+  s_a2e22b769416de::t_f3308a97f6a529 197-198
+  s_a2e22b769416de::t_7061c630988ae6 168-169
+  s_a2e22b769416de::t_fc1943726d56ca 38-43
+infra/aws/harbormaster-permissions-boundary.json
+  s_a2e22b769416de::t_dee1966a1d099d 1-104
+infra/terraform/modules/apigw/main.tf
+  s_a2e22b769416de::t_6ca534197af986 143-145,179-180,182,184-202,206,208
+  s_a2e22b769416de::t_578021f801d9ea 266-285
+  s_a2e22b769416de::t_c4763cb0508707 7-12,14,19-28,71-86,91-104,112-138,141-142,146-178,181,183,231-256,259-265
+  s_a2e22b769416de::t_d25942ae89bcc9 203-205,207,209-230
+infra/terraform/modules/apigw/outputs.tf
+  s_a2e22b769416de::t_10588cf4d64771 1-20
+infra/terraform/modules/apigw/variables.tf
+  s_a2e22b769416de::t_8ae13857cb06c9 1-117
+infra/aws/harbormaster-platform-permissions.json
+  s_a2e22b769416de::t_87ce23b0462948 5-32,41-72,81-88,96-135,137-150
+infra/terraform/.checkov.baseline
+  s_a2e22b769416de::t_46d0f2c7256929 7,9-10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "45d221cca203bde9d79f597e1868294f3f0d1393",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
