@@ -1,5 +1,8 @@
 # ---- Terraform ----
 .terraform/
+.terraform.validate/
+# archive_file build output (e.g. the teardown Lambda zip), regenerated each plan
+**/.build/
 .terraform.lock.hcl.bak
 *.tfstate
 *.tfstate.*
@@ -36,6 +39,7 @@ ENV/
 .ruff_cache/
 .coverage
 .coverage.*
+coverage.xml
 htmlcov/
 
 # ---- Environment / secrets ----
@@ -62,3 +66,20 @@ Thumbs.db
 
 # raw internship analysis kept local-only (HONESTY.md carries the polished version)
 docs/internship/
+
+# local CDC drill/smoke artifacts (Phase 2)
+.cdc-warehouse/
+# slot-lag Lambda build dir (make cdc-lambda-package)
+infra/lambda/cdc_slot_lag/build/
+infra/terraform/modules/cdc_monitoring/.build/
+
+# local lake drill/smoke artifacts (Phase 3)
+.lake-warehouse/
+
+# Maven build output (gate 1.5's Flink Kinesis-connector fat-jar, make flink-jar)
+streaming/flink/target/
+streaming/flink/dependency-reduced-pom.xml
+
+# real HITL-derived preference data (trace_id/mmsi/reviewer); the fixture
+# under mlops/fixtures/ is synthetic and stays committed (Phase 4)
+mlops/preference_data/

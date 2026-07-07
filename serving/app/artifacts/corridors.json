@@ -1,0 +1,22 @@
+{
+  "name": "harbormaster-demo-corridors",
+  "crs": "EPSG:4326",
+  "coord_order": "lon,lat",
+  "description": "Frozen GTRA-style sea-lane graph for the demo region (New York / New Jersey approaches). Built offline as a one-time artifact and loaded read-only at serving startup; the production artifact is derived from NOAA ENC charts plus a MarineCadastre extract. Lane nodes double as the expected course-change waypoints.",
+  "lanes": [
+    {
+      "id": "lane-ny-approach-ne",
+      "name": "NY Approach NE",
+      "nodes": [
+        [-74.10, 40.40],
+        [-73.40, 40.85],
+        [-72.70, 41.25]
+      ]
+    }
+  ],
+  "waypoints": [
+    {"id": "wp-0", "lonlat": [-74.10, 40.40]},
+    {"id": "wp-1", "lonlat": [-73.40, 40.85]},
+    {"id": "wp-2", "lonlat": [-72.70, 41.25]}
+  ]
+}

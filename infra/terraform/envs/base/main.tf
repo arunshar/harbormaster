@@ -10,7 +10,7 @@
 # cap and nightly sweep exist before any heavier Phase 1 compute is added.
 
 terraform {
-  required_version = ">= 1.6"
+  required_version = ">= 1.9" # cross-variable validation (enable_phase2 -> enable_phase1)
 
   required_providers {
     aws = {
@@ -36,6 +36,8 @@ provider "aws" {
   }
 }
 
+data "aws_caller_identity" "current" {}
+
 locals {
   # Common tags applied to every resource across every module, per the shared
   # conventions. default_tags above also stamps these provider-wide; passing
@@ -45,6 +47,14 @@ locals {
     Environment = var.environment
     ManagedBy   = "terraform"
   }
+
+  # ARN of the IAM permissions boundary (created by infra/aws/bootstrap.sh) that
+  # every module-created role must carry once the boundary-gated harbormaster-
+  # platform deploy policy is attached (war story P32, the two-sided contract).
+  # Passed into every role-creating module below. Roles are count-gated on the
+  # enable_phaseN flags, so the default phases-off plan creates none and is
+  # unaffected. Set permissions_boundary_name = "" to opt out of the boundary.
+  permissions_boundary_arn = var.permissions_boundary_name != "" ? "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/${var.permissions_boundary_name}" : ""
 }
 
 # -----------------------------------------------------------------------------
@@ -80,7 +90,8 @@ module "state_stores" {
 # -----------------------------------------------------------------------------
 
 module "finops" {
-  source = "../../modules/finops"
+  source                   = "../../modules/finops"
+  permissions_boundary_arn = local.permissions_boundary_arn
 
   project     = var.project
   environment = var.environment
@@ -92,9 +103,387 @@ module "finops" {
   enable_nightly_teardown = var.enable_nightly_teardown
   teardown_dry_run        = var.teardown_dry_run
 
+  existing_cost_anomaly_monitor_arn = var.cost_anomaly_monitor_arn
+
   # Lambda source lives at infra/lambda/teardown relative to this root:
   # envs/base -> ../../.. = infra, then lambda/teardown.
   lambda_source_dir = "${path.module}/../../../lambda/teardown"
+
+  tags = local.common_tags
+}
+
+# -----------------------------------------------------------------------------
+# Phase 1 (gate 1.3): streaming + serving pipeline. Every module is gated behind
+# enable_phase1 (default false) so a base apply stays Phase-0-only and cheap.
+# Flip enable_phase1 = true for a demo apply, then set it back to false (or
+# destroy the Phase 1 resources) to stop the billable compute. Data plane in
+# this batch: kinesis, firehose, rds. Compute plane (ecs_*, kda_flink, apigw)
+# follows in the next batch.
+# -----------------------------------------------------------------------------
+
+module "kinesis" {
+  count  = var.enable_phase1 ? 1 : 0
+  source = "../../modules/kinesis"
+
+  project     = var.project
+  environment = var.environment
+  tags        = local.common_tags
+}
+
+module "firehose" {
+  count                    = var.enable_phase1 ? 1 : 0
+  source                   = "../../modules/firehose"
+  permissions_boundary_arn = local.permissions_boundary_arn
+
+  project     = var.project
+  environment = var.environment
+
+  kinesis_stream_arn = module.kinesis[0].stream_arn
+  lake_bucket_arn    = "arn:aws:s3:::${module.state_stores.lake_bucket_name}"
+
+  tags = local.common_tags
+}
+
+module "rds" {
+  count  = var.enable_phase1 ? 1 : 0
+  source = "../../modules/rds"
+
+  project     = var.project
+  environment = var.environment
+
+  vpc_id             = module.network.vpc_id
+  private_subnet_ids = module.network.private_subnet_ids
+  # The VPC is 10.0.0.0/16 (network module default); allow in-VPC Postgres.
+  allowed_ingress_cidrs = ["10.0.0.0/16"]
+
+  # Phase 2: logical decoding for Debezium (parameter group + reboot at the
+  # demo apply). Inert (no parameter group at all) while enable_phase2 = false.
+  logical_replication = var.enable_phase2
+
+  tags = local.common_tags
+}
+
+module "ecs_cluster" {
+  count  = var.enable_phase1 ? 1 : 0
+  source = "../../modules/ecs_cluster"
+
+  project     = var.project
+  environment = var.environment
+  tags        = local.common_tags
+}
+
+module "ecs_serving" {
+  count                    = var.enable_phase1 ? 1 : 0
+  source                   = "../../modules/ecs_serving"
+  permissions_boundary_arn = local.permissions_boundary_arn
+
+  project     = var.project
+  environment = var.environment
+  aws_region  = var.aws_region
+
+  vpc_id            = module.network.vpc_id
+  public_subnet_ids = module.network.public_subnet_ids
+
+  cluster_arn  = module.ecs_cluster[0].cluster_arn
+  cluster_name = module.ecs_cluster[0].cluster_name
+
+  feast_table_name = module.state_stores.feast_online_table_name
+  lake_bucket_arn  = "arn:aws:s3:::${module.state_stores.lake_bucket_name}"
+  rds_secret_arn   = module.rds[0].master_user_secret_arn
+  rds_endpoint     = module.rds[0].db_endpoint
+  # Plan-time-known bool (RDS and serving are both behind enable_phase1), so
+  # the module's secret-policy count never depends on an apply-time RDS output.
+  attach_rds_secret_policy = true
+
+  # Phase 2: point the scorer at the CDC-fed online store. The redis DNS name
+  # is deterministic (Cloud Map name in the serving namespace), so no reference
+  # into the gated redis_fargate module is needed here.
+  cdc_online_enabled = var.enable_phase2
+  redis_url          = var.enable_phase2 ? "redis://redis.${var.project}-${var.environment}.local:6379/0" : ""
+
+  tags = local.common_tags
+}
+
+module "apigw" {
+  count  = var.enable_phase1 ? 1 : 0
+  source = "../../modules/apigw"
+
+  project     = var.project
+  environment = var.environment
+
+  vpc_id             = module.network.vpc_id
+  private_subnet_ids = module.network.private_subnet_ids
+
+  cloudmap_service_arn = module.ecs_serving[0].cloudmap_service_arn
+
+  tags = local.common_tags
+}
+
+module "ecs_ingestor" {
+  count                    = var.enable_phase1 ? 1 : 0
+  source                   = "../../modules/ecs_ingestor"
+  permissions_boundary_arn = local.permissions_boundary_arn
+
+  project     = var.project
+  environment = var.environment
+  aws_region  = var.aws_region
+
+  vpc_id             = module.network.vpc_id
+  kinesis_stream_arn = module.kinesis[0].stream_arn
+  lake_bucket_arn    = "arn:aws:s3:::${module.state_stores.lake_bucket_name}"
+
+  tags = local.common_tags
+}
+
+module "kda_flink" {
+  count                    = var.enable_phase1 ? 1 : 0
+  source                   = "../../modules/kda_flink"
+  permissions_boundary_arn = local.permissions_boundary_arn
+
+  project     = var.project
+  environment = var.environment
+  aws_region  = var.aws_region
+
+  kinesis_stream_arn  = module.kinesis[0].stream_arn
+  kinesis_stream_name = module.kinesis[0].stream_name
+  feast_table_name    = module.state_stores.feast_online_table_name
+  lake_bucket_arn     = "arn:aws:s3:::${module.state_stores.lake_bucket_name}"
+  serving_endpoint    = module.apigw[0].api_endpoint
+
+  # flink_code_s3_key stays empty until gate 1.5 uploads the job artifact, so the
+  # Flink application (and its KPU cost) is not created by a 1.3 demo apply.
+  # code_bucket_arn is the same lake bucket the artifact is uploaded to
+  # (s3://<lake_bucket>/flink/flink-app.zip), not a separate bucket.
+  code_bucket_arn   = "arn:aws:s3:::${module.state_stores.lake_bucket_name}"
+  flink_code_s3_key = var.flink_code_s3_key
+
+  tags = local.common_tags
+}
+
+module "observability" {
+  count  = var.enable_phase1 ? 1 : 0
+  source = "../../modules/observability"
+
+  project     = var.project
+  environment = var.environment
+  aws_region  = var.aws_region
+
+  api_id              = module.apigw[0].api_id
+  cluster_name        = module.ecs_cluster[0].cluster_name
+  service_name        = module.ecs_serving[0].service_name
+  kinesis_stream_name = module.kinesis[0].stream_name
+  sns_topic_arn       = module.finops.sns_topic_arn
+
+  tags = local.common_tags
+}
+
+# -----------------------------------------------------------------------------
+# Phase 2 (gate 2.7): the CDC showcase plane. Everything below is gated behind
+# enable_phase2 (default false; also requires enable_phase1 for RDS, the ECS
+# cluster, and the Cloud Map namespace). MSK Serverless is ~$18/day while up:
+# demo windows only, then flip enable_phase2 back to false. The image-consuming
+# services (connect, consumer) are additionally gated on their image vars so a
+# plan/apply before the ECR pushes creates no crash-looping services (the
+# flink_code_s3_key pattern from Phase 1).
+# -----------------------------------------------------------------------------
+
+module "msk" {
+  count  = var.enable_phase2 ? 1 : 0
+  source = "../../modules/msk_serverless"
+
+  project     = var.project
+  environment = var.environment
+
+  vpc_id     = module.network.vpc_id
+  subnet_ids = module.network.private_subnet_ids
+
+  tags = local.common_tags
+}
+
+module "redis_fargate" {
+  count                    = var.enable_phase2 ? 1 : 0
+  source                   = "../../modules/redis_fargate"
+  permissions_boundary_arn = local.permissions_boundary_arn
+
+  project     = var.project
+  environment = var.environment
+
+  vpc_id            = module.network.vpc_id
+  public_subnet_ids = module.network.public_subnet_ids
+
+  cluster_arn           = module.ecs_cluster[0].cluster_arn
+  cloudmap_namespace_id = module.ecs_serving[0].cloudmap_namespace_id
+
+  tags = local.common_tags
+}
+
+# ECR repos for the two CDC images live OUTSIDE the image-gated service modules:
+# they must exist before an image can be pushed, and the services can only be
+# created after the push (apply -> push -> set image vars -> apply).
+resource "aws_ecr_repository" "cdc_connect" {
+  count = var.enable_phase2 ? 1 : 0
+
+  name                 = "${var.project}-${var.environment}-cdc-connect"
+  image_tag_mutability = "MUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+
+  tags = merge(local.common_tags, { Name = "${var.project}-${var.environment}-cdc-connect" })
+}
+
+resource "aws_ecr_repository" "cdc_consumer" {
+  count = var.enable_phase2 ? 1 : 0
+
+  name                 = "${var.project}-${var.environment}-cdc-consumer"
+  image_tag_mutability = "MUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+
+  tags = merge(local.common_tags, { Name = "${var.project}-${var.environment}-cdc-consumer" })
+}
+
+module "ecs_connect" {
+  count                    = var.enable_phase2 && var.cdc_connect_image != "" ? 1 : 0
+  source                   = "../../modules/ecs_connect"
+  permissions_boundary_arn = local.permissions_boundary_arn
+
+  project     = var.project
+  environment = var.environment
+  aws_region  = var.aws_region
+
+  vpc_id            = module.network.vpc_id
+  public_subnet_ids = module.network.public_subnet_ids
+  cluster_arn       = module.ecs_cluster[0].cluster_arn
+
+  image = var.cdc_connect_image
+
+  msk_cluster_arn        = module.msk[0].cluster_arn
+  msk_topic_wildcard_arn = module.msk[0].topic_wildcard_arn
+  msk_group_wildcard_arn = module.msk[0].group_wildcard_arn
+  msk_bootstrap          = module.msk[0].bootstrap_brokers_sasl_iam
+
+  rds_endpoint   = module.rds[0].db_endpoint
+  rds_secret_arn = module.rds[0].master_user_secret_arn
+
+  tags = local.common_tags
+}
+
+module "ecs_cdc_consumer" {
+  count                    = var.enable_phase2 && var.cdc_consumer_image != "" ? 1 : 0
+  source                   = "../../modules/ecs_cdc_consumer"
+  permissions_boundary_arn = local.permissions_boundary_arn
+
+  project     = var.project
+  environment = var.environment
+  aws_region  = var.aws_region
+
+  vpc_id            = module.network.vpc_id
+  public_subnet_ids = module.network.public_subnet_ids
+  cluster_arn       = module.ecs_cluster[0].cluster_arn
+
+  image = var.cdc_consumer_image
+
+  msk_cluster_arn        = module.msk[0].cluster_arn
+  msk_topic_wildcard_arn = module.msk[0].topic_wildcard_arn
+  msk_group_wildcard_arn = module.msk[0].group_wildcard_arn
+  msk_bootstrap          = module.msk[0].bootstrap_brokers_sasl_iam
+
+  feast_table_name = module.state_stores.feast_online_table_name
+  lake_bucket_arn  = "arn:aws:s3:::${module.state_stores.lake_bucket_name}"
+  redis_url        = "redis://${module.redis_fargate[0].redis_dns}:6379/0"
+
+  tags = local.common_tags
+}
+
+module "cdc_monitoring" {
+  count                    = var.enable_phase2 ? 1 : 0
+  source                   = "../../modules/cdc_monitoring"
+  permissions_boundary_arn = local.permissions_boundary_arn
+
+  project     = var.project
+  environment = var.environment
+
+  vpc_id             = module.network.vpc_id
+  private_subnet_ids = module.network.private_subnet_ids
+
+  rds_endpoint   = module.rds[0].db_endpoint
+  rds_secret_arn = module.rds[0].master_user_secret_arn
+
+  sns_topic_arn = module.finops.sns_topic_arn
+
+  # Built by `make cdc-lambda-package` (handler + shared monitor + pg8000).
+  lambda_source_dir = "${path.module}/../../../lambda/cdc_slot_lag/build"
+
+  tags = local.common_tags
+}
+
+# -----------------------------------------------------------------------------
+# Phase 3 (gate 3.2): the transient MarineCadastre lake backfill. Whole-module
+# gate behind enable_phase3 (default false; requires enable_phase1 for the
+# VPC and the lake bucket/Glue catalog Phase 0 already wires up). No job run
+# is Terraform-managed (transient, submitted via `aws emr-serverless
+# start-job-run`, Arun-run, at demo-apply time); only the application + its
+# execution role are standing infra, and the application itself auto-stops
+# after idle_timeout_minutes with no job running.
+# -----------------------------------------------------------------------------
+
+module "emr_backfill" {
+  count                    = var.enable_phase3 ? 1 : 0
+  source                   = "../../modules/emr_backfill"
+  permissions_boundary_arn = local.permissions_boundary_arn
+
+  project     = var.project
+  environment = var.environment
+  aws_region  = var.aws_region
+
+  raw_extract_s3_uri = "arn:aws:s3:::${module.state_stores.lake_bucket_name}/raw/marinecadastre"
+  lake_bucket_arn    = "arn:aws:s3:::${module.state_stores.lake_bucket_name}"
+
+  tags = local.common_tags
+}
+
+# Phase 3 (gate 3.6): the Pi-DPM async endpoint. Additionally gated on both
+# image vars being set (the flink_code_s3_key pattern): an apply before the
+# container is built and the checkpoint is exported creates no
+# half-configured model/endpoint.
+module "sagemaker_pidpm" {
+  count                    = var.enable_phase3 && var.pidpm_image != "" && var.pidpm_model_data_url != "" ? 1 : 0
+  source                   = "../../modules/sagemaker_pidpm"
+  permissions_boundary_arn = local.permissions_boundary_arn
+
+  project     = var.project
+  environment = var.environment
+  aws_region  = var.aws_region
+
+  container_image   = var.pidpm_image
+  model_data_url    = var.pidpm_model_data_url
+  models_bucket_arn = "arn:aws:s3:::${module.state_stores.models_bucket_name}"
+
+  tags = local.common_tags
+}
+
+# Phase 4 (gate 4.6): the drift-alerting plane. Depends only on Phase 0 (the
+# lake bucket + the finops SNS topic), not Phase 1/3, so it is gated purely
+# on enable_phase4 with no enable_phase1 requirement, unlike Phase 2/3. NOT
+# applied during the 2026-07-04 sprint: authored, validate + plan-checksum
+# verified only, per docs/phases/PHASE_4.md.
+module "drift_watch" {
+  count                    = var.enable_phase4 ? 1 : 0
+  source                   = "../../modules/drift_watch"
+  permissions_boundary_arn = local.permissions_boundary_arn
+
+  project     = var.project
+  environment = var.environment
+
+  lake_bucket_arn  = "arn:aws:s3:::${module.state_stores.lake_bucket_name}"
+  lake_bucket_name = module.state_stores.lake_bucket_name
+  sns_topic_arn    = module.finops.sns_topic_arn
+
+  lambda_source_dir = "${path.module}/../../../lambda/drift_watch/build"
 
   tags = local.common_tags
 }

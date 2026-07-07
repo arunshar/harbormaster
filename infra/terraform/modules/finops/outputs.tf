@@ -26,8 +26,8 @@ output "budget_action_id" {
 }
 
 output "anomaly_monitor_arn" {
-  description = "ARN of the Cost Explorer anomaly monitor."
-  value       = aws_ce_anomaly_monitor.service.arn
+  description = "ARN of the Cost Explorer anomaly monitor the subscription is attached to (created or reused)."
+  value       = coalesce(var.existing_cost_anomaly_monitor_arn, one(aws_ce_anomaly_monitor.service[*].arn))
 }
 
 output "teardown_lambda_name" {

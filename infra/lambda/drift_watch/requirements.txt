@@ -1,0 +1,14 @@
+# Vendored by make drift-lambda-package into infra/lambda/drift_watch/build/.
+# boto3 is provided by the Lambda runtime and NOT vendored (mirrors
+# infra/lambda/teardown's convention). pandas/pyarrow ARE vendored: unlike
+# teardown (boto3-only), this handler reads parquet snapshots directly.
+#
+# Honest sizing finding (measured via `make drift-lambda-package`, 2026-07-04):
+# pandas+pyarrow+numpy install to 229MB unzipped here (pyarrow's bundled
+# Arrow C++ libs alone are 123MB), against Lambda's 250MB unzipped limit -
+# real headroom, but tight, and this was never actually deployed to confirm
+# the zipped/unzipped sizes AWS itself reports. Before a real apply: either
+# accept the risk and confirm at deploy time, move to a Lambda Layer (the
+# standard fix for exactly this), or swap pyarrow for a lighter reader.
+pandas>=2.0
+pyarrow>=15

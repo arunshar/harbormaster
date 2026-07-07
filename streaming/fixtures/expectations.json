@@ -1,0 +1,55 @@
+{
+  "fixture": "ais_recorded.jsonl",
+  "sha256": "9790dd6c1697a957e8d6006c70cb73011913cc4cd7acde61f8c6c25b322ff386",
+  "n_records": 2709,
+  "window_hours": 6.0,
+  "generated_from": "replay.generate (seed=7, start=2024-06-01T00:00:00Z)",
+  "anomalies": [
+    {
+      "mmsi": 367000001,
+      "kind": "abnormal_gap",
+      "t": "2024-06-01T05:00:00Z",
+      "expect_reason": "abnormal_gap",
+      "expect_hitl": true,
+      "note": "180-minute coverage gap; vessel reappears at a kinematically reachable point."
+    },
+    {
+      "mmsi": 367000002,
+      "kind": "implausible_jump",
+      "t": "2024-06-01T03:20:00Z",
+      "expect_reason": "implausible_speed",
+      "expect_hitl": true,
+      "note": "One fix jumps ~5 km along the lane in 60 s (~6.9x the vessel speed cap); on-corridor and below the corrupt-data reject bound, so scored not rejected."
+    },
+    {
+      "mmsi": 367000003,
+      "kind": "off_corridor",
+      "t": "2024-06-01T03:20:00Z",
+      "expect_reason": "off_corridor",
+      "expect_hitl": true,
+      "note": "Vessel operates ~10 km off the nearest sea-lane at a plausible speed."
+    }
+  ],
+  "normal_samples": [
+    {
+      "mmsi": 367000010,
+      "t": "2024-06-01T03:00:00Z"
+    },
+    {
+      "mmsi": 367000011,
+      "t": "2024-06-01T03:00:00Z"
+    },
+    {
+      "mmsi": 367000012,
+      "t": "2024-06-01T03:00:00Z"
+    },
+    {
+      "mmsi": 367000013,
+      "t": "2024-06-01T03:00:00Z"
+    },
+    {
+      "mmsi": 367000014,
+      "t": "2024-06-01T03:00:00Z"
+    }
+  ]
+}

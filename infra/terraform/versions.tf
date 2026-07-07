@@ -13,7 +13,7 @@
 # configuration for the providers a module passes through).
 
 terraform {
-  required_version = ">= 1.6"
+  required_version = ">= 1.9"
 
   required_providers {
     aws = {

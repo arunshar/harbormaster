@@ -68,3 +68,102 @@ output "teardown_lambda_name" {
   description = "Name of the nightly teardown Lambda."
   value       = module.finops.teardown_lambda_name
 }
+
+# ---- Phase 1 (null when enable_phase1 = false) ------------------------------
+
+output "kinesis_stream_name" {
+  description = "Name of the ais-raw Kinesis stream (Phase 1)."
+  value       = one(module.kinesis[*].stream_name)
+}
+
+output "firehose_delivery_stream_name" {
+  description = "Name of the ais-raw -> S3 Firehose delivery stream (Phase 1)."
+  value       = one(module.firehose[*].delivery_stream_name)
+}
+
+output "rds_endpoint" {
+  description = "Postgres endpoint address (Phase 1)."
+  value       = one(module.rds[*].db_endpoint)
+}
+
+output "rds_master_secret_arn" {
+  description = "Secrets Manager ARN of the RDS-managed master credentials (Phase 1)."
+  value       = one(module.rds[*].master_user_secret_arn)
+}
+
+output "serving_api_endpoint" {
+  description = "API Gateway HTTP API invoke URL for the scorer (Phase 1)."
+  value       = one(module.apigw[*].api_endpoint)
+}
+
+output "serving_ecr_repository_url" {
+  description = "ECR repo URL for the serving image (Phase 1)."
+  value       = one(module.ecs_serving[*].ecr_repository_url)
+}
+
+output "serving_cloudmap_dns" {
+  description = "In-VPC DNS name for the scorer (Phase 1)."
+  value       = one(module.ecs_serving[*].cloudmap_dns_name)
+}
+
+output "ingestor_task_definition_arn" {
+  description = "Replay ingestor Fargate task definition ARN (Phase 1)."
+  value       = one(module.ecs_ingestor[*].task_definition_arn)
+}
+
+output "ingestor_ecr_repository_url" {
+  description = "ECR repo URL for the ingestor image (Phase 1; the module always exposed this, the env never surfaced it, found while prepping the W1 showcase runbook)."
+  value       = one(module.ecs_ingestor[*].ecr_repository_url)
+}
+
+output "flink_role_arn" {
+  description = "Managed Flink service execution role ARN (Phase 1)."
+  value       = one(module.kda_flink[*].role_arn)
+}
+
+output "phase1_dashboard_name" {
+  description = "CloudWatch dashboard for the Phase 1 slice (Phase 1)."
+  value       = one(module.observability[*].dashboard_name)
+}
+
+output "msk_bootstrap_sasl_iam" {
+  description = "MSK Serverless IAM bootstrap brokers (Phase 2)."
+  value       = one(module.msk[*].bootstrap_brokers_sasl_iam)
+}
+
+output "cdc_connect_ecr_repository_url" {
+  description = "ECR repo for the Debezium Connect image (Phase 2; exists before the service)."
+  value       = one(aws_ecr_repository.cdc_connect[*].repository_url)
+}
+
+output "cdc_consumer_ecr_repository_url" {
+  description = "ECR repo for the CDC consumer image (Phase 2; exists before the service)."
+  value       = one(aws_ecr_repository.cdc_consumer[*].repository_url)
+}
+
+output "cdc_redis_dns" {
+  description = "In-VPC Redis endpoint for the CDC cache (Phase 2)."
+  value       = one(module.redis_fargate[*].redis_dns)
+}
+
+output "cdc_slot_lag_alarm_name" {
+  description = "CloudWatch alarm on replication-slot lag (Phase 2)."
+  value       = one(module.cdc_monitoring[*].alarm_name)
+}
+
+# ---- Phase 3 (null when enable_phase3 = false) ------------------------------
+
+output "emr_backfill_application_id" {
+  description = "EMR Serverless application id for the transient MarineCadastre backfill (Phase 3). Job runs are submitted against this id, Arun-run, not Terraform-managed."
+  value       = one(module.emr_backfill[*].application_id)
+}
+
+output "emr_backfill_execution_role_arn" {
+  description = "IAM role EMR Serverless job runs assume for this application (Phase 3)."
+  value       = one(module.emr_backfill[*].execution_role_arn)
+}
+
+output "pidpm_endpoint_name" {
+  description = "SageMaker async endpoint name for the Pi-DPM head (Phase 3, gate 3.6). Feed this to HM_PIDPM_ENDPOINT."
+  value       = one(module.sagemaker_pidpm[*].endpoint_name)
+}

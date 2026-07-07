@@ -1,0 +1,19 @@
+{
+  "ddl_sha256": "d3a95ec74b49b54e43b8ba392f1135a4ae39a08d710f3f3c9c64ca85642d985f",
+  "debezium_envelopes_sha256": "3a734098683818c4ce2d37bb6c093df211b30225d81ec2ce6fced10df9c2c464",
+  "connector_config_sha256": "b2da51a0f8172d05885942646430d8c6aaf45910d4b559236977792040891162",
+  "envelope_census": {
+    "change_events": 8,
+    "tombstones": 1,
+    "skips": 2
+  },
+  "final_state_sha256": "19e8ea9231b4edb7c931d892ec26bee967a3eb6143d9daf64eb10e3aff06d40c",
+  "apply_census": {
+    "events": 8,
+    "applied": 7,
+    "guard_rejected": 1,
+    "tombstones": 1
+  },
+  "smoke_insert_to_online_s_informational": 0.57,
+  "smoke_recorded_at": "2026-07-03"
+}

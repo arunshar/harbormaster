@@ -1,0 +1,83 @@
+name: serving-ci
+
+# CI gate: lint + unit + container build. No deploy, no AWS.
+# Covers all phases now (was "Phase 1.1" only at authoring time): serving +
+# streaming (Phase 1), cdc (Phase 2), lake + mlops (Phase 3). cdc's own tests
+# need none of the [cdc] extra (all real I/O is injected, per PHASE_2.md), so
+# it is deliberately not installed here; lake/mlops's tests DO need pandas/
+# great_expectations/scikit-learn/flask as core dependencies of their pure
+# functions (not optional real-infra clients), so those extras are.
+on:
+  push:
+    paths:
+      - "serving/**"
+      - "streaming/**"
+      - "cdc/**"
+      - "lake/**"
+      - "mlops/**"
+      - "tests/**"
+      - "pyproject.toml"
+      - ".github/workflows/serving-ci.yml"
+  pull_request:
+    paths:
+      - "serving/**"
+      - "streaming/**"
+      - "cdc/**"
+      - "lake/**"
+      - "mlops/**"
+      - "tests/**"
+      - "pyproject.toml"
+      - ".github/workflows/serving-ci.yml"
+  workflow_dispatch:
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,lake,mlops,pidpm-demo]"
+      - name: Lint (ruff)
+        run: ruff check serving streaming cdc lake mlops tests scripts
+      - name: Format (ruff-format, check)
+        run: ruff format --check serving streaming cdc lake mlops tests scripts
+      - name: Security (bandit)
+        # Source-only SAST, config in pyproject [tool.bandit]. Confirmed-benign
+        # findings carry narrow per-line `# nosec Bxxx  # reason` markers.
+        run: bandit -c pyproject.toml -r serving streaming cdc lake mlops
+      - name: Verify recorded fixture checksum
+        run: python -c "from replay.loader import verify_fixture; assert verify_fixture()"
+        env:
+          PYTHONPATH: streaming
+      - name: Unit tests + coverage gate
+        # --cov flags read [tool.coverage.*] in pyproject, incl. fail_under=75
+        # (line+branch, brownfield ratchet; target for new/changed modules is
+        # 90%). Measured 78.62% on this suite at authoring time.
+        run: pytest -q --cov --cov-report=term-missing --cov-report=xml
+
+  container-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build serving image (no push)
+        run: docker build -f serving/Dockerfile -t harbormaster-serving:ci .
+      - name: Smoke the image
+        run: |
+          docker run -d --name hm -p 8000:8000 harbormaster-serving:ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8000/healthz; then ok=1; break; fi
+            sleep 1
+          done
+          test "${ok:-0}" = "1" || (docker logs hm; exit 1)
+          echo
+          curl -fsS -X POST http://localhost:8000/v1/score-ais \
+            -H 'content-type: application/json' \
+            -d '{"mmsi":367000099,"fix":{"lat":40.50,"lon":-73.95,"t":"2024-06-01T00:01:00Z"},"history":[{"lat":40.50,"lon":-73.95,"t":"2024-06-01T00:00:00Z"}]}'
+          echo
+          docker rm -f hm

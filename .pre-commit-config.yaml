@@ -1,0 +1,96 @@
+# Harbormaster pre-commit gates (engineering-standard).
+#
+# Install once:   .venv/bin/pre-commit install
+# Run on demand:  .venv/bin/pre-commit run --all-files
+#
+# ruff-pre-commit is pinned to v0.15.18, byte-for-byte the ruff already in
+# .venv, so a hook run and a bare `ruff` run never disagree. mypy is kept OUT
+# of the blocking hooks (the repo is not yet type-clean); it runs as a separate
+# informational, manual-stage hook below.
+#
+# no em dashes anywhere in this file (repo-wide rule).
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.18
+    hooks:
+      # Lint. --fix so the hook repairs trivially-fixable findings in place.
+      # Scoped to the same source set the CI lint step covers.
+      - id: ruff
+        name: ruff (lint)
+        args: [--fix]
+        files: ^(serving|streaming|cdc|lake|mlops|tests|scripts)/
+      # Format. Scoped by `exclude` to a grandfathered backlog of files that
+      # are not ruff-format-clean today (measured 2026-07-06: 15 files, 249
+      # lines). Four of them are vendored verbatim from geotrace-agent and are
+      # deliberately kept byte-identical (see pyproject per-file-ignores), so
+      # they must never be auto-reformatted. The rest are pre-existing format
+      # debt; new and newly-touched files outside this list ARE formatted, so
+      # the gate is a real ratchet, not a no-op. Burn the list down over time.
+      - id: ruff-format
+        name: ruff-format
+        files: ^(serving|streaming|cdc|lake|mlops|tests|scripts)/
+        exclude: |
+          (?x)^(
+            cdc/tests/test_ddl\.py|
+            cdc/tests/test_envelope\.py|
+            cdc/tests/test_sinks\.py|
+            scripts/drill_p1_slot_bloat\.py|
+            serving/app/agents/rendezvous_finder\.py|
+            serving/app/agents/validator\.py|
+            serving/app/components/space_time_prism\.py|
+            serving/app/hitl\.py|
+            serving/tests/test_hitl\.py|
+            serving/tests/test_pidpm_client_score_full\.py|
+            serving/tests/test_registry\.py|
+            streaming/flink/job\.py|
+            streaming/ingestor/ingest\.py|
+            streaming/ingestor/tests/test_ingest\.py|
+            streaming/replay/generate\.py
+          )$
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-yaml
+        # k8s manifests bundle several docs separated by `---`, so allow it.
+        args: [--allow-multiple-documents]
+        # Terraform state files are JSON-with-.tfstate, not hand-authored YAML.
+        exclude: ^infra/terraform/.*\.tfstate.*$
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+
+  # Bandit SAST over the source only. A local hook (not PyCQA/bandit) so it runs
+  # the same .venv bandit and the same pyproject `[tool.bandit]` config CI uses;
+  # tests/, build/, and infra/lambda are excluded there. Confirmed-benign
+  # findings carry narrow per-line `# nosec Bxxx  # reason` markers.
+  - repo: local
+    hooks:
+      - id: bandit
+        name: bandit (SAST, source only)
+        entry: .venv/bin/bandit -c pyproject.toml -r serving streaming cdc lake mlops
+        language: system
+        pass_filenames: false
+        always_run: true
+
+  # Terraform fmt. CI-oriented: it needs the `terraform` binary on PATH, which
+  # the iac-ci workflow installs. Locally it is skipped unless terraform is
+  # present. Runs on infra/terraform/**.tf files only.
+  - repo: https://github.com/antonbabenko/pre-commit-terraform
+    rev: v1.99.0
+    hooks:
+      - id: terraform_fmt
+        files: ^infra/terraform/.*\.tf$
+
+  # mypy: INFORMATIONAL only, not part of the default (blocking) run. The repo
+  # is not yet type-clean, so a blocking mypy would be a red gate. Run it
+  # explicitly with:  .venv/bin/pre-commit run --hook-stage manual mypy
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy (informational, manual stage)
+        entry: .venv/bin/mypy serving streaming cdc lake mlops
+        language: system
+        pass_filenames: false
+        stages: [manual]

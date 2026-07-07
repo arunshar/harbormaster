@@ -68,6 +68,18 @@ variable "anomaly_threshold_usd" {
   default     = 10
 }
 
+variable "existing_cost_anomaly_monitor_arn" {
+  description = <<-EOT
+    ARN of an existing Cost Explorer DIMENSIONAL SERVICE anomaly monitor to reuse.
+    AWS allows only one such monitor per account and auto-creates a
+    "Default-Services-Monitor" for many accounts, so creating a second fails with
+    "Limit exceeded on dimensional spend monitor creation". Leave empty to create
+    one; set to an existing monitor ARN to attach the subscription to it instead.
+  EOT
+  type        = string
+  default     = ""
+}
+
 variable "enable_nightly_teardown" {
   description = <<-EOT
     Whether to create the EventBridge schedule that invokes the teardown Lambda
@@ -106,6 +118,12 @@ variable "lambda_timeout_seconds" {
   description = "Teardown Lambda timeout in seconds."
   type        = number
   default     = 120
+}
+
+variable "permissions_boundary_arn" {
+  description = "ARN of the IAM permissions boundary to attach to roles this module creates. Empty attaches no boundary. The harbormaster-platform deploy policy requires the harbormaster-permissions-boundary on every managed role (see war story P32, the two-sided contract), so envs/base sets this at apply time."
+  type        = string
+  default     = ""
 }
 
 variable "tags" {

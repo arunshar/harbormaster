@@ -168,8 +168,9 @@ data "aws_iam_policy_document" "budget_action_assume" {
 }
 
 resource "aws_iam_role" "budget_action" {
-  name               = "${local.name_prefix}-budget-action"
-  assume_role_policy = data.aws_iam_policy_document.budget_action_assume.json
+  name                 = "${local.name_prefix}-budget-action"
+  permissions_boundary = var.permissions_boundary_arn != "" ? var.permissions_boundary_arn : null
+  assume_role_policy   = data.aws_iam_policy_document.budget_action_assume.json
 
   tags = local.tags
 }
@@ -267,6 +268,11 @@ resource "aws_budgets_budget_action" "spend_freeze" {
 # -----------------------------------------------------------------------------
 
 resource "aws_ce_anomaly_monitor" "service" {
+  # AWS permits only one DIMENSIONAL SERVICE monitor per account. Skip creating
+  # ours when an existing monitor ARN is supplied (e.g. AWS' auto-created
+  # Default-Services-Monitor) and attach the subscription to that instead.
+  count = var.existing_cost_anomaly_monitor_arn == "" ? 1 : 0
+
   name              = "${local.name_prefix}-anomaly-monitor"
   monitor_type      = "DIMENSIONAL"
   monitor_dimension = "SERVICE"
@@ -278,7 +284,7 @@ resource "aws_ce_anomaly_subscription" "service" {
   name      = "${local.name_prefix}-anomaly-subscription"
   frequency = "IMMEDIATE"
 
-  monitor_arn_list = [aws_ce_anomaly_monitor.service.arn]
+  monitor_arn_list = [coalesce(var.existing_cost_anomaly_monitor_arn, one(aws_ce_anomaly_monitor.service[*].arn))]
 
   subscriber {
     type    = "SNS"
@@ -326,8 +332,9 @@ data "aws_iam_policy_document" "teardown_assume" {
 }
 
 resource "aws_iam_role" "teardown" {
-  name               = "${local.name_prefix}-teardown"
-  assume_role_policy = data.aws_iam_policy_document.teardown_assume.json
+  name                 = "${local.name_prefix}-teardown"
+  permissions_boundary = var.permissions_boundary_arn != "" ? var.permissions_boundary_arn : null
+  assume_role_policy   = data.aws_iam_policy_document.teardown_assume.json
 
   tags = local.tags
 }
@@ -422,6 +429,21 @@ data "aws_iam_policy_document" "teardown" {
   }
 
   statement {
+    sid    = "AutoScalingDescribeZero"
+    effect = "Allow"
+
+    # The handler drains tagged Auto Scaling Groups (desired/min -> 0). Describe
+    # has no resource-level scope, so it must be "*"; the handler filters by the
+    # Project tag at runtime.
+    actions = [
+      "autoscaling:DescribeAutoScalingGroups",
+      "autoscaling:UpdateAutoScalingGroup",
+    ]
+
+    resources = ["*"]
+  }
+
+  statement {
     sid    = "SnsPublish"
     effect = "Allow"
 
@@ -495,8 +517,9 @@ data "aws_iam_policy_document" "scheduler_assume" {
 }
 
 resource "aws_iam_role" "scheduler" {
-  name               = "${local.name_prefix}-teardown-scheduler"
-  assume_role_policy = data.aws_iam_policy_document.scheduler_assume.json
+  name                 = "${local.name_prefix}-teardown-scheduler"
+  permissions_boundary = var.permissions_boundary_arn != "" ? var.permissions_boundary_arn : null
+  assume_role_policy   = data.aws_iam_policy_document.scheduler_assume.json
 
   tags = local.tags
 }

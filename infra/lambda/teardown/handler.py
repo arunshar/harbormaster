@@ -351,7 +351,7 @@ def publish_summary(dry_run, results):
     lines = [
         "Harbormaster nightly teardown summary",
         "DRY_RUN: {}".format("yes" if dry_run else "no"),
-        "Project tag: {}".format(PROJECT_TAG_VALUE),
+        f"Project tag: {PROJECT_TAG_VALUE}",
     ]
     flink = results.get("managed_flink", {})
     emr = results.get("emr", {})
@@ -377,7 +377,7 @@ def publish_summary(dry_run, results):
         if isinstance(payload, dict) and payload.get("error")
     }
     if errors:
-        lines.append("Errors: {}".format(json.dumps(errors, default=str)))
+        lines.append(f"Errors: {json.dumps(errors, default=str)}")
 
     message = "\n".join(lines)
 
