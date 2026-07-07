@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import random
 import time
 from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
@@ -22,6 +23,28 @@ from replay.loader import AisRecord, load_fixture
 # Kinesis PutRecords hard limits.
 MAX_RECORDS_PER_CALL = 500
 MAX_BYTES_PER_CALL = 5 * 1024 * 1024  # 5 MiB
+
+# PutRecords retry policy: bounded exponential backoff with full jitter.
+# Kinesis surfaces throttling both as a whole-call ClientError (e.g.
+# ProvisionedThroughputExceededException) and as partial per-record failures in
+# the response, so we retry only the still-failing records each round.
+PUT_MAX_RETRIES = 5
+PUT_BASE_DELAY = 0.1  # seconds
+PUT_DELAY_CAP = 20.0  # seconds
+
+# Botocore error codes we treat as retriable (throttling / transient service side).
+RETRIABLE_ERROR_CODES = frozenset(
+    {
+        "ProvisionedThroughputExceededException",
+        "ThrottlingException",
+        "Throttling",
+        "RequestThrottled",
+        "TooManyRequestsException",
+        "ServiceUnavailable",
+        "InternalFailure",
+        "KMSThrottlingException",
+    }
+)
 
 # A PutRecords entry: {"Data": bytes, "PartitionKey": str}.
 KinesisEntry = dict
@@ -76,6 +99,33 @@ def batch_entries(
 def backoff_schedule(attempt: int, base: float = 0.5, cap: float = 30.0) -> float:
     """Exponential backoff (seconds), capped, for the live-mode reconnect loop (gate 1.9)."""
     return min(cap, base * (2 ** max(0, attempt)))
+
+
+def jittered_backoff(
+    attempt: int,
+    base: float = PUT_BASE_DELAY,
+    cap: float = PUT_DELAY_CAP,
+    rng: random.Random | None = None,
+) -> float:
+    """Full-jitter backoff (seconds): uniform in [0, min(cap, base * 2**attempt)].
+
+    Full jitter (AWS "Exponential Backoff and Jitter") spreads retries across the
+    window so a fleet of putters does not resynchronize and re-throttle in lockstep.
+    attempt is 0-based (first retry is attempt 0). rng is injected for deterministic
+    tests; it defaults to the module random.
+    """
+    ceiling = min(cap, base * (2 ** max(0, attempt)))
+    draw = (rng or random).uniform(0.0, ceiling)
+    return draw
+
+
+def _is_retriable_client_error(exc: Exception) -> bool:
+    """True for a botocore ClientError whose code is throttling / transient."""
+    resp = getattr(exc, "response", None)
+    if not isinstance(resp, dict):
+        return False
+    code = resp.get("Error", {}).get("Code", "")
+    return code in RETRIABLE_ERROR_CODES
 
 
 def replay(
@@ -133,18 +183,54 @@ def _load_records() -> list[AisRecord]:
     return load_fixture(Path(uri)) if uri else load_fixture()
 
 
-def _kinesis_putter(client, stream_name: str) -> Callable[[list[KinesisEntry]], None]:
+def _kinesis_putter(
+    client,
+    stream_name: str,
+    max_retries: int = PUT_MAX_RETRIES,
+    base_delay: float = PUT_BASE_DELAY,
+    delay_cap: float = PUT_DELAY_CAP,
+    sleep: Callable[[float], None] = time.sleep,
+    rng: random.Random | None = None,
+) -> Callable[[list[KinesisEntry]], None]:
+    """Build a PutRecords sink with bounded exponential backoff and full jitter.
+
+    Retries up to max_retries on retriable/throttling conditions from two sources:
+    a whole-call ClientError (e.g. ProvisionedThroughputExceededException) and the
+    normal-at-load partial failure (per-record ErrorCode in the response), where
+    only the still-failing records are resubmitted. Between attempts it sleeps a
+    full-jitter delay. The success path (no failures) is unchanged. When retries
+    are exhausted the last error path is preserved: a whole-call ClientError
+    re-raises, and unresolved partial failures leave the loop with those records
+    dropped (as before, but now after a bounded number of attempts, not one).
+    sleep/rng are injected so tests run with no real waiting and deterministic jitter.
+    """
+
     def put(batch: list[KinesisEntry]) -> None:
-        resp = client.put_records(StreamName=stream_name, Records=batch)
-        if resp.get("FailedRecordCount", 0):
-            # Retry only the failed records once (partial-failure is normal at load).
-            retry = [
-                batch[i]
-                for i, rec in enumerate(resp["Records"])
+        from botocore.exceptions import ClientError
+
+        pending = batch
+        for attempt in range(max_retries + 1):
+            try:
+                resp = client.put_records(StreamName=stream_name, Records=pending)
+            except ClientError as exc:
+                # Non-retriable client errors surface immediately; retriable ones
+                # (throttling / transient) back off unless retries are exhausted.
+                if not _is_retriable_client_error(exc) or attempt >= max_retries:
+                    raise
+                sleep(jittered_backoff(attempt, base=base_delay, cap=delay_cap, rng=rng))
+                continue
+
+            failed = [
+                pending[i]
+                for i, rec in enumerate(resp.get("Records", []))
                 if rec.get("ErrorCode")
             ]
-            if retry:
-                client.put_records(StreamName=stream_name, Records=retry)
+            if not failed:
+                return
+            if attempt >= max_retries:
+                return  # give up: drop the still-failing records (prior behavior)
+            pending = failed
+            sleep(jittered_backoff(attempt, base=base_delay, cap=delay_cap, rng=rng))
 
     return put
 

@@ -7,6 +7,8 @@ HITL; an unseeded vessel scores exactly as in Phase 1 (goldens unchanged).
 
 from __future__ import annotations
 
+import asyncio
+import threading
 from typing import Any
 
 from app.metrics import WATCHLIST_LOOKUP_ERRORS
@@ -138,6 +140,72 @@ def test_ddb_error_fails_open_and_counts():
     )
     assert lookup.get(MMSI) == EMPTY_STATUS
     assert WATCHLIST_LOOKUP_ERRORS._value.get() == before + 1
+
+
+# ------------------------------------------------------- single-flight (async)
+
+
+async def test_aget_coalesces_concurrent_misses_into_one_fetch(monkeypatch):
+    # N concurrent aget() calls for the SAME uncached vessel must share a single
+    # backing fetch. A gate (threading.Event) holds the fetch in-flight until all
+    # callers have coalesced onto it, so the assertion is deterministic, not a
+    # timing race. The fetch runs in a worker thread (asyncio.to_thread), so the
+    # gate is a threading primitive, not an asyncio one.
+    ddb = FakeDdb([_item(FEATURE_WATCHLIST, reason="dark rendezvous", severity=0.8)])
+    lookup = WatchlistLookup(ddb_client=ddb, redis_client=None, table="t")
+
+    release = threading.Event()
+    calls = 0
+
+    real_get = lookup.get
+
+    def slow_get(mmsi: int) -> WatchlistStatus:
+        nonlocal calls
+        calls += 1
+        # block the in-flight fetch so late callers must coalesce, not restart it
+        assert release.wait(timeout=5.0), "fetch gate never released"
+        return real_get(mmsi)
+
+    monkeypatch.setattr(lookup, "get", slow_get)
+
+    n = 12
+    tasks = [asyncio.ensure_future(lookup.aget(MMSI)) for _ in range(n)]
+
+    # let every caller run its lock section and coalesce onto the one future
+    for _ in range(500):
+        await asyncio.sleep(0)
+        if MMSI in lookup._inflight and sum(t.done() for t in tasks) == 0:
+            break
+    release.set()
+    results = await asyncio.gather(*tasks)
+
+    assert calls == 1  # coalesced: exactly one backing fetch for all N callers
+    assert len(ddb.calls) == 1  # and exactly one DynamoDB round trip
+    assert all(r == results[0] for r in results)
+    assert all(r.watchlisted is True and r.reason == "dark rendezvous" for r in results)
+    # the in-flight entry is cleaned up after resolution
+    assert lookup._inflight == {}
+
+
+async def test_aget_after_coalesced_flight_can_fetch_again(monkeypatch):
+    # once the in-flight entry is cleared, a later miss starts a fresh fetch
+    # (the coalescing map must not pin the first result forever).
+    ddb = FakeDdb([_item(FEATURE_WATCHLIST, reason="x")])
+    lookup = WatchlistLookup(ddb_client=ddb, redis_client=None, table="t")
+    calls = 0
+    real_get = lookup.get
+
+    def counting_get(mmsi: int) -> WatchlistStatus:
+        nonlocal calls
+        calls += 1
+        return real_get(mmsi)
+
+    monkeypatch.setattr(lookup, "get", counting_get)
+
+    await asyncio.gather(*[lookup.aget(MMSI) for _ in range(4)])
+    assert calls == 1 and lookup._inflight == {}
+    await lookup.aget(MMSI)  # separate, non-overlapping flight
+    assert calls == 2
 
 
 # ------------------------------------------------------------------- fusion

@@ -37,17 +37,25 @@ def _pg_credentials(boto3_session) -> dict:
     return json.loads(sm.get_secret_value(SecretId=secret_arn)["SecretString"])
 
 
+def _build_ssl_context() -> ssl.SSLContext:
+    # RDS enforces TLS. Verify the server certificate with secure defaults
+    # (check_hostname True, verify_mode CERT_REQUIRED); never disable verification.
+    # Defense-grade deployments should pin the Amazon RDS CA bundle by pointing
+    # RDS_CA_BUNDLE at the downloaded PEM, so trust does not rely on the ambient
+    # system trust store.
+    ctx = ssl.create_default_context()
+    ca_bundle = os.environ.get("RDS_CA_BUNDLE")
+    if ca_bundle:
+        ctx.load_verify_locations(cafile=ca_bundle)
+    return ctx
+
+
 def _fetch_rows() -> list:
     import boto3
     import pg8000.native
 
     creds = _pg_credentials(boto3.Session())
-    # RDS enforces TLS; the RDS CA is not in the Lambda trust store and a
-    # 1-minute metrics probe does not need hostname pinning, so verification
-    # is disabled here (the connection still encrypts).
-    ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
+    ctx = _build_ssl_context()
     conn = pg8000.native.Connection(
         user=creds["username"],
         password=creds["password"],

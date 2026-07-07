@@ -24,6 +24,7 @@ Online item layout (must match cdc/sinks/dynamo.py; drift-guarded by a test):
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from dataclasses import dataclass, field
@@ -167,6 +168,16 @@ class WatchlistLookup:
         self._redis = redis_client
         self._table = table
         self._ttl = cache_ttl_s
+        # Single-flight coalescing: concurrent cache-miss reads for the same
+        # vessel share one in-flight backing fetch instead of each spawning a
+        # worker thread that hits DynamoDB. Keyed by mmsi; entries are removed
+        # once the fetch resolves. The lock only guards the small map mutation,
+        # not the fetch itself, so distinct vessels never serialize.
+        self._inflight: dict[int, asyncio.Future[WatchlistStatus]] = {}
+        # Bound to the running loop on first use: __init__ may run off any loop
+        # (e.g. from_settings at bootstrap), and an asyncio.Lock binds to the
+        # loop that first awaits it.
+        self._inflight_lock: asyncio.Lock | None = None
 
     @property
     def enabled(self) -> bool:
@@ -223,14 +234,37 @@ class WatchlistLookup:
         )
 
     async def aget(self, mmsi: int) -> WatchlistStatus:
-        """Event-loop-safe lookup: the blocking redis/boto3 calls run in a
-        worker thread so one slow backend cannot stall every request on the
-        loop. Zero-cost when disabled."""
+        """Event-loop-safe, single-flight lookup.
+
+        The blocking redis/boto3 calls run in a worker thread so one slow
+        backend cannot stall every request on the loop. Concurrent cache-miss
+        reads for the SAME vessel are coalesced: the first caller starts one
+        backing fetch and every other caller awaits its result, so a hot key
+        makes exactly one DynamoDB round trip instead of one per request. The
+        in-flight entry is removed once the fetch resolves, in success and
+        failure alike, so a transient outage cannot pin a stale future. Distinct
+        vessels never serialize (the lock only guards the small map). Zero-cost
+        when disabled."""
         if not self.enabled:
             return EMPTY_STATUS
-        import asyncio
 
-        return await asyncio.to_thread(self.get, mmsi)
+        if self._inflight_lock is None:
+            self._inflight_lock = asyncio.Lock()
+
+        key = int(mmsi)
+        async with self._inflight_lock:
+            existing = self._inflight.get(key)
+            if existing is not None:
+                fut = existing
+            else:
+                fut = asyncio.ensure_future(asyncio.to_thread(self.get, mmsi))
+                self._inflight[key] = fut
+                fut.add_done_callback(lambda _f, k=key: self._inflight.pop(k, None))
+
+        # Await outside the lock so distinct vessels (and the fetch itself) run
+        # concurrently. asyncio.shield keeps a caller's cancellation from
+        # cancelling the shared fetch out from under the other coalesced waiters.
+        return await asyncio.shield(fut)
 
     def get(self, mmsi: int) -> WatchlistStatus:
         if not self.enabled:
