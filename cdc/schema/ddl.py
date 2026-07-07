@@ -77,7 +77,7 @@ BEGIN
     END IF;
 END
 $$;
-""".strip()
+""".strip()  # nosec B608  # PUBLICATION_NAME and CDC_TABLES are module-level constants, not untrusted input
 
 
 def statements() -> tuple[str, ...]:

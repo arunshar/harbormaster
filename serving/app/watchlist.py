@@ -213,7 +213,7 @@ class WatchlistLookup:
                 if settings.ddb_endpoint_url:
                     kwargs["endpoint_url"] = settings.ddb_endpoint_url
                     kwargs["aws_access_key_id"] = "local"
-                    kwargs["aws_secret_access_key"] = "local"
+                    kwargs["aws_secret_access_key"] = "local"  # nosec B105  # dummy creds for local DynamoDB endpoint only, gated on ddb_endpoint_url
                 ddb = boto3.client("dynamodb", **kwargs)
             except Exception as exc:
                 log.warning("watchlist_ddb_unavailable_lookup_disabled", err=str(exc))
@@ -281,7 +281,7 @@ class WatchlistLookup:
                 log.warning("watchlist_cache_read_failed", mmsi=mmsi, err=str(exc))
 
         try:
-            assert self._ddb is not None  # guarded by self.enabled
+            assert self._ddb is not None  # nosec B101  # internal invariant, not validation of untrusted input; guarded by self.enabled
             resp = self._ddb.query(
                 TableName=self._table,
                 KeyConditionExpression="entity_id = :e",

@@ -124,7 +124,7 @@ def _emit(proj: _Proj, mmsi: int, x: float, y: float, t: datetime, sog_mps: floa
 
 
 def generate() -> dict:
-    rng = random.Random(SEED)
+    rng = random.Random(SEED)  # nosec B311  # deterministic replay fixture generation, not security-sensitive
     lane_lonlat = _lane_lonlat()
     lat0, lon0 = _centroid(lane_lonlat)
     proj = _Proj(lat0, lon0)

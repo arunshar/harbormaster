@@ -64,7 +64,7 @@ class HitlApi:
         self.timeout = timeout
 
     def pending(self) -> list[dict]:
-        with urllib.request.urlopen(f"{self.base}/v1/hitl/pending", timeout=self.timeout) as r:
+        with urllib.request.urlopen(f"{self.base}/v1/hitl/pending", timeout=self.timeout) as r:  # nosec B310  # fixed http(s) base_url to internal serving API, no user-supplied scheme
             return json.loads(r.read())
 
     def feedback(self, payload: dict) -> dict:
@@ -74,5 +74,5 @@ class HitlApi:
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=self.timeout) as r:
+        with urllib.request.urlopen(req, timeout=self.timeout) as r:  # nosec B310  # fixed http(s) base_url to internal serving API, no user-supplied scheme
             return json.loads(r.read())

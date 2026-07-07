@@ -197,7 +197,7 @@ class FeatureProcess(KeyedProcessFunction):
             method="POST",
         )
         try:
-            urllib.request.urlopen(req, timeout=5).read()
+            urllib.request.urlopen(req, timeout=5).read()  # nosec B310  # fixed http(s) scoring endpoint from config, no user-supplied scheme
         except urllib.error.URLError:
             pass  # scoring is best-effort from the stream; HITL still catches it later
 

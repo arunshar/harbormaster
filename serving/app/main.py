@@ -146,4 +146,4 @@ if __name__ == "__main__":  # pragma: no cover
     import uvicorn
 
     logging.basicConfig(level=logging.INFO)
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=False)
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=False)  # nosec B104  # container entrypoint must bind all interfaces

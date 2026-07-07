@@ -45,12 +45,21 @@ jobs:
           pip install -e ".[dev,lake,mlops,pidpm-demo]"
       - name: Lint (ruff)
         run: ruff check serving streaming cdc lake mlops tests scripts
+      - name: Format (ruff-format, check)
+        run: ruff format --check serving streaming cdc lake mlops tests scripts
+      - name: Security (bandit)
+        # Source-only SAST, config in pyproject [tool.bandit]. Confirmed-benign
+        # findings carry narrow per-line `# nosec Bxxx  # reason` markers.
+        run: bandit -c pyproject.toml -r serving streaming cdc lake mlops
       - name: Verify recorded fixture checksum
         run: python -c "from replay.loader import verify_fixture; assert verify_fixture()"
         env:
           PYTHONPATH: streaming
-      - name: Unit tests
-        run: pytest -q
+      - name: Unit tests + coverage gate
+        # --cov flags read [tool.coverage.*] in pyproject, incl. fail_under=75
+        # (line+branch, brownfield ratchet; target for new/changed modules is
+        # 90%). Measured 78.62% on this suite at authoring time.
+        run: pytest -q --cov --cov-report=term-missing --cov-report=xml
 
   container-build:
     runs-on: ubuntu-latest

@@ -21,7 +21,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "pytest-asyncio>=0.23", "httpx>=0.27", "ruff>=0.5"]
+dev = ["pytest>=8", "pytest-asyncio>=0.23", "httpx>=0.27", "ruff>=0.5", "pytest-cov>=5", "bandit>=1.7"]
 postgres = ["asyncpg>=0.29"]
 ingestor = ["boto3>=1.34", "websocket-client>=1.7"]
 console = ["streamlit>=1.30", "pandas>=2.0"]
@@ -103,6 +103,31 @@ line-length = 100
 target-version = "py311"
 src = ["serving", "streaming", "cdc", "lake", "mlops", "."]
 
+[tool.ruff.format]
+# Grandfathered format-debt: these files are not ruff-format-clean today
+# (measured 2026-07-06: 15 files, 249 lines). Four are vendored verbatim from
+# geotrace-agent and MUST stay byte-identical (see per-file-ignores below);
+# the rest are pre-existing debt. Excluded from `ruff format --check` so the CI
+# format gate is green now while still enforcing format on every other file.
+# This is format-only; these files are still linted. Burn the list down.
+exclude = [
+  "cdc/tests/test_ddl.py",
+  "cdc/tests/test_envelope.py",
+  "cdc/tests/test_sinks.py",
+  "scripts/drill_p1_slot_bloat.py",
+  "serving/app/agents/rendezvous_finder.py",
+  "serving/app/agents/validator.py",
+  "serving/app/components/space_time_prism.py",
+  "serving/app/hitl.py",
+  "serving/tests/test_hitl.py",
+  "serving/tests/test_pidpm_client_score_full.py",
+  "serving/tests/test_registry.py",
+  "streaming/flink/job.py",
+  "streaming/ingestor/ingest.py",
+  "streaming/ingestor/tests/test_ingest.py",
+  "streaming/replay/generate.py",
+]
+
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 
@@ -112,3 +137,37 @@ select = ["E", "F", "I", "UP", "B"]
 "serving/app/agents/space_time_reasoner.py" = ["E501"]
 "serving/app/agents/rendezvous_finder.py" = ["E501"]
 "serving/app/agents/validator.py" = ["E501"]
+
+# ---- Coverage gate (engineering-standard ratchet) --------------------------
+# Measured 2026-07-06 on this dev machine (macOS, Python 3.12.11, .venv): the
+# full unit suite (390 passed, 9 skipped) reaches 78.62% line+branch coverage
+# across the five source packages below, test files excluded from the count.
+# fail_under is set to 75 as a real ratchet: it passes today with a small
+# margin (skipped tests can shift the exact figure run to run) and blocks any
+# regression below that floor. This is a repo-wide FLOOR, not the target. The
+# standard for any NEW or CHANGED module is 90% line+branch coverage, enforced
+# in review, not by lowering this floor toward 90 (which the repo as a whole is
+# not yet at, so a global 90 here would be a red gate reported green). branch
+# coverage is on, so this figure is stricter than a line-only measurement
+# (line-only was 87.98% with test files still in the denominator).
+[tool.coverage.run]
+branch = true
+source = ["serving", "streaming", "cdc", "lake", "mlops"]
+omit = [
+  "*/tests/*",
+  "*/test_*.py",
+  "infra/lambda/*/build/*",
+]
+
+[tool.coverage.report]
+fail_under = 75
+skip_covered = true
+show_missing = true
+
+# ---- Bandit (SAST) ---------------------------------------------------------
+# Scans the source at default rule set (no rules blanket-disabled). Confirmed
+# benign findings carry a narrow, per-line `# nosec Bxxx  # reason` instead.
+# tests/, generated test handlers, and the vendored lambda build/ trees are
+# excluded (they are not shipped source).
+[tool.bandit]
+exclude_dirs = ["tests", ".venv", "build", "infra/lambda"]

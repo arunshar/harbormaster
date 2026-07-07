@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
-
 import random
+from datetime import UTC, datetime, timedelta
 from unittest.mock import Mock
 
 import pytest

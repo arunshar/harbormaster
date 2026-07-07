@@ -87,7 +87,7 @@ def build_lake_writer(
     except AttributeError:  # older pyiceberg
         try:
             catalog.create_namespace(namespace)
-        except Exception:  # already exists
+        except Exception:  # nosec B110  # idempotent namespace creation, already-exists is the expected benign case
             pass
     identifier = f"{namespace}.{table_name}"
     try:

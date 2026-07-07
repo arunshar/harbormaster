@@ -62,7 +62,7 @@ class RegistryApi:
             headers={"Content-Type": "application/json"},
             method=method,
         )
-        with urllib.request.urlopen(req, timeout=self.timeout) as r:
+        with urllib.request.urlopen(req, timeout=self.timeout) as r:  # nosec B310  # fixed http(s) base_url to internal registry API, no user-supplied scheme
             return json.loads(r.read())
 
     def list_watchlist(self) -> list[dict]:
