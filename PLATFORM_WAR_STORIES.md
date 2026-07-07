@@ -363,3 +363,58 @@ An entry graduates from ANTICIPATED to grounded only when it is backed by a real
 - **Fix:** the probe's blocking condition, checked verbatim (as of gate 4.7's drill): `candidate_mean_reward > baseline_mean_reward AND candidate_hard_violation_rate > baseline_hard_violation_rate`. The drill's second scenario (an honest candidate: same reward increase, violation rate flat at 0.0) proves the probe does not simply penalize reward increases; it passes cleanly and the candidate promotes through the full state machine (`weights_set == [5, 25, 50, 100]`).
 - **Lesson:** an unbounded, heavily-weighted penalty term in a reward function is only a real safeguard if something downstream actually audits whether a reward increase came at that term's expense; `hard_violation_in_either_arm` (`mlops/preference_builder.py`) exists precisely so this audit has the data it needs on every preference triple, not just the ones a human happens to inspect.
 - **Follow-up (2026-07-04, later the same day):** a subsequent adversarial review found the rate-only condition above is magnitude-blind to a "boundary-riding soft-term hacker" (rides the violation-count threshold exactly while smuggling far-more-severe violations at a matched count); the blocking condition was hardened to `mean_up and (rate_up or candidate_mean_hard < baseline_mean_hard)`, signed off by Arun, see `docs/phases/PHASE_4.md`'s adversarial review addendum. This drill's own two scenarios (uniform hard shift) are unaffected by the hardening; both still produce the same verdicts.
+
+## P29: A checkov baseline regenerated before the code it was supposed to gate
+
+**Tags:** [PLATFORM / personal-build] TOOLING CORRECTNESS
+
+**Status: GROUNDED**; 2026-07-06, branch feat/ab-masterclass-audit (commit 45d221c, `infra/terraform/.checkov.baseline` and the WAF/APIGW modules).
+
+- **Symptom:** the Phase 2B checkov baseline was refreshed early in the change, then more IaC (the gated WAF, the API Gateway access-logging and authorizer work) landed after it. CI, running checkov against a baseline captured before that later code, would have suppressed the 4 new findings the new code introduced, reporting a clean scan while the ratchet was silently pointed at a stale snapshot.
+- **Root cause:** a suppression baseline is a point-in-time diff against the tree, not a live policy. Capturing it before the final security code means every finding that code adds falls inside the "already known, already accepted" set by construction, so the gate cannot see the very findings it exists to catch.
+- **Fix:** did not baseline the new findings. Fixed them in code instead: added the Log4j `KnownBadInputs` AWS Managed Rule and access logging to the WAF, so the findings resolve rather than get suppressed. Only the genuinely-accepted brownfield class (14-day log retention) was re-baselined, and the ratchet was re-run against the final tree to prove it still bites on anything new.
+- **Lesson:** a suppression baseline is a liability unless it is regenerated with the code it gates, in the same change, as the last step. Prove the ratchet still fails on a fresh finding before trusting a green scan; a baseline captured too early turns the gate into a rubber stamp.
+
+## P30: pyiceberg partition transforms silently need the pyiceberg_core Rust extension on the write path
+
+**Tags:** [PLATFORM / personal-build] TOOLING CORRECTNESS
+
+**Status: GROUNDED**; 2026-07-06, branch feat/ab-masterclass-audit (commit 5cb5a01, `lake/iceberg.py`).
+
+- **Symptom:** wiring day/bucket partition transforms into the Iceberg writer raised `NotInstalledError` locally on the write path, even though the transform objects constructed fine and the partition-spec API surface looked complete.
+- **Root cause:** pyiceberg's `day()` and `bucket()` partition transforms are implemented in the native `pyiceberg_core` Rust extension, which is not installed in the local environment. The Python API lets you declare the spec regardless; the extension is only required when a write actually has to apply the transform to real data, so the gap is invisible until the write executes.
+- **Fix:** made the writer degrade honestly: it falls back to an identity partition when the extension is absent and applies the full day+bucket spec when the extension is present, rather than pretending the transform ran. The behavior is keyed on what the environment can actually do, not on the API being callable.
+- **Lesson:** verify a library feature on the actual write path in the actual environment, not just against the API surface. A constructor that succeeds is not evidence the operation it configures can execute; native-extension-backed features fail at use time, not at declaration time.
+
+## P31: Extracting inlined Flink UDFs to a module changes distributed serialization semantics
+
+**Tags:** [PLATFORM / personal-build] CONCURRENCY CORRECTNESS
+
+**Status: GROUNDED**; 2026-07-06, branch feat/ab-masterclass-audit (commit 5cb5a01, `streaming/window_logic.py`).
+
+- **Symptom:** pulling the inlined streaming window functions out into a testable `window_logic.py` module is a pure test-importability refactor with no behavior change on its face, but a naive extraction would have quietly altered how those functions ship to Flink workers.
+- **Root cause:** cloudpickle serializes a function defined in `__main__` (an inlined UDF) BY VALUE, shipping its actual bytecode; a function imported from a real package ships BY REFERENCE, a 53-byte pointer the worker must re-import on its own sys.path. Moving the functions to a module flips them from by-value to by-reference, exactly the P13 failure mode from the other direction: the worker would need `window_logic` importable on its own path, which the extraction does not guarantee.
+- **Fix:** called `cloudpickle.register_pickle_by_value` on the extracted module so its functions still ship by value after the move, preserving the original job behavior while gaining a directly-importable, unit-testable module.
+- **Lesson:** a refactor that only moves code to make it importable can still change distributed serialization semantics. In a cloudpickle/Flink pipeline, "where a function is defined" is a behavioral property, not just an organizational one; test the serialization boundary, not only the local import.
+
+## P32: An IAM permissions-boundary on the deploy identity is a two-sided contract every managed role must honor
+
+**Tags:** [PLATFORM / personal-build] TOOLING
+
+**Status: GROUNDED**; 2026-07-06, branch feat/ab-masterclass-audit (commit 45d221c, the IAM permissions-boundary work closing the `iam:*` on `Resource: *` escalation).
+
+- **Symptom:** adding a permissions-boundary condition to the deploy identity to close the `iam:*`-on-`Resource:*` privilege-escalation path is a change to one principal, but it silently creates an apply-time obligation: every `aws_iam_role` the deploy identity creates must now set `permissions_boundary`, or `CreateRole` is denied at apply.
+- **Root cause:** a permissions boundary that requires the principal to attach a boundary to any role it creates is a two-sided contract. Closing the escalation on the deploy identity is one side; the other side is that every module-defined role becomes non-creatable until it also carries the boundary. The escalation fix and the role-wide obligation are the same condition viewed from the principal versus the resource.
+- **Fix:** threaded `permissions_boundary` through every module `aws_iam_role` the deploy identity manages, so the roles satisfy the boundary condition the principal now enforces, rather than discovering the denial one failed apply at a time.
+- **Lesson:** a permissions boundary is not a local edit to one identity; it is a contract on the whole set of roles that identity manages. Closing an escalation on the principal creates an apply-time requirement on every downstream role, and both sides must land in the same change or the apply breaks.
+
+## P33: Mutation testing as the anti-tautology check on new guards
+
+**Tags:** [PLATFORM / personal-build] CORRECTNESS
+
+**Status: GROUNDED**; 2026-07-06, branch feat/ab-masterclass-audit (commits 2A/2B, the CDC sink LSN guard and `serving/app/burn_rate.py`).
+
+- **Symptom:** the new CDC-sink and burn-rate tests all passed on the first run, which is exactly when a new test is least trustworthy: a green assertion proves nothing until a deliberate regression proves it can go red.
+- **Root cause:** a passing new test can be a tautology, asserting something the code makes true regardless of the logic under test. Without a mutation, "the test passes" and "the test binds the behavior" are indistinguishable, so a guard could ship with tests that never actually exercise its boundary.
+- **Fix:** ran targeted mutations. Weakening the CDC duplicate guard from strict `<` to `<=` (admitting an equal-LSN redelivery) made the equal-LSN duplicate test fail as intended. Sabotaging the burn-rate calculator to always return `False` failed 5 tests. Both deliberate regressions turned the suite red, proving the new tests bind the real behavior, then both mutations were reverted.
+- **Lesson:** a passing new test is not evidence of coverage until a deliberate regression makes it fail. Mutation testing is the cheap anti-tautology check: change the logic to be wrong on purpose and confirm the suite notices, especially for boundary guards where `<` versus `<=` is the whole point.
