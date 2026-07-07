@@ -1,0 +1,38 @@
+PLATFORM_WAR_STORIES.md
+  s_a2e22b769416de::t_360343ef9512de 366-420
+docs/AB_MASTERCLASS_AUDIT.md
+  s_a2e22b769416de::t_9482429e27d499 48
+  s_a2e22b769416de::t_6c9fefb7faf2c0 15-37
+  s_a2e22b769416de::t_8f007d2b3ad2ee 58
+  s_a2e22b769416de::t_a187b7516a65da 51
+  s_a2e22b769416de::t_155eb97682d134 53
+  s_a2e22b769416de::t_3abeb0c2f92503 67
+  s_a2e22b769416de::t_474653e2652dad 71
+  s_a2e22b769416de::t_8ae1880e9cdad3 70
+  s_a2e22b769416de::t_56f06ad8b86ec5 40
+  s_a2e22b769416de::t_44f8397705eb90 55
+  s_a2e22b769416de::t_b2a1f03dc6e91d 57
+  s_a2e22b769416de::t_1e75fc4ca1139e 54
+  s_a2e22b769416de::t_e7eacd9760c129 59
+  s_a2e22b769416de::t_29d766c3c3b1b1 69
+  s_a2e22b769416de::t_10204c89620797 49
+  s_a2e22b769416de::t_9b58818afd8cba 94-97,101-105
+  s_a2e22b769416de::t_10525d2f9bbf0c 9
+  s_a2e22b769416de::t_f0a7c8403dbaac 84
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "0f59a11b4e391e9caccce89c2ae67859d8329fa9",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
