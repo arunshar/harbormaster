@@ -120,6 +120,12 @@ variable "lambda_timeout_seconds" {
   default     = 120
 }
 
+variable "permissions_boundary_arn" {
+  description = "ARN of the IAM permissions boundary to attach to roles this module creates. Empty attaches no boundary. The harbormaster-platform deploy policy requires the harbormaster-permissions-boundary on every managed role (see war story P32, the two-sided contract), so envs/base sets this at apply time."
+  type        = string
+  default     = ""
+}
+
 variable "tags" {
   description = "Common tags applied to every resource."
   type        = map(string)

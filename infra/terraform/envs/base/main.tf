@@ -36,6 +36,8 @@ provider "aws" {
   }
 }
 
+data "aws_caller_identity" "current" {}
+
 locals {
   # Common tags applied to every resource across every module, per the shared
   # conventions. default_tags above also stamps these provider-wide; passing
@@ -45,6 +47,14 @@ locals {
     Environment = var.environment
     ManagedBy   = "terraform"
   }
+
+  # ARN of the IAM permissions boundary (created by infra/aws/bootstrap.sh) that
+  # every module-created role must carry once the boundary-gated harbormaster-
+  # platform deploy policy is attached (war story P32, the two-sided contract).
+  # Passed into every role-creating module below. Roles are count-gated on the
+  # enable_phaseN flags, so the default phases-off plan creates none and is
+  # unaffected. Set permissions_boundary_name = "" to opt out of the boundary.
+  permissions_boundary_arn = var.permissions_boundary_name != "" ? "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/${var.permissions_boundary_name}" : ""
 }
 
 # -----------------------------------------------------------------------------
@@ -80,7 +90,8 @@ module "state_stores" {
 # -----------------------------------------------------------------------------
 
 module "finops" {
-  source = "../../modules/finops"
+  source                   = "../../modules/finops"
+  permissions_boundary_arn = local.permissions_boundary_arn
 
   project     = var.project
   environment = var.environment
@@ -120,8 +131,9 @@ module "kinesis" {
 }
 
 module "firehose" {
-  count  = var.enable_phase1 ? 1 : 0
-  source = "../../modules/firehose"
+  count                    = var.enable_phase1 ? 1 : 0
+  source                   = "../../modules/firehose"
+  permissions_boundary_arn = local.permissions_boundary_arn
 
   project     = var.project
   environment = var.environment
@@ -161,8 +173,9 @@ module "ecs_cluster" {
 }
 
 module "ecs_serving" {
-  count  = var.enable_phase1 ? 1 : 0
-  source = "../../modules/ecs_serving"
+  count                    = var.enable_phase1 ? 1 : 0
+  source                   = "../../modules/ecs_serving"
+  permissions_boundary_arn = local.permissions_boundary_arn
 
   project     = var.project
   environment = var.environment
@@ -207,8 +220,9 @@ module "apigw" {
 }
 
 module "ecs_ingestor" {
-  count  = var.enable_phase1 ? 1 : 0
-  source = "../../modules/ecs_ingestor"
+  count                    = var.enable_phase1 ? 1 : 0
+  source                   = "../../modules/ecs_ingestor"
+  permissions_boundary_arn = local.permissions_boundary_arn
 
   project     = var.project
   environment = var.environment
@@ -222,8 +236,9 @@ module "ecs_ingestor" {
 }
 
 module "kda_flink" {
-  count  = var.enable_phase1 ? 1 : 0
-  source = "../../modules/kda_flink"
+  count                    = var.enable_phase1 ? 1 : 0
+  source                   = "../../modules/kda_flink"
+  permissions_boundary_arn = local.permissions_boundary_arn
 
   project     = var.project
   environment = var.environment
@@ -286,8 +301,9 @@ module "msk" {
 }
 
 module "redis_fargate" {
-  count  = var.enable_phase2 ? 1 : 0
-  source = "../../modules/redis_fargate"
+  count                    = var.enable_phase2 ? 1 : 0
+  source                   = "../../modules/redis_fargate"
+  permissions_boundary_arn = local.permissions_boundary_arn
 
   project     = var.project
   environment = var.environment
@@ -331,8 +347,9 @@ resource "aws_ecr_repository" "cdc_consumer" {
 }
 
 module "ecs_connect" {
-  count  = var.enable_phase2 && var.cdc_connect_image != "" ? 1 : 0
-  source = "../../modules/ecs_connect"
+  count                    = var.enable_phase2 && var.cdc_connect_image != "" ? 1 : 0
+  source                   = "../../modules/ecs_connect"
+  permissions_boundary_arn = local.permissions_boundary_arn
 
   project     = var.project
   environment = var.environment
@@ -356,8 +373,9 @@ module "ecs_connect" {
 }
 
 module "ecs_cdc_consumer" {
-  count  = var.enable_phase2 && var.cdc_consumer_image != "" ? 1 : 0
-  source = "../../modules/ecs_cdc_consumer"
+  count                    = var.enable_phase2 && var.cdc_consumer_image != "" ? 1 : 0
+  source                   = "../../modules/ecs_cdc_consumer"
+  permissions_boundary_arn = local.permissions_boundary_arn
 
   project     = var.project
   environment = var.environment
@@ -382,8 +400,9 @@ module "ecs_cdc_consumer" {
 }
 
 module "cdc_monitoring" {
-  count  = var.enable_phase2 ? 1 : 0
-  source = "../../modules/cdc_monitoring"
+  count                    = var.enable_phase2 ? 1 : 0
+  source                   = "../../modules/cdc_monitoring"
+  permissions_boundary_arn = local.permissions_boundary_arn
 
   project     = var.project
   environment = var.environment
@@ -413,8 +432,9 @@ module "cdc_monitoring" {
 # -----------------------------------------------------------------------------
 
 module "emr_backfill" {
-  count  = var.enable_phase3 ? 1 : 0
-  source = "../../modules/emr_backfill"
+  count                    = var.enable_phase3 ? 1 : 0
+  source                   = "../../modules/emr_backfill"
+  permissions_boundary_arn = local.permissions_boundary_arn
 
   project     = var.project
   environment = var.environment
@@ -431,8 +451,9 @@ module "emr_backfill" {
 # container is built and the checkpoint is exported creates no
 # half-configured model/endpoint.
 module "sagemaker_pidpm" {
-  count  = var.enable_phase3 && var.pidpm_image != "" && var.pidpm_model_data_url != "" ? 1 : 0
-  source = "../../modules/sagemaker_pidpm"
+  count                    = var.enable_phase3 && var.pidpm_image != "" && var.pidpm_model_data_url != "" ? 1 : 0
+  source                   = "../../modules/sagemaker_pidpm"
+  permissions_boundary_arn = local.permissions_boundary_arn
 
   project     = var.project
   environment = var.environment
@@ -451,8 +472,9 @@ module "sagemaker_pidpm" {
 # applied during the 2026-07-04 sprint: authored, validate + plan-checksum
 # verified only, per docs/phases/PHASE_4.md.
 module "drift_watch" {
-  count  = var.enable_phase4 ? 1 : 0
-  source = "../../modules/drift_watch"
+  count                    = var.enable_phase4 ? 1 : 0
+  source                   = "../../modules/drift_watch"
+  permissions_boundary_arn = local.permissions_boundary_arn
 
   project     = var.project
   environment = var.environment

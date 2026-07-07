@@ -168,8 +168,9 @@ data "aws_iam_policy_document" "budget_action_assume" {
 }
 
 resource "aws_iam_role" "budget_action" {
-  name               = "${local.name_prefix}-budget-action"
-  assume_role_policy = data.aws_iam_policy_document.budget_action_assume.json
+  name                 = "${local.name_prefix}-budget-action"
+  permissions_boundary = var.permissions_boundary_arn != "" ? var.permissions_boundary_arn : null
+  assume_role_policy   = data.aws_iam_policy_document.budget_action_assume.json
 
   tags = local.tags
 }
@@ -331,8 +332,9 @@ data "aws_iam_policy_document" "teardown_assume" {
 }
 
 resource "aws_iam_role" "teardown" {
-  name               = "${local.name_prefix}-teardown"
-  assume_role_policy = data.aws_iam_policy_document.teardown_assume.json
+  name                 = "${local.name_prefix}-teardown"
+  permissions_boundary = var.permissions_boundary_arn != "" ? var.permissions_boundary_arn : null
+  assume_role_policy   = data.aws_iam_policy_document.teardown_assume.json
 
   tags = local.tags
 }
@@ -515,8 +517,9 @@ data "aws_iam_policy_document" "scheduler_assume" {
 }
 
 resource "aws_iam_role" "scheduler" {
-  name               = "${local.name_prefix}-teardown-scheduler"
-  assume_role_policy = data.aws_iam_policy_document.scheduler_assume.json
+  name                 = "${local.name_prefix}-teardown-scheduler"
+  permissions_boundary = var.permissions_boundary_arn != "" ? var.permissions_boundary_arn : null
+  assume_role_policy   = data.aws_iam_policy_document.scheduler_assume.json
 
   tags = local.tags
 }

@@ -196,3 +196,18 @@ variable "flink_code_s3_key" {
   type        = string
   default     = ""
 }
+
+variable "permissions_boundary_name" {
+  description = <<-EOT
+    Name of the IAM permissions-boundary policy (created by
+    infra/aws/bootstrap.sh as harbormaster-permissions-boundary) attached to
+    every module-created role. envs/base derives the ARN from this and the
+    caller account id and passes it into every role-creating module, so the
+    boundary-gated harbormaster-platform deploy policy can create them (war
+    story P32, the two-sided contract). Roles are count-gated on enable_phaseN,
+    so the default phases-off plan creates none. Set to "" to disable the
+    boundary (not recommended once the boundary-gated deploy policy is live).
+  EOT
+  type        = string
+  default     = "harbormaster-permissions-boundary"
+}

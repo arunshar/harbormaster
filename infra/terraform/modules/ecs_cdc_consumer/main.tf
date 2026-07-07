@@ -93,6 +93,12 @@ variable "tags" {
   default = {}
 }
 
+variable "permissions_boundary_arn" {
+  description = "ARN of the IAM permissions boundary to attach to roles this module creates. Empty attaches no boundary. The harbormaster-platform deploy policy requires the harbormaster-permissions-boundary on every managed role (see war story P32, the two-sided contract), so envs/base sets this at apply time."
+  type        = string
+  default     = ""
+}
+
 locals {
   name_prefix = "${var.project}-${var.environment}"
   service     = "cdc-consumer"
@@ -120,9 +126,10 @@ data "aws_iam_policy_document" "task_assume" {
 }
 
 resource "aws_iam_role" "execution" {
-  name               = "${local.name_prefix}-cdc-consumer-exec"
-  assume_role_policy = data.aws_iam_policy_document.task_assume.json
-  tags               = local.tags
+  name                 = "${local.name_prefix}-cdc-consumer-exec"
+  permissions_boundary = var.permissions_boundary_arn != "" ? var.permissions_boundary_arn : null
+  assume_role_policy   = data.aws_iam_policy_document.task_assume.json
+  tags                 = local.tags
 }
 
 resource "aws_iam_role_policy_attachment" "execution" {
@@ -131,9 +138,10 @@ resource "aws_iam_role_policy_attachment" "execution" {
 }
 
 resource "aws_iam_role" "task" {
-  name               = "${local.name_prefix}-cdc-consumer-task"
-  assume_role_policy = data.aws_iam_policy_document.task_assume.json
-  tags               = local.tags
+  name                 = "${local.name_prefix}-cdc-consumer-task"
+  permissions_boundary = var.permissions_boundary_arn != "" ? var.permissions_boundary_arn : null
+  assume_role_policy   = data.aws_iam_policy_document.task_assume.json
+  tags                 = local.tags
 }
 
 data "aws_iam_policy_document" "task" {

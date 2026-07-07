@@ -75,6 +75,12 @@ variable "tags" {
   default = {}
 }
 
+variable "permissions_boundary_arn" {
+  description = "ARN of the IAM permissions boundary to attach to roles this module creates. Empty attaches no boundary. The harbormaster-platform deploy policy requires the harbormaster-permissions-boundary on every managed role (see war story P32, the two-sided contract), so envs/base sets this at apply time."
+  type        = string
+  default     = ""
+}
+
 locals {
   name_prefix = "${var.project}-${var.environment}"
   tags        = merge(var.tags, { Module = "kda_flink" })
@@ -93,9 +99,10 @@ data "aws_iam_policy_document" "assume" {
 }
 
 resource "aws_iam_role" "flink" {
-  name               = "${local.name_prefix}-flink"
-  assume_role_policy = data.aws_iam_policy_document.assume.json
-  tags               = local.tags
+  name                 = "${local.name_prefix}-flink"
+  permissions_boundary = var.permissions_boundary_arn != "" ? var.permissions_boundary_arn : null
+  assume_role_policy   = data.aws_iam_policy_document.assume.json
+  tags                 = local.tags
 }
 
 data "aws_iam_policy_document" "flink" {
