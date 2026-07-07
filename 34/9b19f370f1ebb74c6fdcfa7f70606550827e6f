@@ -1,0 +1,19 @@
+PLATFORM_WAR_STORIES.md
+  s_a2e22b769416de::t_5b371f8484fb70 421-431
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "349b19f370f1ebb74c6fdcfa7f70606550827e6f",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
