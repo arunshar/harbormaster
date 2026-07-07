@@ -37,17 +37,20 @@ this same window caught.
 
 A true 1-minute event-time tumbling window can replace the per-fix keyed process
 below; per-fix processing against keyed prev-state is the equivalent realization
-used for the demo and keeps the operator to standard, portable PyFlink APIs.
+used for the demo and keeps the operator to standard, portable PyFlink APIs. The
+rationale for that per-event realization is recorded in
+docs/adr/0001-streaming-per-event-realization.md.
 """
 
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
-import urllib.error
 import urllib.request
-from datetime import datetime
+import uuid
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import cloudpickle
@@ -75,6 +78,8 @@ from flink.window_logic import (
     feature_item,
     parse_ais_json,
     passes_gate,
+    post_scorer_with_retry,
+    quarantine_envelope,
     score_request,
     window_features,
 )
@@ -83,6 +88,11 @@ cloudpickle.register_pickle_by_value(_window_logic)
 
 APPLICATION_PROPERTIES_FILE_PATH = "/etc/flink/application_properties.json"
 FLINK_JOB_PROPERTY_GROUP = "FlinkJob"
+
+# Task-manager logs surface in the KDA CloudWatch log stream; a real logger (not a
+# bare `except: pass`) is how a dropped record or a failed scorer POST becomes
+# visible for alarming instead of silently vanishing.
+log = logging.getLogger("harbormaster.flink")
 
 
 # --- Flink wiring ---
@@ -143,9 +153,14 @@ class FeatureProcess(KeyedProcessFunction):
     clients are built lazily per task so the operator still serializes cleanly to
     the Flink cluster."""
 
-    def __init__(self, table: str, region: str, scorer_url: str):
+    def __init__(self, table: str, region: str, scorer_url: str, quarantine_bucket: str = ""):
         self._table, self._region, self._url = table, region, scorer_url
+        # Optional S3 dead-letter (quarantine) sink. Empty string disables it (the
+        # local/demo path and the existing tests run without a bucket); when unset we
+        # still LOG the drop rather than silently returning, so nothing is lost quietly.
+        self._quarantine_bucket = quarantine_bucket
         self._ddb = None
+        self._s3 = None
 
     def open(self, ctx: RuntimeContext):
         self._history = ctx.get_state(ValueStateDescriptor("history", Types.STRING()))
@@ -157,11 +172,44 @@ class FeatureProcess(KeyedProcessFunction):
             self._ddb = boto3.resource("dynamodb", region_name=self._region).Table(self._table)
         return self._ddb
 
+    def _s3_client(self):
+        if self._s3 is None:
+            import boto3
+
+            self._s3 = boto3.client("s3", region_name=self._region)
+        return self._s3
+
+    def _quarantine(self, raw: str | bytes, reason: str) -> None:
+        """Dead-letter a record the job cannot process: log it, count it, and (if a
+        quarantine bucket is configured) write the envelope to S3 for later triage or
+        replay. This replaces the previous silent drop so malformed / unroutable data
+        is observable, not lost. A quarantine-write failure is itself only logged --
+        the DLQ path must never take down the operator."""
+        envelope = quarantine_envelope(raw, reason, datetime.now(UTC))
+        # A counter the CloudWatch metric filter can alarm on (log-based metric); this
+        # is the signal that upstream data quality or the scorer has degraded.
+        log.warning("ais.quarantine reason=%s", reason)
+        if not self._quarantine_bucket:
+            return
+        key = f"quarantine/dt={envelope['quarantined_at'][:10]}/{uuid.uuid4().hex}.json"
+        try:
+            self._s3_client().put_object(
+                Bucket=self._quarantine_bucket,
+                Key=key,
+                Body=json.dumps(envelope).encode(),
+                ContentType="application/json",
+            )
+        except Exception:  # noqa: BLE001  # DLQ write is best-effort; never crash the task
+            log.exception("ais.quarantine.write_failed key=%s", key)
+
     def process_element(self, raw: str, ctx: KeyedProcessFunction.Context):
         try:
             mmsi, fix = parse_ais_json(raw)
-        except ValueError:
-            return  # drop malformed records (a dead-letter sink can capture these)
+        except ValueError as exc:
+            # Malformed / unparseable AIS: dead-letter it instead of the old silent
+            # drop, so bad upstream data is counted and recoverable, not invisible.
+            self._quarantine(raw, f"parse_error: {exc}")
+            return
 
         history_json = self._history.value()
         history = _history_from_json(history_json) if history_json else []
@@ -196,10 +244,24 @@ class FeatureProcess(KeyedProcessFunction):
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        try:
+
+        def _send() -> None:
             urllib.request.urlopen(req, timeout=5).read()  # nosec B310  # fixed http(s) scoring endpoint from config, no user-supplied scheme
-        except urllib.error.URLError:
-            pass  # scoring is best-effort from the stream; HITL still catches it later
+
+        # Scoring is best-effort from the stream, but the old bare `except: pass`
+        # swallowed every failure with no signal and no second try. Replace it with a
+        # LOGGED, bounded, non-blocking retry (a couple of quick attempts, capped
+        # backoff) and dead-letter the request if they all fail, so a transient scorer
+        # blip is retried, a sustained outage is visible and counted, and a slow scorer
+        # still cannot stall the operator. HITL remains the backstop for any miss.
+        ok, err = post_scorer_with_retry(
+            _send,
+            on_error=lambda attempt, exc: log.warning(
+                "ais.scorer.post_failed mmsi=%s attempt=%s err=%s", mmsi, attempt, exc
+            ),
+        )
+        if not ok:
+            self._quarantine(body, f"scorer_post_failed: {err}")
 
         yield json.dumps({"mmsi": mmsi, "item": item, "request": request})
 
@@ -210,6 +272,10 @@ def main() -> None:
     stream = props["kinesis_stream_name"]
     table = props["feast_online_table"]
     scorer_url = props["serving_endpoint"]  # API Gateway invoke URL or Cloud Map DNS
+    # Optional S3 dead-letter sink for malformed AIS and unrecoverable scorer POSTs.
+    # Absent in the local/demo path; when set (Terraform FlinkJob property group) the
+    # operator writes quarantine envelopes there for triage/replay.
+    quarantine_bucket = props.get("quarantine_bucket", "")
 
     env = StreamExecutionEnvironment.get_execution_environment()
     # boto3 (used lazily by FeatureProcess._dynamo) is present in the driver's
@@ -229,7 +295,10 @@ def main() -> None:
     (
         env.add_source(consumer)
         .key_by(lambda raw: json.loads(raw)["mmsi"], key_type=Types.LONG())
-        .process(FeatureProcess(table, region, scorer_url), output_type=Types.STRING())
+        .process(
+            FeatureProcess(table, region, scorer_url, quarantine_bucket),
+            output_type=Types.STRING(),
+        )
         # .print() (a real Java-backed sink) terminates the graph; the DynamoDB
         # write and the scorer POST already happened as side effects above, so
         # this is just evidence-of-processing in the CloudWatch task logs, not

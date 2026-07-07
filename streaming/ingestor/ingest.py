@@ -11,10 +11,12 @@ lazily so the tests need no cloud.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import random
 import time
+from collections import Counter
 from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
 
@@ -126,6 +128,74 @@ def _is_retriable_client_error(exc: Exception) -> bool:
         return False
     code = resp.get("Error", {}).get("Code", "")
     return code in RETRIABLE_ERROR_CODES
+
+
+# --------------------------------------------------------------------------
+# Shard-distribution / skew instrumentation.
+#
+# We do NOT spread a single MMSI across shards. AIS anomaly detection is per-vessel
+# and order-sensitive: the Flink job keys by MMSI and holds each vessel's previous
+# fix in keyed state to compute inter-fix features (gap, distance, v_required). If a
+# vessel's fixes landed on different shards they would arrive interleaved / out of
+# order, and the prev-fix state would be wrong -- the trajectory would be corrupted.
+# So the partition key stays exactly str(MMSI) (see record_to_entry), one vessel to
+# one shard, ordered.
+#
+# The skew that this forbids intra-key spreading from fixing is naturally bounded:
+# MMSI is high-cardinality (a live AIS feed carries on the order of 150K distinct
+# vessels), so hashing MMSI -> shard spreads load evenly across a handful of shards
+# by the law of large numbers; no single key is a large fraction of the stream. The
+# pathological case is one genuinely hot vessel (a stationary sensor replaying at
+# high rate). The correct mitigation for that is monitoring plus resharding
+# (split the hot shard), NOT key-spreading, which would break per-vessel ordering.
+# These helpers provide that monitoring: they replicate Kinesis's own
+# partition-key-to-shard mapping so we can measure the distribution the stream will
+# actually see and alert when it is skewed, rather than discover a hot shard from
+# ProvisionedThroughputExceeded backpressure at load.
+
+
+def shard_of(partition_key: str, shard_count: int) -> int:
+    """Which of `shard_count` equal-width shards a partition key lands on.
+
+    Mirrors Kinesis's routing: the partition key is MD5-hashed to a 128-bit integer
+    (the "hash key"), and the shard whose hash-key range contains it owns the record.
+    For a stream split into equal-width ranges this reduces to hash * n // 2**128.
+    Real streams can have uneven explicit hash-key ranges, but equal width is the
+    default and the right model for a skew estimate. Used for instrumentation only;
+    the actual routing is done by Kinesis from the PartitionKey we set.
+    """
+    if shard_count < 1:
+        raise ValueError("shard_count must be >= 1")
+    h = int.from_bytes(hashlib.md5(partition_key.encode()).digest(), "big")  # nosec B324  # MD5 mirrors Kinesis's own partition-key routing, not security
+    return (h * shard_count) >> 128
+
+
+def shard_distribution(entries: Sequence[KinesisEntry], shard_count: int) -> Counter[int]:
+    """Count how many entries route to each shard (0..shard_count-1)."""
+    dist: Counter[int] = Counter()
+    for e in entries:
+        dist[shard_of(e["PartitionKey"], shard_count)] += 1
+    for s in range(shard_count):
+        dist.setdefault(s, 0)
+    return dist
+
+
+def skew_ratio(entries: Sequence[KinesisEntry], shard_count: int) -> float:
+    """Hot-shard skew: busiest shard's share of records divided by the uniform share.
+
+    1.0 is perfectly even; 2.0 means the hottest shard carries twice its fair share.
+    Emit this as a stream metric; a sustained value well above 1 says reshard (or the
+    upstream feed has a pathological hot vessel), NOT that we should spread a key.
+    Returns 1.0 for an empty batch (nothing to be skewed).
+    """
+    if shard_count < 1:
+        raise ValueError("shard_count must be >= 1")
+    dist = shard_distribution(entries, shard_count)
+    total = sum(dist.values())
+    if total == 0:
+        return 1.0
+    max_share = max(dist.values()) / total
+    return max_share * shard_count
 
 
 def replay(

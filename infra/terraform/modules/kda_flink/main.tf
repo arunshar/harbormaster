@@ -44,6 +44,12 @@ variable "lake_bucket_arn" {
   type = string
 }
 
+variable "quarantine_bucket" {
+  description = "Plain S3 bucket name (not ARN) for the streaming dead-letter/quarantine sink: malformed AIS and unrecoverable scorer POSTs land under quarantine/. Reuses the lake bucket (the Flink role already has s3:PutObject on it via LakeReadWrite). Empty disables the S3 DLQ; the job still logs+counts drops."
+  type        = string
+  default     = ""
+}
+
 variable "code_bucket_arn" {
   type    = string
   default = ""
@@ -214,6 +220,11 @@ resource "aws_kinesisanalyticsv2_application" "flink" {
           feast_online_table  = var.feast_table_name
           serving_endpoint    = var.serving_endpoint
           aws_region          = var.aws_region
+          # S3 dead-letter sink for malformed AIS + unrecoverable scorer POSTs
+          # (job.py FeatureProcess._quarantine). Reuses the lake bucket; the role's
+          # LakeReadWrite statement already grants s3:PutObject on it. Empty = the
+          # job logs and counts drops but writes no S3 object (local/demo path).
+          quarantine_bucket = var.quarantine_bucket
         }
       }
     }

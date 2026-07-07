@@ -16,9 +16,10 @@ weight to the prior champion in one action, never a partial rollback.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
+from app.burn_rate import Bucket, evaluate_burn_rate
 from mlops.holdout_gate import HoldoutGateResult
 from mlops.reward_hacking_probe import RewardHackingProbeResult
 from mlops.shadow_diff import ShadowDiffResult
@@ -48,10 +49,12 @@ def run_promotion(
     reward_hacking_result: RewardHackingProbeResult | None = None,
 ) -> PromotionResult:
     """burn_check(weight) -> True means the SLO error budget is burning at
-    that canary weight (serving/app/slo.py's machinery, DR-13); False means
-    healthy. A candidate that fails the holdout gate never reaches shadow or
-    canary at all (invariant 1); the same holds for a failed/missing shadow
-    result (a candidate cannot skip shadow to reach canary).
+    that canary weight; False means healthy. The live run builds this from the
+    real multi-window burn-rate calculator via make_burn_check below
+    (serving/app/slo.py's machinery, DR-13); tests inject a canned callable. A
+    candidate that fails the holdout gate never reaches shadow or canary at all
+    (invariant 1); the same holds for a failed/missing shadow result (a
+    candidate cannot skip shadow to reach canary).
 
     Phase 4 gate 4.5, additive: reward_hacking_result is None for every
     supervised-retrain candidate (there is no reward function in that path
@@ -91,3 +94,39 @@ def run_promotion(
         steps.append(PromotionStep(stage=f"canary_{weight}", action="advance"))
 
     return PromotionResult(steps=steps, final_status="promoted")
+
+
+# --- The real burn_check: fed by the DR-13 calculator, not a hardcoded False --
+#
+# run_promotion still takes an injected burn_check(weight) -> bool so the state
+# machine stays fully unit-testable with zero AWS (and the pinned Phase 3/4
+# transition sequences hold byte-for-byte). What changes is where the LIVE
+# promotion run gets that callable: instead of `lambda w: False`, it builds one
+# from serving/app/slo.py's multi-window burn-rate calculator over a per-weight
+# metrics series. `series_provider(weight)` yields the aggregated
+# (timestamp, total, bad) score-success buckets observed at that canary weight;
+# in a test it is a plain function returning a canned series, in the AWS demo
+# window it is a thin CloudWatch GetMetricData adapter (the burn_rate module's
+# SeriesProvider seam). A PAGE-severity result (fast- or slow-burn) is exactly
+# the auto-rollback trigger DR-3 calls the promotion saga's compensating action.
+
+
+def make_burn_check(
+    series_provider: Callable[[int], Sequence[Bucket]],
+    *,
+    bucket_seconds: float,
+    target: float = 0.999,
+) -> Callable[[int], bool]:
+    """Build a real ``burn_check(weight) -> bool`` for ``run_promotion``.
+
+    Returns True (budget is burning, revert) when the multi-window calculator
+    raises a PAGE for the score-success SLO at that weight; a WARNING or OK
+    returns False, so a ticket-grade slow bleed does not trigger a rollback.
+    """
+
+    def burn_check(weight: int) -> bool:
+        buckets = series_provider(weight)
+        result = evaluate_burn_rate(buckets, target=target, bucket_seconds=bucket_seconds)
+        return result.should_rollback
+
+    return burn_check

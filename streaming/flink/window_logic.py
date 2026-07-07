@@ -22,6 +22,8 @@ from __future__ import annotations
 
 import json
 import math
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -206,3 +208,72 @@ def score_request(mmsi: int, fix: Fix, history: list[Fix] | None = None) -> dict
         "fix": _fix_dict(fix),
         "history": [_fix_dict(f) for f in (history or [])],
     }
+
+
+# --- Streaming robustness: quarantine (DLQ) + bounded scorer retry -----------
+# Pure, pyflink-free so they unit-test without a Flink runtime or AWS. job.py
+# wires them to a real S3 quarantine sink and the urllib scorer POST.
+
+# Scorer POST retry policy: a few bounded attempts, then dead-letter. Deliberately
+# small so a slow/unhealthy scorer cannot stall a Flink task (retries run inline in
+# process_element; the scorer POST is best-effort, HITL still catches misses later).
+SCORER_MAX_RETRIES = 2
+SCORER_BASE_DELAY_S = 0.2
+SCORER_DELAY_CAP_S = 2.0
+
+
+def quarantine_envelope(raw: str | bytes, reason: str, now: datetime) -> dict:
+    """Dead-letter record for a message the job could not process.
+
+    Wraps the offending payload with the failure reason and an ingest timestamp so a
+    quarantined record is self-describing when replayed or triaged. `raw` is stored
+    as text (decoded best-effort) rather than dropped, which is the whole point of a
+    DLQ over the previous silent return.
+    """
+    if isinstance(raw, bytes):
+        payload = raw.decode("utf-8", errors="replace")
+    else:
+        payload = raw
+    return {
+        "reason": reason,
+        "raw": payload,
+        "quarantined_at": now.isoformat().replace("+00:00", "Z"),
+    }
+
+
+def _scorer_backoff(attempt: int) -> float:
+    """Capped exponential backoff (seconds) for the scorer retry; attempt is 0-based."""
+    return min(SCORER_DELAY_CAP_S, SCORER_BASE_DELAY_S * (2 ** max(0, attempt)))
+
+
+def post_scorer_with_retry(
+    send: Callable[[], None],
+    *,
+    max_retries: int = SCORER_MAX_RETRIES,
+    sleep: Callable[[float], None] = time.sleep,
+    on_error: Callable[[int, Exception], None] | None = None,
+    backoff: Callable[[int], float] = _scorer_backoff,
+) -> tuple[bool, Exception | None]:
+    """Call `send` (the scorer POST), retrying a bounded number of times on failure.
+
+    Returns (ok, last_error). ok is True on the first success. On every failure
+    on_error(attempt, exc) is invoked (job.py logs it) so a failure is never silently
+    swallowed the way the old bare `except: pass` did. Between attempts it sleeps a
+    capped backoff; after max_retries it gives up and returns (False, last_error) so
+    the caller can dead-letter the request. It never raises: a scorer outage must not
+    take down the Flink operator. `send`, `sleep`, `on_error`, and `backoff` are all
+    injected so this is fully unit-testable with no network and no real waiting.
+    """
+    last_error: Exception | None = None
+    for attempt in range(max_retries + 1):
+        try:
+            send()
+            return True, None
+        except Exception as exc:  # noqa: BLE001  # bounded here; caller dead-letters
+            last_error = exc
+            if on_error is not None:
+                on_error(attempt, exc)
+            if attempt >= max_retries:
+                return False, last_error
+            sleep(backoff(attempt))
+    return False, last_error

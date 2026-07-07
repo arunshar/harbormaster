@@ -7,8 +7,16 @@ that turns measured numbers into pass/breach verdicts. The e2e acceptance test
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
+
+from app.burn_rate import (
+    Bucket,
+    BurnRateResult,
+    BurnStatus,
+    evaluate_burn_rate,
+)
 
 
 class Compare(StrEnum):
@@ -55,3 +63,42 @@ def evaluate(
 
 def all_ok(results: list[SloResult]) -> bool:
     return all(r.ok for r in results)
+
+
+# --- Windowed burn-rate view of the success SLO (DR-13) --------------------
+#
+# The static `score_success_ratio` SLO above is a single point-in-time verdict:
+# it says whether the measured success ratio cleared the target in one snapshot.
+# The burn-rate view answers the operational question the static check cannot:
+# is the error budget being consumed fast enough to page and roll back? Both run
+# off the same 99.9% target; they are complementary, not redundant. This is the
+# real signal `mlops/promote.py`'s burn_check consults, replacing the hardcoded
+# False that DR-13 admitted stood in for it through Phase 3.
+
+SCORE_SUCCESS_TARGET: float = 0.999
+
+
+def evaluate_success_burn_rate(
+    buckets: Sequence[Bucket],
+    *,
+    bucket_seconds: float,
+    target: float = SCORE_SUCCESS_TARGET,
+) -> BurnRateResult:
+    """Multi-window burn rate for the score-success SLO over an injected series.
+
+    ``buckets`` is an aggregated ``(timestamp, total, bad)`` series where a
+    "bad" event is a failed score. Returns the full BurnRateResult, whose
+    ``status`` (ok/warning/page) and ``should_rollback`` drive both the alarm
+    narrative and the promotion state machine.
+    """
+    return evaluate_burn_rate(buckets, target=target, bucket_seconds=bucket_seconds)
+
+
+def success_burn_status(
+    buckets: Sequence[Bucket],
+    *,
+    bucket_seconds: float,
+    target: float = SCORE_SUCCESS_TARGET,
+) -> BurnStatus:
+    """Convenience: just the overall BurnStatus for the score-success SLO."""
+    return evaluate_success_burn_rate(buckets, bucket_seconds=bucket_seconds, target=target).status

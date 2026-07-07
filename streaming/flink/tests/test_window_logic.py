@@ -22,6 +22,8 @@ from flink.window_logic import (
     gap_since_last_s,
     haversine_m,
     passes_gate,
+    post_scorer_with_retry,
+    quarantine_envelope,
     v_required_mps,
     window_features,
 )
@@ -128,3 +130,137 @@ def test_deterministic_on_repeated_calls():
     assert item_a == item_b
 
     assert passes_gate(first) == passes_gate(second)
+
+
+# --- Streaming robustness: quarantine (DLQ) envelope ------------------------
+
+
+def test_quarantine_envelope_wraps_raw_reason_and_timestamp():
+    env = quarantine_envelope('{"bad":true}', "parse_error: missing mmsi", T0)
+    assert env["raw"] == '{"bad":true}'
+    assert env["reason"] == "parse_error: missing mmsi"
+    assert env["quarantined_at"] == "2024-06-01T00:00:00Z"
+
+
+def test_quarantine_envelope_decodes_bytes_payload():
+    env = quarantine_envelope(b'{"x":1}', "scorer_post_failed: boom", T0)
+    assert env["raw"] == '{"x":1}'  # bytes decoded to text so the DLQ record is readable
+
+
+def test_quarantine_envelope_handles_undecodable_bytes():
+    # Invalid UTF-8 must not raise; the DLQ record preserves what it can (never lose
+    # the fact that a bad record arrived) rather than crashing the operator.
+    env = quarantine_envelope(b"\xff\xfe not utf8", "parse_error: bad bytes", T0)
+    assert isinstance(env["raw"], str)
+    assert "not utf8" in env["raw"]
+
+
+# --- Streaming robustness: bounded, non-blocking scorer retry ---------------
+
+
+def test_post_scorer_success_first_try_no_retry_no_sleep():
+    slept: list[float] = []
+    errors: list[tuple[int, Exception]] = []
+    calls = {"n": 0}
+
+    def send():
+        calls["n"] += 1
+
+    ok, err = post_scorer_with_retry(
+        send, sleep=slept.append, on_error=lambda a, e: errors.append((a, e))
+    )
+    assert ok is True
+    assert err is None
+    assert calls["n"] == 1  # no retry on the happy path
+    assert slept == []  # and no backoff
+    assert errors == []  # nothing logged
+
+
+def test_post_scorer_retries_then_succeeds():
+    # Fails once (transient), then succeeds: one logged error, one backoff, success.
+    slept: list[float] = []
+    errors: list[tuple[int, Exception]] = []
+    seq = [RuntimeError("timeout"), None]
+
+    def send():
+        exc = seq.pop(0)
+        if exc is not None:
+            raise exc
+
+    ok, err = post_scorer_with_retry(
+        send,
+        max_retries=2,
+        sleep=slept.append,
+        on_error=lambda a, e: errors.append((a, e)),
+    )
+    assert ok is True
+    assert err is None
+    assert len(errors) == 1  # the single failure was logged, not swallowed
+    assert errors[0][0] == 0  # attempt index 0
+    assert len(slept) == 1  # exactly one bounded backoff before the successful retry
+    assert slept[0] > 0
+
+
+def test_post_scorer_exhausts_retries_and_reports_failure_for_dlq():
+    # Always fails: bounded attempts, every failure logged, then (False, last_error)
+    # so the caller dead-letters. It must NOT raise into the Flink operator.
+    slept: list[float] = []
+    errors: list[tuple[int, Exception]] = []
+    boom = ConnectionError("scorer down")
+
+    def send():
+        raise boom
+
+    ok, err = post_scorer_with_retry(
+        send,
+        max_retries=2,
+        sleep=slept.append,
+        on_error=lambda a, e: errors.append((a, e)),
+    )
+    assert ok is False
+    assert err is boom  # the last error is returned for the DLQ envelope
+    assert len(errors) == 3  # 1 initial + 2 retries, each logged
+    assert len(slept) == 2  # backoff only BETWEEN attempts, not after the last
+    assert all(s >= 0 for s in slept)
+
+
+def test_post_scorer_backoff_is_bounded_and_capped():
+    # The default backoff grows exponentially but is capped, so retries stay fast and
+    # a slow scorer cannot stall the operator (delays never exceed the cap).
+    from flink.window_logic import SCORER_DELAY_CAP_S
+
+    slept: list[float] = []
+
+    def send():
+        raise TimeoutError("slow")
+
+    post_scorer_with_retry(send, max_retries=8, sleep=slept.append)
+    assert len(slept) == 8
+    assert all(0 <= s <= SCORER_DELAY_CAP_S for s in slept)
+    # Non-decreasing then saturating at the cap (capped exponential).
+    assert slept == sorted(slept)
+
+
+def test_post_scorer_never_raises_even_without_error_callback():
+    # No on_error provided: failures are still handled internally and the function
+    # returns cleanly (the operator is never taken down by a scorer exception).
+    def send():
+        raise RuntimeError("boom")
+
+    ok, err = post_scorer_with_retry(send, max_retries=1, sleep=lambda _s: None)
+    assert ok is False
+    assert isinstance(err, RuntimeError)
+
+
+def test_post_scorer_negative_retries_makes_no_attempt():
+    # Guard on the degenerate config max_retries < 0: the loop body never runs, so
+    # send() is never called and the function returns a benign "no attempt" result
+    # instead of raising or blocking.
+    calls = {"n": 0}
+
+    def send():
+        calls["n"] += 1
+
+    ok, err = post_scorer_with_retry(send, max_retries=-1, sleep=lambda _s: None)
+    assert (ok, err) == (False, None)
+    assert calls["n"] == 0
