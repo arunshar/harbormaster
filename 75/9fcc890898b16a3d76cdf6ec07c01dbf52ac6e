@@ -1,0 +1,19 @@
+sessions/SESSION_HANDOFF_2026-07-07_ab_masterclass_audit.md
+  s_a2e22b769416de::t_f5e96911ac7d0e 1-98
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "759fcc890898b16a3d76cdf6ec07c01dbf52ac6e",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
