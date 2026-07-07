@@ -4,14 +4,14 @@
             "file": "/modules/apigw/main.tf",
             "findings": [
                 {
-                    "resource": "module.apigw[0].aws_cloudwatch_log_group.access[0]",
+                    "resource": "module.apigw.aws_cloudwatch_log_group.access[0]",
                     "check_ids": [
                         "CKV_AWS_158",
                         "CKV_AWS_338"
                     ]
                 },
                 {
-                    "resource": "module.apigw[0].aws_security_group.vpc_link",
+                    "resource": "module.apigw.aws_security_group.vpc_link",
                     "check_ids": [
                         "CKV_AWS_382"
                     ]
@@ -91,12 +91,6 @@
                     ]
                 },
                 {
-                    "resource": "module.ecs_cdc_consumer.aws_ecs_task_definition.consumer",
-                    "check_ids": [
-                        "CKV_AWS_336"
-                    ]
-                },
-                {
                     "resource": "module.ecs_cdc_consumer.aws_security_group.consumer",
                     "check_ids": [
                         "CKV_AWS_382"
@@ -108,7 +102,7 @@
             "file": "/modules/ecs_cluster/main.tf",
             "findings": [
                 {
-                    "resource": "module.ecs_cluster[0].aws_ecs_cluster.this",
+                    "resource": "module.ecs_cluster.aws_ecs_cluster.this",
                     "check_ids": [
                         "CKV_AWS_65"
                     ]
@@ -143,27 +137,27 @@
             "file": "/modules/ecs_ingestor/main.tf",
             "findings": [
                 {
-                    "resource": "module.ecs_ingestor[0].aws_cloudwatch_log_group.ingestor",
+                    "resource": "module.ecs_ingestor.aws_cloudwatch_log_group.ingestor",
                     "check_ids": [
                         "CKV_AWS_158",
                         "CKV_AWS_338"
                     ]
                 },
                 {
-                    "resource": "module.ecs_ingestor[0].aws_ecr_repository.ingestor",
+                    "resource": "module.ecs_ingestor.aws_ecr_repository.ingestor",
                     "check_ids": [
                         "CKV_AWS_136",
                         "CKV_AWS_51"
                     ]
                 },
                 {
-                    "resource": "module.ecs_ingestor[0].aws_ecs_task_definition.ingestor",
+                    "resource": "module.ecs_ingestor.aws_ecs_task_definition.ingestor",
                     "check_ids": [
                         "CKV_AWS_336"
                     ]
                 },
                 {
-                    "resource": "module.ecs_ingestor[0].aws_security_group.ingestor",
+                    "resource": "module.ecs_ingestor.aws_security_group.ingestor",
                     "check_ids": [
                         "CKV2_AWS_5",
                         "CKV_AWS_382"
@@ -175,27 +169,27 @@
             "file": "/modules/ecs_serving/main.tf",
             "findings": [
                 {
-                    "resource": "module.ecs_serving[0].aws_cloudwatch_log_group.serving",
+                    "resource": "module.ecs_serving.aws_cloudwatch_log_group.serving",
                     "check_ids": [
                         "CKV_AWS_158",
                         "CKV_AWS_338"
                     ]
                 },
                 {
-                    "resource": "module.ecs_serving[0].aws_ecr_repository.serving",
+                    "resource": "module.ecs_serving.aws_ecr_repository.serving",
                     "check_ids": [
                         "CKV_AWS_136",
                         "CKV_AWS_51"
                     ]
                 },
                 {
-                    "resource": "module.ecs_serving[0].aws_ecs_service.serving",
+                    "resource": "module.ecs_serving.aws_ecs_service.serving",
                     "check_ids": [
                         "CKV_AWS_333"
                     ]
                 },
                 {
-                    "resource": "module.ecs_serving[0].aws_security_group.serving",
+                    "resource": "module.ecs_serving.aws_security_group.serving",
                     "check_ids": [
                         "CKV_AWS_382"
                     ]
@@ -253,7 +247,7 @@
             "file": "/modules/kda_flink/main.tf",
             "findings": [
                 {
-                    "resource": "module.kda_flink[0].aws_cloudwatch_log_group.flink",
+                    "resource": "module.kda_flink.aws_cloudwatch_log_group.flink",
                     "check_ids": [
                         "CKV_AWS_158",
                         "CKV_AWS_338"
@@ -301,7 +295,7 @@
             "file": "/modules/rds/main.tf",
             "findings": [
                 {
-                    "resource": "module.rds[0].aws_db_instance.this",
+                    "resource": "module.rds.aws_db_instance.this",
                     "check_ids": [
                         "CKV2_AWS_60",
                         "CKV2_AWS_69",
@@ -315,7 +309,7 @@
                     ]
                 },
                 {
-                    "resource": "module.rds[0].aws_security_group.this",
+                    "resource": "module.rds.aws_security_group.this",
                     "check_ids": [
                         "CKV_AWS_382"
                     ]
@@ -356,20 +350,20 @@
             "file": "/modules/sagemaker_pidpm/main.tf",
             "findings": [
                 {
-                    "resource": "module.sagemaker_pidpm[0].aws_iam_policy_document.execution",
+                    "resource": "module.sagemaker_pidpm.aws_iam_policy_document.execution",
                     "check_ids": [
                         "CKV_AWS_111",
                         "CKV_AWS_356"
                     ]
                 },
                 {
-                    "resource": "module.sagemaker_pidpm[0].aws_sagemaker_endpoint_configuration.pidpm",
+                    "resource": "module.sagemaker_pidpm.aws_sagemaker_endpoint_configuration.pidpm",
                     "check_ids": [
                         "CKV_AWS_98"
                     ]
                 },
                 {
-                    "resource": "module.sagemaker_pidpm[0].aws_sagemaker_model.pidpm",
+                    "resource": "module.sagemaker_pidpm.aws_sagemaker_model.pidpm",
                     "check_ids": [
                         "CKV_AWS_370"
                     ]

@@ -78,9 +78,16 @@ jobs:
       # The baseline is version-coupled: a newer checkov adds and renames checks,
       # which surfaces dozens of unchanged, pre-existing brownfield findings
       # (rds, ecs, sagemaker) as "new" and fails the ratchet even though this
-      # branch changed none of them. Bump this pin and regenerate the baseline
-      # together on a deliberate, reviewed hardening pass:
-      #   checkov -d infra/terraform --create-baseline
+      # branch changed none of them. The baseline is also VARIABLE-coupled: the
+      # local envs/base/terraform.tfvars (gitignored, sets enable_phase1 = true)
+      # resolves module counts to indexed addresses (module.apigw[0]...), but CI
+      # checks out only tracked files, so checkov emits non-indexed addresses
+      # (module.apigw...) that an indexed baseline cannot match. Always regenerate
+      # against the TRACKED tree only, never with a local tfvars present:
+      #   git archive HEAD infra/terraform | tar -x -C /tmp/ciview
+      #   checkov -d /tmp/ciview/infra/terraform --framework terraform --create-baseline
+      #   cp /tmp/ciview/infra/terraform/.checkov.baseline infra/terraform/
+      # Bump this pin and regenerate the baseline together on a reviewed pass.
       - name: Install checkov (pinned to the baseline version)
         run: pip install "checkov==3.3.6"
       - name: checkov (baseline ratchet)
