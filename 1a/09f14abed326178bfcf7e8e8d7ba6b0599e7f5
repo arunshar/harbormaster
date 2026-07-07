@@ -1,0 +1,46 @@
+docs/ARCHITECTURE.md
+  s_a2e22b769416de::t_beccf03879d22f 71
+docs/adr/0002-cdc-staleness-budget.md
+  s_a2e22b769416de::t_3f6b01aba1ff70 1-23
+docs/adr/0001-streaming-per-event-realization.md
+  s_a2e22b769416de::t_caa38eaa20b7be 9,13
+  s_a2e22b769416de::t_fd8c1e8601718c 17
+  s_a2e22b769416de::t_5e31dc92e4b037 1-8,10-12,14-16,18-23
+docs/adr/0003-single-region-dr-rpo-rto.md
+  s_a2e22b769416de::t_3fd83117f323b7 17-18
+  s_a2e22b769416de::t_769ce5155d81e6 9
+  s_a2e22b769416de::t_f814edf3606132 1-8,10-16,19-28
+docs/adr/0004-no-consensus-no-sharded-query-router.md
+  s_a2e22b769416de::t_8a1c0a05616ccd 16
+  s_a2e22b769416de::t_4fdcb39d5762b8 24
+  s_a2e22b769416de::t_a1263cb050815b 1-15,17-23,25-30
+docs/phases/PHASE_1.md
+  s_a2e22b769416de::t_91bd8614b11b81 78
+PLATFORM_WAR_STORIES.md
+  s_a2e22b769416de::t_9efb29c62a10e0 35,47,59,71,83,95,107,119
+docs/adr/README.md
+  s_a2e22b769416de::t_27b0ae2f99007a 1-10
+docs/AB_MASTERCLASS_AUDIT.md
+  s_a2e22b769416de::t_5433acc47ab32c 1-26,28-32,34-35,37-76,78-82,84-85,89-90
+  s_a2e22b769416de::t_bdc3b43f2df9aa 33
+  s_a2e22b769416de::t_7c341f4f38b335 36
+  s_a2e22b769416de::t_9f2a13a8f886c2 77
+  s_a2e22b769416de::t_d7a84ac1ab0d39 27
+  s_a2e22b769416de::t_093116d4da8ec4 83,86-88
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "1a09f14abed326178bfcf7e8e8d7ba6b0599e7f5",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
