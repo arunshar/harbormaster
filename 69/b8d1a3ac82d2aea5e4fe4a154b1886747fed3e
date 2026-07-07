@@ -1,0 +1,93 @@
+cdc/tests/test_applier_multipartition.py
+  s_a2e22b769416de::t_2502060ca54427 311-312,315-318
+  s_a2e22b769416de::t_a505c6b4971254 144-150
+  s_a2e22b769416de::t_286481cabae7d2 1-11,16-30,32-127,133-143,151-212,216-274,277-295,297-298,300-310,313-314,320-338
+  s_a2e22b769416de::t_a606c22aa4e810 296,299
+  s_a2e22b769416de::t_9ef16ace575290 213-215
+  s_a2e22b769416de::t_bb22f4265d6957 275-276
+  s_a2e22b769416de::t_36f89d6e253dff 319
+  s_a2e22b769416de::t_d39fddbb6cf87f 12-15
+  s_a2e22b769416de::t_3491fd07c13677 31
+  s_a2e22b769416de::t_f152330ac39496 128-132
+serving/app/burn_rate.py
+  s_a2e22b769416de::t_d072a5d8ebb551 1-26,28-266
+  s_a2e22b769416de::t_1de8e469c65d35 27
+streaming/flink/window_logic.py
+  s_a2e22b769416de::t_6b0051810f6545 25-26
+  s_a2e22b769416de::t_4490c6cdad9637 211-279
+infra/terraform/modules/observability/main.tf
+  s_a2e22b769416de::t_a9c4862ccba554 192-281,285-292
+  s_a2e22b769416de::t_3b7b151d4d126f 64-80
+  s_a2e22b769416de::t_45aec391911b50 43-54
+serving/tests/test_slo.py
+  s_a2e22b769416de::t_48a9d9457f14e7 74
+  s_a2e22b769416de::t_61188446ab1998 7-14
+  s_a2e22b769416de::t_3f81f7028e7c32 47-73,75
+streaming/flink/tests/test_window_logic.py
+  s_a2e22b769416de::t_0fa0f2342a8ce4 25-26
+  s_a2e22b769416de::t_18031b8343162b 253-266
+  s_a2e22b769416de::t_ae0559fd238dc2 133-252
+lake/iceberg.py
+  s_a2e22b769416de::t_7cd7aa8e605a13 288
+  s_a2e22b769416de::t_7e7426d5a2ae94 302-312,314,316-317
+  s_a2e22b769416de::t_a7fa622e7d1656 6-45,50-51,53,101-150,152,156-216,228-231,235,237-238,240,242,247-250,253-275,278-287,289-301,318-328
+  s_a2e22b769416de::t_c34acd50529e15 276-277
+  s_a2e22b769416de::t_94555bf78af88d 313
+  s_a2e22b769416de::t_4d8055a696296b 315
+serving/tests/test_burn_rate.py
+  s_a2e22b769416de::t_99504fb38d3394 1-46,48-181
+  s_a2e22b769416de::t_c4784618af59b1 47
+streaming/flink/job.py
+  s_a2e22b769416de::t_87a56695ef5221 247-248,250-264
+  s_a2e22b769416de::t_9f1ff2751b0e7f 81-82
+  s_a2e22b769416de::t_2ed95b0c2a3026 208-212
+  s_a2e22b769416de::t_e184b438771bb7 48,52-53
+  s_a2e22b769416de::t_02f4e6342b17bc 298-301
+  s_a2e22b769416de::t_8f4c847cd6453a 40-42
+  s_a2e22b769416de::t_57b38e9f8dcea0 92-96
+  s_a2e22b769416de::t_e1a8d220e0c836 275-278
+  s_a2e22b769416de::t_a7caf231a8a2e2 156,158-161,163,175-203
+  s_a2e22b769416de::t_f4da06a4d9922c 204
+mlops/promote.py
+  s_a2e22b769416de::t_775c76c9198e41 97-132
+  s_a2e22b769416de::t_2976368ca1ffa1 19,22
+  s_a2e22b769416de::t_1f4246c6aa5fa8 52-57
+streaming/ingestor/tests/test_ingest.py
+  s_a2e22b769416de::t_989c865725b107 21-23,26
+  s_a2e22b769416de::t_742b05bf82f705 252-335
+  s_a2e22b769416de::t_d9cd1901650f7f 155
+mlops/tests/test_promote.py
+  s_a2e22b769416de::t_a012b41e7eb794 232-307
+streaming/ingestor/ingest.py
+  s_a2e22b769416de::t_c007ae1c0ffd44 14,19
+  s_a2e22b769416de::t_1d062895afbea0 133-168,170-200
+  s_a2e22b769416de::t_d74948023e86a0 169
+serving/app/slo.py
+  s_a2e22b769416de::t_3533bc0d9f0245 66-104
+  s_a2e22b769416de::t_084000481c6aad 10,14-19
+  s_a2e22b769416de::t_50142cf5a44dcd 20
+lake/tests/test_iceberg.py
+  s_a2e22b769416de::t_29d1e411a99319 1-7,12-13,20,23
+  s_a2e22b769416de::t_2865a0d8367fc7 41-188
+infra/terraform/modules/kda_flink/main.tf
+  s_a2e22b769416de::t_ce775e0b475de6 47-52
+  s_a2e22b769416de::t_183e1134cf5396 223-227
+infra/terraform/.checkov.baseline
+  s_a2e22b769416de::t_f567389150132b 421
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "69b8d1a3ac82d2aea5e4fe4a154b1886747fed3e",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
