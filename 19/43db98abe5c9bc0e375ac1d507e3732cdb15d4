@@ -1,0 +1,21 @@
+.github/workflows/iac-ci.yml
+  s_a2e22b769416de::t_dfb5e05a26004c 69-72,76-82,84-85,87-91
+pyproject.toml
+  s_a2e22b769416de::t_4006933e66ed91 37,40-47,53
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "1943db98abe5c9bc0e375ac1d507e3732cdb15d4",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
