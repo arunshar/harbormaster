@@ -1,0 +1,104 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowHarbormasterServiceCeiling",
+      "Effect": "Allow",
+      "Action": [
+        "s3:*",
+        "dynamodb:*",
+        "kinesis:*",
+        "firehose:*",
+        "glue:*",
+        "athena:*",
+        "logs:*",
+        "cloudwatch:*",
+        "sns:*",
+        "sqs:*",
+        "ecs:*",
+        "ec2:*",
+        "ecr:*",
+        "elasticloadbalancing:*",
+        "application-autoscaling:*",
+        "servicediscovery:*",
+        "kms:*",
+        "secretsmanager:*",
+        "ssm:*",
+        "budgets:*",
+        "kinesisanalytics:*",
+        "elasticmapreduce:*",
+        "sagemaker:*",
+        "scheduler:*",
+        "events:*",
+        "lambda:*"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "AllowScopedPassRoleForServices",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": "arn:aws:iam::*:role/harbormaster-*"
+    },
+    {
+      "Sid": "AllowReadOnlyIamIntrospection",
+      "Effect": "Allow",
+      "Action": [
+        "iam:GetRole",
+        "iam:GetRolePolicy",
+        "iam:GetPolicy",
+        "iam:GetPolicyVersion",
+        "iam:GetInstanceProfile",
+        "iam:ListRolePolicies",
+        "iam:ListAttachedRolePolicies",
+        "iam:ListInstanceProfilesForRole",
+        "iam:ListPolicyVersions"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "DenyAllIamWriteEscalation",
+      "Effect": "Deny",
+      "Action": [
+        "iam:CreateRole",
+        "iam:DeleteRole",
+        "iam:UpdateRole",
+        "iam:CreateUser",
+        "iam:DeleteUser",
+        "iam:CreateGroup",
+        "iam:CreateLoginProfile",
+        "iam:UpdateLoginProfile",
+        "iam:CreateAccessKey",
+        "iam:AttachRolePolicy",
+        "iam:DetachRolePolicy",
+        "iam:PutRolePolicy",
+        "iam:DeleteRolePolicy",
+        "iam:AttachUserPolicy",
+        "iam:PutUserPolicy",
+        "iam:AttachGroupPolicy",
+        "iam:PutGroupPolicy",
+        "iam:CreatePolicy",
+        "iam:CreatePolicyVersion",
+        "iam:SetDefaultPolicyVersion",
+        "iam:UpdateAssumeRolePolicy",
+        "iam:CreateInstanceProfile",
+        "iam:AddRoleToInstanceProfile",
+        "iam:CreateServiceLinkedRole"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "DenyBoundaryAlterationAndOrgEscape",
+      "Effect": "Deny",
+      "Action": [
+        "iam:DeleteRolePermissionsBoundary",
+        "iam:PutRolePermissionsBoundary",
+        "iam:DeleteUserPermissionsBoundary",
+        "iam:PutUserPermissionsBoundary",
+        "organizations:*",
+        "account:*"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

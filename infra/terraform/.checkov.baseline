@@ -4,15 +4,10 @@
             "file": "/modules/apigw/main.tf",
             "findings": [
                 {
-                    "resource": "module.apigw[0].aws_apigatewayv2_route.proxy",
+                    "resource": "module.apigw[0].aws_cloudwatch_log_group.access[0]",
                     "check_ids": [
-                        "CKV_AWS_309"
-                    ]
-                },
-                {
-                    "resource": "module.apigw[0].aws_apigatewayv2_stage.default",
-                    "check_ids": [
-                        "CKV_AWS_76"
+                        "CKV_AWS_158",
+                        "CKV_AWS_338"
                     ]
                 },
                 {

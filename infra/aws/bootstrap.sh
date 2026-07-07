@@ -3,14 +3,19 @@
 # infra/aws/bootstrap.sh
 #
 # One-time AWS scaffolding for Harbormaster gate G0 (the on-ramp described in
-# docs/AWS_SETUP.md and docs/phases/PHASE_1.md). It creates ONLY the two things
+# docs/AWS_SETUP.md and docs/phases/PHASE_1.md). It creates ONLY the things
 # Terraform cannot bootstrap itself:
 #
-#   1. the "harbormaster-platform" IAM role  (the $75 budget action attaches its
+#   1. the "harbormaster-permissions-boundary" customer-managed policy  (the
+#      ceiling for every role the platform role later creates; must exist before
+#      the platform role's inline policy, which is conditioned on it), then
+#   2. the "harbormaster-platform" IAM role  (the $75 budget action attaches its
 #      deny policy to THIS role on breach, so it must exist before `make apply`;
 #      it is deliberately NOT your admin identity, so a spend-freeze cannot lock
-#      you out of `terraform destroy`), and
-#   2. a dedicated, versioned, encrypted, public-access-blocked S3 bucket for
+#      you out of `terraform destroy`; its inline IAM-management policy is scoped
+#      to harbormaster-* resources and gated by the boundary above, so it can
+#      create the module roles but cannot escalate itself to admin), and
+#   3. a dedicated, versioned, encrypted, public-access-blocked S3 bucket for
 #      remote Terraform state  (kept separate from the data lake, per backend.tf).
 #
 # It does NOT run `terraform apply`, touch the data lake, or create any
@@ -30,6 +35,12 @@ set -euo pipefail
 PROJECT="harbormaster"
 REGION="us-east-1"
 ROLE_NAME="harbormaster-platform"
+# Permissions boundary that caps every role the deploy identity creates. The
+# platform inline policy (harbormaster-platform-permissions.json) will only let
+# CreateRole / AttachRolePolicy / PutRolePolicy succeed when this exact boundary
+# is set on the target role, so a created role can never exceed this ceiling and
+# the deploy identity cannot escalate itself to admin.
+BOUNDARY_NAME="harbormaster-permissions-boundary"
 # The DynamoDB lock table is created by Phase 0 Terraform (state_stores module);
 # we only PRINT its name here for the later backend-migration step.
 LOCK_TABLE="harbormaster-base-tf-state-lock"
@@ -95,15 +106,43 @@ fi
 
 [ -n "$SUFFIX" ] || SUFFIX="$ACCOUNT_ID"
 STATE_BUCKET="${PROJECT}-tfstate-${SUFFIX}"
+BOUNDARY_ARN="arn:aws:iam::${ACCOUNT_ID}:policy/${BOUNDARY_NAME}"
 
-# ---- step 1: platform IAM role ----------------------------------------------
-log "Step 1: IAM role '$ROLE_NAME' (the \$75 deny-on-breach target; NOT your admin identity)"
+# ---- step 1: permissions-boundary policy ------------------------------------
+# Must exist BEFORE the platform role's inline policy is put, because that inline
+# policy's CreateRole/AttachRolePolicy/PutRolePolicy statements are conditioned on
+# iam:PermissionsBoundary == this policy's ARN. Idempotent: if the policy already
+# exists we leave it (and its versions) untouched rather than mutating it here.
+log "Step 1: permissions-boundary policy '$BOUNDARY_NAME' (ceiling for every role the platform role creates)"
+if [ "$DRY_RUN" -eq 0 ] && aws iam get-policy --policy-arn "$BOUNDARY_ARN" >/dev/null 2>&1; then
+  info "boundary policy already exists; leaving it unchanged"
+  info "arn: $BOUNDARY_ARN"
+else
+  info "plan: create customer-managed policy '$BOUNDARY_NAME' from"
+  info "      harbormaster-permissions-boundary.json (the service ceiling + IAM-escalation"
+  info "      and boundary-removal denies)"
+  if confirm "create permissions-boundary policy '$BOUNDARY_NAME'?"; then
+    run aws iam create-policy \
+      --policy-name "$BOUNDARY_NAME" \
+      --policy-document "file://$SCRIPT_DIR/harbormaster-permissions-boundary.json" \
+      --description "Harbormaster permissions boundary; caps any role the platform role creates and blocks IAM escalation" \
+      --tags "Key=Project,Value=${PROJECT}"
+    info "arn: $BOUNDARY_ARN"
+    info "done."
+  else
+    info "skipped."
+  fi
+fi
+
+# ---- step 2: platform IAM role ----------------------------------------------
+log "Step 2: IAM role '$ROLE_NAME' (the \$75 deny-on-breach target; NOT your admin identity)"
 if [ "$DRY_RUN" -eq 0 ] && aws iam get-role --role-name "$ROLE_NAME" >/dev/null 2>&1; then
   info "role already exists; leaving it unchanged"
 else
   info "plan: create the role (trust = this account's identities, MFA required),"
-  info "      attach the AWS-managed PowerUserAccess policy, and add the IAM-management"
-  info "      inline policy from harbormaster-platform-permissions.json"
+  info "      attach the AWS-managed PowerUserAccess policy, and add the scoped,"
+  info "      boundary-gated IAM-management inline policy from"
+  info "      harbormaster-platform-permissions.json (which references boundary '$BOUNDARY_NAME')"
   if confirm "create IAM role '$ROLE_NAME'?"; then
     TRUST_JSON="$(jq --arg a "$ACCOUNT_ID" \
       '.Statement[0].Principal.AWS = ("arn:aws:iam::" + $a + ":root")' \
@@ -126,8 +165,8 @@ else
   fi
 fi
 
-# ---- step 2: terraform state bucket -----------------------------------------
-log "Step 2: Terraform state bucket 's3://$STATE_BUCKET' (versioned, encrypted, private)"
+# ---- step 3: terraform state bucket -----------------------------------------
+log "Step 3: Terraform state bucket 's3://$STATE_BUCKET' (versioned, encrypted, private)"
 if [ "$DRY_RUN" -eq 0 ] && aws s3api head-bucket --bucket "$STATE_BUCKET" >/dev/null 2>&1; then
   info "bucket already exists; leaving it unchanged"
 else
@@ -155,8 +194,8 @@ else
   fi
 fi
 
-# ---- step 3: print the backend.tf values ------------------------------------
-log "Step 3: values for the remote backend (edit infra/terraform/envs/base/backend.tf AFTER 'make apply')"
+# ---- step 4: print the backend.tf values ------------------------------------
+log "Step 4: values for the remote backend (edit infra/terraform/envs/base/backend.tf AFTER 'make apply')"
 cat <<EOF
     Once Phase 0 is applied (so the lock table exists), migrate state:
       1. comment out the backend "local" block
