@@ -1,0 +1,47 @@
+infra/lambda/cdc_slot_lag/test_handler.py
+  s_a2e22b769416de::t_e71326e3c24a47 1-58
+streaming/flink/window_logic.py
+  s_a2e22b769416de::t_058af6c35cff87 1-208
+streaming/ingestor/tests/test_ingest.py
+  s_a2e22b769416de::t_c6f2b0425b51aa 211-213
+  s_a2e22b769416de::t_df34e3c7d1db91 7-11,14-16,19
+  s_a2e22b769416de::t_d8c1475f666600 98-210,214-251
+infra/lambda/cdc_slot_lag/handler.py
+  s_a2e22b769416de::t_b76b0861f2458a 40-52,58
+serving/tests/test_watchlist.py
+  s_a2e22b769416de::t_7b8bd838eff259 174
+  s_a2e22b769416de::t_d389fa909b0387 145-173,175-210
+  s_a2e22b769416de::t_9514b593e40e66 10-11
+serving/app/watchlist.py
+  s_a2e22b769416de::t_e27b0c54f1b780 237-247,251-267
+  s_a2e22b769416de::t_1d35485e783cf8 27
+  s_a2e22b769416de::t_354402d551feff 177-180
+  s_a2e22b769416de::t_e2e23f40c9624e 171-176
+streaming/flink/tests/test_window_logic.py
+  s_a2e22b769416de::t_4b71e3a913e83c 1-130
+streaming/flink/job.py
+  s_a2e22b769416de::t_4d31c7354cfc2c 63-72,81-82
+  s_a2e22b769416de::t_efb62f98a2f1ad 53
+  s_a2e22b769416de::t_6bf1e5ddfa9f27 61-62,73-80,83
+streaming/ingestor/ingest.py
+  s_a2e22b769416de::t_58d3e6ecaa98f7 104-130
+  s_a2e22b769416de::t_d5041e9dc49f4a 186-207,209-225,228-233
+  s_a2e22b769416de::t_281c4afb3c7c7c 16,27-47
+  s_a2e22b769416de::t_6dff59f387b6a4 48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "5cb5a018b5c0748fc6f541744fafbeac05a8fcad",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
