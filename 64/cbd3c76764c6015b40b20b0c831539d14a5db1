@@ -1,0 +1,52 @@
+infra/terraform/envs/base/main.tf
+  s_a2e22b769416de::t_26f6ed59986eec 509-513
+  s_a2e22b769416de::t_4d153a71404949 90-108,188,231,248,266,293,352,409,438,487,536
+  s_a2e22b769416de::t_ebe464163aa743 58-62
+  s_c45195745001a4::t_9d149e67218bad 109,189,232,249,267,294,353,410,439,488,537
+infra/terraform/envs/base/terraform.tfvars.example
+  s_a2e22b769416de::t_c0e2ad1d2b7353 64-70
+  s_a2e22b769416de::t_cf77c56885add2 71-77
+infra/terraform/envs/base/variables.tf
+  s_a2e22b769416de::t_9a51f659977812 141-156,188,191
+  s_a2e22b769416de::t_50b122f52b7178 179-187
+  s_c45195745001a4::t_0ddccaa4c156a9 189-190,192
+mlops/canary_actuator.py
+  s_a2e22b769416de::t_819d8c326d42e0 1-84
+infra/terraform/modules/sagemaker_pidpm/main.tf
+  s_a2e22b769416de::t_b617cf2487d664 32-35
+  s_a2e22b769416de::t_e9c12e2506219f 232,234-251
+  s_a2e22b769416de::t_68dc506b64a527 381-385
+  s_a2e22b769416de::t_f94ef0fae63f4a 51-62,105,205,386
+  s_a2e22b769416de::t_468c22402c3ecc 233
+  s_a2e22b769416de::t_96d2eb8cce2c1b 182-191,199-201
+  s_a2e22b769416de::t_a368b9f0b0f056 101-104
+  s_a2e22b769416de::t_9c592cdc4901df 273-279
+  s_a2e22b769416de::t_31508686f91f13 192-198
+  s_c45195745001a4::t_7e145c76bbc49d 202-204,206,252-253
+mlops/tests/test_canary_actuator.py
+  s_a2e22b769416de::t_1e22d7a6376b27 1-129
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "64cbd3c76764c6015b40b20b0c831539d14a5db1",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    },
+    "s_c45195745001a4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4fec-3590-74a3-933c-afc0f2e2c5ce",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
