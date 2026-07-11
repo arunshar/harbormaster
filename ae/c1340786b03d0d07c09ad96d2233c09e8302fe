@@ -1,0 +1,24 @@
+serving/app/bedrock_explainer.py
+  s_a2e22b769416de::t_65804818674abf 50-60
+  s_a2e22b769416de::t_f9be704ef44418 1-49,61-162
+serving/tests/test_bedrock_explainer.py
+  s_a2e22b769416de::t_2e56288f54079b 1-170
+serving/app/config.py
+  s_a2e22b769416de::t_16f0d4cfb21890 84-89
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "aec1340786b03d0d07c09ad96d2233c09e8302fe",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
