@@ -1,0 +1,82 @@
+docs/plan-artifacts/README.md
+  s_a2e22b769416de::t_9280c937287f79 1-46
+.github/workflows/iac-ci.yml
+  s_a2e22b769416de::t_46f7f1490d1d12 55-62,66
+cdc/tests/test_sinks.py
+  s_a2e22b769416de::t_0ab3ad4a6e74a8 6-7
+  s_a2e22b769416de::t_88e458aae7f6b8 36-37
+scripts/plan_artifact.sh
+  s_a2e22b769416de::t_2937544b949d36 1-98
+streaming/ingestor/tests/test_ingest.py
+  s_a2e22b769416de::t_f92cd05c4500eb 32-33
+.github/workflows/serving-ci.yml
+  s_a2e22b769416de::t_fac4921ef65cdf 19
+  s_a2e22b769416de::t_368b8f88036f99 48-50,52,54
+  s_a2e22b769416de::t_e8c1b3149f2e40 30
+infra/terraform/modules/finops/variables.tf
+  s_a2e22b769416de::t_8270f9863ad64a 19-22
+infra/lambda/cdc_slot_lag/handler.py
+  s_a2e22b769416de::t_5573ef496579b6 111
+infra/lambda/teardown/handler.py
+  s_a2e22b769416de::t_21565e27c68623 238,415-420
+infra/lambda/teardown/test_handler.py
+  s_a2e22b769416de::t_867ffec9bd88e6 167
+infra/terraform/modules/apigw/versions.tf
+  s_a2e22b769416de::t_d36cd78ef259bb 1-17
+infra/terraform/modules/cdc_monitoring/versions.tf
+  s_a2e22b769416de::t_0d03656f279e5e 1-21
+infra/terraform/modules/drift_watch/versions.tf
+  s_a2e22b769416de::t_6cae9722ae43bc 1-21
+infra/terraform/modules/ecs_cdc_consumer/versions.tf
+  s_a2e22b769416de::t_4d5781935293be 1-17
+infra/terraform/modules/ecs_cluster/versions.tf
+  s_a2e22b769416de::t_f35533af5b8d09 1-17
+infra/terraform/modules/ecs_connect/versions.tf
+  s_a2e22b769416de::t_c57f4214bb6d38 1-17
+infra/terraform/modules/ecs_ingestor/versions.tf
+  s_a2e22b769416de::t_d24617236dca2f 1-17
+infra/terraform/modules/ecs_serving/versions.tf
+  s_a2e22b769416de::t_0c2db9b592230f 1-17
+infra/terraform/modules/emr_backfill/versions.tf
+  s_a2e22b769416de::t_fd05a0fd4e5003 1-17
+infra/terraform/modules/finops/versions.tf
+  s_a2e22b769416de::t_e572f879389fae 1-21
+infra/terraform/modules/firehose/versions.tf
+  s_a2e22b769416de::t_45cc1ca96bd814 1-17
+infra/terraform/modules/kda_flink/versions.tf
+  s_a2e22b769416de::t_21e8141ecbcd17 1-17
+infra/terraform/modules/kinesis/versions.tf
+  s_a2e22b769416de::t_3b4ffdd3b7fe47 1-17
+infra/terraform/modules/msk_serverless/versions.tf
+  s_a2e22b769416de::t_abdd3686e58aca 1-17
+infra/terraform/modules/network/versions.tf
+  s_a2e22b769416de::t_6b8159499c3439 1-17
+infra/terraform/modules/observability/versions.tf
+  s_a2e22b769416de::t_83228fcd877c8c 1-17
+infra/terraform/modules/rds/versions.tf
+  s_a2e22b769416de::t_dba6eaaa782256 1-17
+infra/terraform/modules/redis_fargate/versions.tf
+  s_a2e22b769416de::t_e2935cadd7bbed 1-17
+infra/terraform/modules/sagemaker_pidpm/versions.tf
+  s_a2e22b769416de::t_703e2dd437368c 1-17
+infra/terraform/modules/state_stores/versions.tf
+  s_a2e22b769416de::t_a7cd368e2d5651 1-21
+serving/app/pidpm_client.py
+  s_a2e22b769416de::t_a2d4b7e500018e 168-172,176,181,195,217-222
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "11186528f38bb42d56c67e0b4a3cae837f4c2775",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
