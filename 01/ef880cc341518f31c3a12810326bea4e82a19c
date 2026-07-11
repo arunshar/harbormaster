@@ -1,0 +1,36 @@
+fde/README.md
+  s_a2e22b769416de::t_8a5c7aeb40d2a1 3,5,7,9-18,20-25
+fde/discovery-brief-port-authority.md
+  s_a2e22b769416de::t_24e4265d2bd492 1-67
+fde/discovery-brief-coast-guard.md
+  s_a2e22b769416de::t_04620017a3ecb4 1-70
+fde/sla-slo-tiers.md
+  s_a2e22b769416de::t_e58a44e3d52f68 1-69
+fde/multi-tenant-client-in-the-loop-design.md
+  s_a2e22b769416de::t_5958d08b7a6275 1-55
+fde/discovery-brief-marine-insurer.md
+  s_a2e22b769416de::t_25b3bbaae58f81 1-68
+fde/case-study-meridian-bay.md
+  s_a2e22b769416de::t_04dc65aee4d478 41
+  s_a2e22b769416de::t_fa3fbd561a4ce3 1-40,42-43
+fde/esri-uc-2023-requirements-memo.md
+  s_a2e22b769416de::t_097f8a2808b27d 1-55
+fde/user-research-synthesis.md
+  s_a2e22b769416de::t_a879262df27f57 1-39
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "01ef880cc341518f31c3a12810326bea4e82a19c",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
