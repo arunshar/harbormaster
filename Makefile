@@ -14,7 +14,8 @@ COST_CAP := 75
         drill-l1-training-serving-skew drill-l2-canary-rollback lake-e2e \
         pidpm-demo-checkpoint lake-package lake-package-venv drift-smoke \
         drift-lambda-package drill-l3-drift-classification drill-l4-reward-hacking phase4-e2e \
-        phase5-tenant-smoke ppo-stretch-smoke
+        phase5-tenant-smoke ppo-stretch-smoke \
+        drill-m-drift-hidden drill-m-tenant-leak phase5-e2e
 
 help:
 	@echo "Harbormaster Phase 0 targets (operate on $(TF_DIR)):"
@@ -223,3 +224,12 @@ phase5-tenant-smoke:  ## gate 5.4: RLS fail-closed + per-tenant burn-rate bounda
 
 ppo-stretch-smoke:    ## gate 5.7: one CPU PPO training step end to end on the tiny synthetic corridor graph (zero GPU, zero AWS, labeled stretch)
 	$(PY) scripts/ppo_stretch_smoke.py
+
+drill-m-drift-hidden: ## gate 5.9 drill (P4): per-tenant drift catches a single-tenant shift a global pool averages away
+	$(PY) scripts/drill_m_drift_hidden.py
+
+drill-m-tenant-leak:  ## gate 5.9 drill (P6): a cross-tenant read is rejected by Postgres RLS itself (HM_TEST_PG_DSN or a throwaway docker pg)
+	$(PY) scripts/drill_m_tenant_leak.py
+
+phase5-e2e:           ## Phase 5 acceptance: local/pure criteria (c,d,e-structural,g) + readiness (a,b,f); live legs deferred to W4
+	$(PY) -m pytest tests/e2e/test_phase5.py -v

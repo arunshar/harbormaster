@@ -429,3 +429,45 @@ An entry graduates from ANTICIPATED to grounded only when it is backed by a real
 - **Root cause:** two independent local-versus-CI environment mismatches, not real regressions. First, the `bridgecrewio/checkov-action` bundled a newer checkov than the local 3.3.6 that generated the committed baseline, and a newer checkov adds and renames checks, so accepted brownfield findings resurfaced as "new." Pinning the version helped but findings persisted, because of the deeper cause: the baseline stored resource addresses with module count-indices (`module.apigw[0].aws_cloudwatch_log_group.access[0]`), but CI emitted non-indexed addresses (`module.apigw.aws_cloudwatch_log_group.access[0]`). checkov resolves a module `count` from variable values, and the baseline had been generated with `envs/base/terraform.tfvars` present, which is gitignored and sets `enable_phase1 = true`. CI checks out only tracked files, has no tfvars, and therefore cannot reproduce the indexed keys. Same checkov version, same tree, different finding keys, because the baseline was coupled to a gitignored file's variable resolution. (Sibling cause of the pyiceberg failure: the `[lake]` extra that CI installs declared only `pyarrow`, a leftover from when the lake tests were schema-shape only, before the Phase 2A tests exercised a real catalog.)
 - **Fix:** pinned checkov to the baseline-generating 3.3.6 via a `pip install checkov==3.3.6` step, since `checkov_version` is not an input on that action (verified against its `action.yml`). Then reproduced CI exactly with `git archive HEAD infra/terraform | tar -x` (tracked files only, no tfvars, no `.terraform`) and regenerated the baseline against that CI-view tree, so its keys match what CI produces. Verified checkov 3.3.6 against the CI-view tree exits 0, the same accepted brownfield set is preserved (46 findings), and nothing the branch fixed (route auth, access logging) or any WAF/critical finding is hidden. Added `pyiceberg[sql-sqlite]>=0.7` to the `[lake]` extra. Documented the tfvars gotcha in the workflow so a future regeneration does not reintroduce it.
 - **Lesson:** a suppression baseline (checkov, tflint, semgrep) is only as reproducible as the environment that generated it. Generate it the way CI sees the code: from the tracked tree with no gitignored tfvars and no local `.terraform` init state, and pin the scanner version, because the baseline is coupled to both. When a scan is green locally but red in CI on files the change never touched, suspect environment drift (tool version, resolved variables, init caches) before hunting a real regression.
+
+---
+
+## P35: A single tenant's population shift disappears into a global drift average
+
+**Tags:** [PLATFORM / personal-build] CORRECTNESS OBSERVABILITY
+
+**Status: GROUNDED**; 2026-07-11, branch phase5-multitenant (gate 5.9, drill M-drift-hidden; transcript `docs/drills/M_drift_hidden.md`, `make drill-m-drift-hidden`). Realizes the anticipated Phase-5 incident PHASE_5.md labels "P4".
+
+- **Symptom:** the input-drift monitor stays green while one tenant's feature distribution has clearly moved; that tenant's model silently degrades with no alert.
+- **Wrong first hypothesis:** the PSI/KS thresholds are too lax; lower the alert bar so the shift trips it.
+- **Root cause:** the monitor pooled every tenant's rows into one distribution before computing PSI. A single tenant's genuine shift (drill fixture: PSI 9.51 on `tenant_a`) is diluted by nine stable tenants to a pooled PSI of 0.044, an order of magnitude below the 0.25 alert bar. Lowering the global bar would only trade the missed alert for a flood of false positives on the stable majority; the bar is not the problem, the pooling is.
+- **Fix:** `mlops/tenant_drift.py` partitions the windows by `tenant_id` and runs the unchanged gate 4.1 `check_input_drift` once per tenant, so the shift shows up in that tenant's own result (`drifted_tenants(...) == ["tenant_a"]`) instead of being averaged away. The drill computes the pooled baseline from the same fixture, so the contrast is measured, not asserted.
+- **Lesson:** an aggregate metric over a partitioned population hides per-partition regressions by construction, and tightening the aggregate's threshold cannot recover them without drowning in false alarms. Monitor at the granularity you make decisions at (here, per tenant), and prove the "a global monitor would have missed this" claim by computing the global monitor on the same data rather than assuming it.
+
+---
+
+## P36: Tenant isolation enforced in application code is one missing WHERE from a cross-tenant leak
+
+**Tags:** [PLATFORM / personal-build] SECURITY CORRECTNESS
+
+**Status: GROUNDED**; 2026-07-11, branch phase5-multitenant (gate 5.9, drill M-tenant-leak against a real Postgres; transcript `docs/drills/M_tenant_leak.md`, `make drill-m-tenant-leak`). Realizes the anticipated Phase-5 incident PHASE_5.md labels "P6"; echoes the MSI fail-open lesson.
+
+- **Symptom:** a multi-tenant query path is one forgotten `AND tenant_id = :tid` away from returning another tenant's rows, and no test reliably catches the omission because the happy path looks identical.
+- **Wrong first hypothesis:** a careful code review plus a repository-layer helper that always appends the tenant predicate is enough; isolation is an application-layer discipline.
+- **Root cause:** application-layer isolation fails OPEN. Any code path that bypasses the helper (a raw query, a new endpoint, an ORM escape hatch) silently returns cross-tenant data, and the default behavior of a missing predicate is "return everything," the worst possible default for a security control.
+- **Fix:** push isolation into Postgres Row-Level Security (`cdc/schema/tenancy.py`): every tenant table is `ENABLE` + `FORCE ROW LEVEL SECURITY` with a policy `USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)`. The `NULLIF(..., true)` makes an unset GUC match NO row, so isolation fails CLOSED. The drill proves it on a real database as a NOSUPERUSER owner: tenant B reads zero of tenant A's rows, a session with no `app.tenant_id` reads zero rows from all four tables, and a no-tenant write is rejected by the policy's `WITH CHECK` (SQLSTATE 42501).
+- **Lesson:** a security control whose failure mode is "leak" belongs at the layer that cannot be bypassed. RLS makes cross-tenant isolation a property of the database, not a property of every query author remembering a predicate, and its fail-closed default (unset context matches nothing) is what turns "forgot the WHERE" from a breach into an empty result set. Test it as a non-superuser: superusers bypass RLS by design, so asserting from the bootstrap role is vacuous.
+
+---
+
+## P37: A rarely-hit tenant pays the full scale-from-zero cold start on its first request
+
+**Tags:** [PLATFORM / personal-build] SERVING/SLO
+
+**Status: ANTICIPATED (not yet observed in a live run)**; hypothetical, not tied to a real observed run, commit, log, or `file:line`; to be grounded in a real artifact once the W4 EKS/KEDA window measures the cold start. Realizes the anticipated Phase-5 incident PHASE_5.md labels "P7".
+
+- **Symptom:** a tenant whose traffic is sparse enough that KEDA has scaled its serving deployment to zero incurs the full EKS pod cold-start latency on the next request, which may breach that tenant's SLO tier depending on the measured number.
+- **Wrong first hypothesis:** scale-to-zero is free money; every idle tenant should scale to zero with no downside.
+- **Root cause:** scale-to-zero trades standing cost for tail latency. The `0 -> 1` scale-out (image pull, container start, model load, health-check pass) lands entirely on the first request, and a real-time-tier tenant's p95 SLO may not tolerate it even though a batch-tier tenant's would.
+- **Fix (anticipated):** measure the cold start in the W4 window (drill M3 / gate 5.3); if it breaches the real-time tier, keep `minReplicaCount: 1` for real-time tenants and reserve scale-to-zero for near-real-time/batch tiers, trading a few dollars of standing cost for the tail-latency SLO. Until measured, this stays a prediction, not a claim.
+- **Lesson:** scale-to-zero is an SLO decision, not just a cost decision, and the right minimum-replica count is per-tier, not global. Do not assert the breach or the fix before the live measurement exists; the tier that can absorb a cold start is the one that should scale to zero.
