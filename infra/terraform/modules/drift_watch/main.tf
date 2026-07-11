@@ -65,6 +65,12 @@ variable "log_retention_days" {
   default = 14
 }
 
+variable "kms_key_arn" {
+  description = "ARN of the customer-managed KMS key for log-group encryption. Empty (the default) keeps the CloudWatch Logs default encryption, so the default plan stays a zero diff."
+  type        = string
+  default     = ""
+}
+
 variable "tags" {
   type    = map(string)
   default = {}
@@ -162,7 +168,9 @@ resource "aws_lambda_function" "drift_watch" {
 resource "aws_cloudwatch_log_group" "drift_watch" {
   name              = "/aws/lambda/${aws_lambda_function.drift_watch.function_name}"
   retention_in_days = var.log_retention_days
-  tags              = local.tags
+  # CMK when set; null keeps the CloudWatch Logs default encryption (zero diff).
+  kms_key_id = var.kms_key_arn != "" ? var.kms_key_arn : null
+  tags       = local.tags
 }
 
 data "aws_iam_policy_document" "scheduler_assume" {

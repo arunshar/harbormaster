@@ -129,10 +129,12 @@ the bounded roles but cannot escalate. Keep `arun-admin` as break-glass; do not
 remove AdministratorAccess from it until an apply under the platform role is proven.
 
 ### CMK
-Not authored (no `aws_kms_key` in the repo), so not part of this apply. If wanted,
-author a `modules/kms` (key, rotation, alias, wired to S3/RDS/DynamoDB/logs behind
-an `enable_cmk` flag) as a separate change, then apply in a later window at roughly
-$1 per key per month plus usage.
+Authored, not applied: `modules/kms` (key with rotation and a 7-day deletion
+window, alias/harbormaster-base, wired to S3/RDS/DynamoDB/log groups behind the
+`enable_cmk` flag, default false so the default plan stays a zero diff). Not part
+of this apply; flip `enable_cmk = true` and apply in a later window at roughly
+$1 per key per month plus usage. Setting the key on an EXISTING RDS instance
+forces replacement, so enable it only on a fresh Phase 1 window.
 
 ### Cost and safety
 Part A is $0. Part B is a short billable window (small per hour), always torn down

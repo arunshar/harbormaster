@@ -40,6 +40,12 @@ variable "feast_online_table_ttl_enabled" {
   default     = true
 }
 
+variable "kms_key_arn" {
+  description = "ARN of the customer-managed KMS key for bucket and table encryption. Empty (the default) keeps S3 on SSE-AES256 and DynamoDB on its AWS-owned key, so the default plan stays a zero diff."
+  type        = string
+  default     = ""
+}
+
 variable "tags" {
   description = "Common tags applied to every resource."
   type        = map(string)

@@ -54,9 +54,15 @@ resource "aws_s3_bucket_versioning" "lake" {
 resource "aws_s3_bucket_server_side_encryption_configuration" "lake" {
   bucket = aws_s3_bucket.lake.id
 
+  # aws:kms with the CMK when kms_key_arn is set; otherwise the original
+  # SSE-AES256, so the default (no-CMK) plan stays a zero diff. length() > 0
+  # rather than != "": semantically identical, but checkov's expression
+  # evaluator resolves only the length() form, and the CKV_AWS_19 encryption
+  # check must keep passing outright (never baselined).
   rule {
     apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
+      sse_algorithm     = length(var.kms_key_arn) > 0 ? "aws:kms" : "AES256"
+      kms_master_key_id = length(var.kms_key_arn) > 0 ? var.kms_key_arn : null
     }
     bucket_key_enabled = true
   }
@@ -151,9 +157,12 @@ resource "aws_s3_bucket_versioning" "models" {
 resource "aws_s3_bucket_server_side_encryption_configuration" "models" {
   bucket = aws_s3_bucket.models.id
 
+  # Same CMK-or-AES256 switch as the lake bucket above (length() > 0 for the
+  # same checkov-resolvability reason).
   rule {
     apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
+      sse_algorithm     = length(var.kms_key_arn) > 0 ? "aws:kms" : "AES256"
+      kms_master_key_id = length(var.kms_key_arn) > 0 ? var.kms_key_arn : null
     }
     bucket_key_enabled = true
   }
@@ -225,6 +234,16 @@ resource "aws_dynamodb_table" "feast_online" {
     }
   }
 
+  # CMK-encrypted only when kms_key_arn is set; with no block DynamoDB keeps
+  # its default AWS-owned-key encryption, so the default plan stays a zero diff.
+  dynamic "server_side_encryption" {
+    for_each = var.kms_key_arn != "" ? [1] : []
+    content {
+      enabled     = true
+      kms_key_arn = var.kms_key_arn
+    }
+  }
+
   point_in_time_recovery {
     enabled = true
   }
@@ -249,6 +268,15 @@ resource "aws_dynamodb_table" "tf_state_lock" {
   attribute {
     name = "LockID"
     type = "S"
+  }
+
+  # Same CMK-or-default switch as the Feast online table above.
+  dynamic "server_side_encryption" {
+    for_each = var.kms_key_arn != "" ? [1] : []
+    content {
+      enabled     = true
+      kms_key_arn = var.kms_key_arn
+    }
   }
 
   tags = merge(local.tags, {

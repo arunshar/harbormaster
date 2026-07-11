@@ -59,6 +59,12 @@ variable "logical_replication" {
   default     = false
 }
 
+variable "kms_key_arn" {
+  description = "ARN of the customer-managed KMS key for storage encryption. Empty (the default) keeps the AWS-managed aws/rds key, so the default plan stays a zero diff."
+  type        = string
+  default     = ""
+}
+
 variable "tags" {
   type    = map(string)
   default = {}
@@ -131,6 +137,11 @@ resource "aws_db_instance" "this" {
   allocated_storage = var.allocated_storage_gb
   storage_type      = "gp3"
   storage_encrypted = true
+  # CMK when set; null keeps the AWS-managed aws/rds key. NOTE: switching the
+  # KMS key on an EXISTING instance forces replacement. Acceptable here because
+  # Phase 1 is torn down after every demo window, so the flip happens against a
+  # fresh instance, never a live one.
+  kms_key_id = var.kms_key_arn != "" ? var.kms_key_arn : null
 
   db_name  = var.db_name
   username = var.master_username
