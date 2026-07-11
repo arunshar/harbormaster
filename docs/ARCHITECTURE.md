@@ -36,7 +36,7 @@ Harbormaster is a hybrid system: a training plane on MSI (off-cloud, GPU-bearing
    (online feature store)
         |
         v
-   EKS: GeoTrace front door
+   ECS Fargate: GeoTrace front door
    (STAGD / TGARD / S-KBM detectors)
         |
         |  async, heavy model
@@ -56,7 +56,7 @@ Harbormaster is a hybrid system: a training plane on MSI (off-cloud, GPU-bearing
 
 **Training plane (MSI).** All GPU work. Heavy training on historical AIS produces the diffusion model (Pi-DPM) and the spatial detectors. MSI runs Slurm; jobs are submitted off-cloud. Nothing in the training plane runs on AWS, which is what keeps the AWS bill inside the $75 hard cap.
 
-**Serving plane (AWS).** Everything live and low-latency. Live AIS comes in through AISStream, is normalized by a Fargate ingestor, and is put on Kinesis as the durable transport backbone. From Kinesis the data fans out two ways: into Flink for streaming feature computation (landing in Feast/DynamoDB as the online store), and into Firehose for batch landing into the S3/Iceberg lakehouse. The EKS-hosted GeoTrace front door serves the lightweight spatial detectors (STAGD, TGARD, S-KBM) inline and delegates the heavy Pi-DPM diffusion model to a SageMaker asynchronous multi-model endpoint. RDS plus Debezium provides CDC of operational state into the same lakehouse.
+**Serving plane (AWS).** Everything live and low-latency. Live AIS comes in through AISStream, is normalized by a Fargate ingestor, and is put on Kinesis as the durable transport backbone. From Kinesis the data fans out two ways: into Flink for streaming feature computation (landing in Feast/DynamoDB as the online store), and into Firehose for batch landing into the S3/Iceberg lakehouse. The ECS Fargate-hosted GeoTrace front door serves the lightweight spatial detectors (STAGD, TGARD, S-KBM) inline and delegates the heavy Pi-DPM diffusion model to a SageMaker asynchronous multi-model endpoint. (EKS is a Phase 5 plan, not the current build; see `docs/phases/PHASE_1.md` and `docs/phases/PHASE_5.md`.) RDS plus Debezium provides CDC of operational state into the same lakehouse.
 
 ## Key tradeoffs (opinionated)
 
