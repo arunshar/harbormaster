@@ -16,6 +16,7 @@ on:
       - "lake/**"
       - "mlops/**"
       - "tests/**"
+      - "infra/lambda/**"
       - "pyproject.toml"
       - ".github/workflows/serving-ci.yml"
   pull_request:
@@ -26,6 +27,7 @@ on:
       - "lake/**"
       - "mlops/**"
       - "tests/**"
+      - "infra/lambda/**"
       - "pyproject.toml"
       - ".github/workflows/serving-ci.yml"
   workflow_dispatch:
@@ -43,10 +45,13 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev,lake,mlops,pidpm-demo]"
+      # infra/lambda is first-party handler code (cdc_slot_lag, drift_watch,
+      # teardown); ruff's default excludes skip the vendored infra/lambda/*/build
+      # dependency trees, so only the handlers and their tests are linted.
       - name: Lint (ruff)
-        run: ruff check serving streaming cdc lake mlops tests scripts
+        run: ruff check serving streaming cdc lake mlops tests scripts infra/lambda
       - name: Format (ruff-format, check)
-        run: ruff format --check serving streaming cdc lake mlops tests scripts
+        run: ruff format --check serving streaming cdc lake mlops tests scripts infra/lambda
       - name: Security (bandit)
         # Source-only SAST, config in pyproject [tool.bandit]. Confirmed-benign
         # findings carry narrow per-line `# nosec Bxxx  # reason` markers.

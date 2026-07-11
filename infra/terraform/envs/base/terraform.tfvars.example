@@ -61,3 +61,17 @@ enable_phase3 = false
 # exist behind this toggle yet as of the 2026-07-04 sprint (gate 4.6 adds
 # modules/drift_watch; authored and plan-verified only, never applied).
 enable_phase4 = false
+
+# Customer-managed KMS key (modules/kms) for S3, RDS, DynamoDB, and CloudWatch
+# log groups. Keep false for the original encryption and a zero-diff plan;
+# roughly $1 per key per month plus usage when true. Flipping to true with an
+# existing RDS instance forces its replacement, so only enable on a fresh
+# Phase 1 window. Authored, never applied.
+enable_cmk = false
+
+# Challenger Pi-DPM checkpoint for the weighted-canary "candidate" variant
+# (Phase 3 promotion, gate 3.7). Empty keeps the SageMaker endpoint
+# single-variant and the plan a zero diff. Set to an exported checkpoint S3
+# URI only for a promotion demo window; the 5/25/50/100 ramp itself shifts
+# runtime weights via UpdateEndpointWeightsAndCapacities, never terraform.
+pidpm_candidate_model_data_url = ""

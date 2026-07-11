@@ -101,7 +101,9 @@ resource "aws_cloudwatch_log_group" "access" {
 
   name              = "/aws/apigateway/${local.name_prefix}-serving-api"
   retention_in_days = var.access_log_retention_days
-  tags              = local.tags
+  # CMK when set; null keeps the CloudWatch Logs default encryption (zero diff).
+  kms_key_id = var.kms_key_arn != "" ? var.kms_key_arn : null
+  tags       = local.tags
 }
 
 resource "aws_apigatewayv2_stage" "default" {
@@ -273,7 +275,9 @@ resource "aws_cloudwatch_log_group" "waf" {
 
   name              = "aws-waf-logs-${local.name_prefix}-serving"
   retention_in_days = var.access_log_retention_days
-  tags              = local.tags
+  # CMK when set; null keeps the CloudWatch Logs default encryption (zero diff).
+  kms_key_id = var.kms_key_arn != "" ? var.kms_key_arn : null
+  tags       = local.tags
 }
 
 # Send WAF request logs to the group above so the web ACL is not operating

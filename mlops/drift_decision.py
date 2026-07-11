@@ -22,9 +22,14 @@ from mlops.calibration_watch import CalibrationWatchResult
 from mlops.concept_proxy import DisagreementResult
 from mlops.drift import DriftResult
 
-# TODO(real-phase-4-execution): replace with a threshold derived from a real
-# accumulated HITL disagreement-rate baseline, per PHASE_4.md's sprint-honest
-# scope. This value only makes the mechanism testable, it is not a result.
+# TODO(real-phase-4-execution): the derivation path for this placeholder is
+# now built: mlops/disagreement_baseline.py accumulates per-window HITL
+# disagreement rates and make_disagreement_alert_rate() derives the alert
+# threshold, which callers pass in through classify_drift's
+# disagreement_alert_rate parameter below. What is still pending is the real
+# accumulated HITL data itself, per PHASE_4.md's sprint-honest scope; until
+# enough real windows exist, make_disagreement_alert_rate falls back to this
+# value, which only makes the mechanism testable, it is not a result.
 DISAGREEMENT_ALERT_RATE_PLACEHOLDER = 0.2
 
 DriftCategory = Literal["none", "input_drift", "calibration_drift", "concept_drift"]

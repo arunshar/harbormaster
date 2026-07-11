@@ -55,6 +55,11 @@ locals {
   # enable_phaseN flags, so the default phases-off plan creates none and is
   # unaffected. Set permissions_boundary_name = "" to opt out of the boundary.
   permissions_boundary_arn = var.permissions_boundary_name != "" ? "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/${var.permissions_boundary_name}" : ""
+
+  # CMK ARN passed to every encryption-capable module. Empty while enable_cmk
+  # is false, and every consumer's kms_key_arn input collapses to its pre-CMK
+  # configuration on empty, so the default plan stays a ZERO diff.
+  kms_key_arn = var.enable_cmk ? module.kms[0].key_arn : ""
 }
 
 # -----------------------------------------------------------------------------
@@ -81,6 +86,26 @@ module "state_stores" {
 
   project     = var.project
   environment = var.environment
+
+  kms_key_arn = local.kms_key_arn
+
+  tags = local.common_tags
+}
+
+# -----------------------------------------------------------------------------
+# Customer-managed KMS key (CMK). Count-gated on enable_cmk (default false):
+# the key, its alias, and every consumer's kms_key_arn wiring are inert until
+# the flag flips, keeping the default plan byte-identical to the pre-CMK
+# configuration. Authored for the buyer-grade encryption path; NOT applied.
+# -----------------------------------------------------------------------------
+
+module "kms" {
+  count  = var.enable_cmk ? 1 : 0
+  source = "../../modules/kms"
+
+  project     = var.project
+  environment = var.environment
+  aws_region  = var.aws_region
 
   tags = local.common_tags
 }
@@ -160,6 +185,8 @@ module "rds" {
   # demo apply). Inert (no parameter group at all) while enable_phase2 = false.
   logical_replication = var.enable_phase2
 
+  kms_key_arn = local.kms_key_arn
+
   tags = local.common_tags
 }
 
@@ -201,6 +228,8 @@ module "ecs_serving" {
   cdc_online_enabled = var.enable_phase2
   redis_url          = var.enable_phase2 ? "redis://redis.${var.project}-${var.environment}.local:6379/0" : ""
 
+  kms_key_arn = local.kms_key_arn
+
   tags = local.common_tags
 }
 
@@ -215,6 +244,8 @@ module "apigw" {
   private_subnet_ids = module.network.private_subnet_ids
 
   cloudmap_service_arn = module.ecs_serving[0].cloudmap_service_arn
+
+  kms_key_arn = local.kms_key_arn
 
   tags = local.common_tags
 }
@@ -231,6 +262,8 @@ module "ecs_ingestor" {
   vpc_id             = module.network.vpc_id
   kinesis_stream_arn = module.kinesis[0].stream_arn
   lake_bucket_arn    = "arn:aws:s3:::${module.state_stores.lake_bucket_name}"
+
+  kms_key_arn = local.kms_key_arn
 
   tags = local.common_tags
 }
@@ -256,6 +289,8 @@ module "kda_flink" {
   # (s3://<lake_bucket>/flink/flink-app.zip), not a separate bucket.
   code_bucket_arn   = "arn:aws:s3:::${module.state_stores.lake_bucket_name}"
   flink_code_s3_key = var.flink_code_s3_key
+
+  kms_key_arn = local.kms_key_arn
 
   tags = local.common_tags
 }
@@ -314,6 +349,8 @@ module "redis_fargate" {
   cluster_arn           = module.ecs_cluster[0].cluster_arn
   cloudmap_namespace_id = module.ecs_serving[0].cloudmap_namespace_id
 
+  kms_key_arn = local.kms_key_arn
+
   tags = local.common_tags
 }
 
@@ -369,6 +406,8 @@ module "ecs_connect" {
   rds_endpoint   = module.rds[0].db_endpoint
   rds_secret_arn = module.rds[0].master_user_secret_arn
 
+  kms_key_arn = local.kms_key_arn
+
   tags = local.common_tags
 }
 
@@ -395,6 +434,8 @@ module "ecs_cdc_consumer" {
   feast_table_name = module.state_stores.feast_online_table_name
   lake_bucket_arn  = "arn:aws:s3:::${module.state_stores.lake_bucket_name}"
   redis_url        = "redis://${module.redis_fargate[0].redis_dns}:6379/0"
+
+  kms_key_arn = local.kms_key_arn
 
   tags = local.common_tags
 }
@@ -443,6 +484,8 @@ module "emr_backfill" {
   raw_extract_s3_uri = "arn:aws:s3:::${module.state_stores.lake_bucket_name}/raw/marinecadastre"
   lake_bucket_arn    = "arn:aws:s3:::${module.state_stores.lake_bucket_name}"
 
+  kms_key_arn = local.kms_key_arn
+
   tags = local.common_tags
 }
 
@@ -462,6 +505,11 @@ module "sagemaker_pidpm" {
   container_image   = var.pidpm_image
   model_data_url    = var.pidpm_model_data_url
   models_bucket_arn = "arn:aws:s3:::${module.state_stores.models_bucket_name}"
+
+  # Weighted-canary challenger (gate 3.7). Not part of the count gate above:
+  # the candidate is optional inside the module (empty means single-variant),
+  # while a module with no champion image/checkpoint is not an endpoint at all.
+  candidate_model_data_url = var.pidpm_candidate_model_data_url
 
   tags = local.common_tags
 }
@@ -484,6 +532,8 @@ module "drift_watch" {
   sns_topic_arn    = module.finops.sns_topic_arn
 
   lambda_source_dir = "${path.module}/../../../lambda/drift_watch/build"
+
+  kms_key_arn = local.kms_key_arn
 
   tags = local.common_tags
 }

@@ -52,15 +52,18 @@ jobs:
       - uses: terraform-linters/setup-tflint@v4
         with:
           tflint_version: v0.63.1
-      # --minimum-failure-severity=error: 48 warning-level best-practice notes
-      # exist today (missing version constraints, unused declarations). They are
-      # printed for visibility but do not block; an error-level finding (bad
-      # syntax, unknown resource) DOES fail the job. Burn the warnings down over
-      # time, then raise this to warning.
+      # --minimum-failure-severity=warning: the 48 warning-level best-practice
+      # notes (missing version constraints, unused declarations) were burned
+      # down on 2026-07-11: every module now declares required_version and
+      # pinned required_providers in its own versions.tf, zero-reference
+      # declarations were deleted, and the two aws_region inputs kept for
+      # caller-interface uniformity carry inline tflint-ignore annotations.
+      # Any warning-level finding now fails the job, so new modules must ship
+      # their version constraints from day one.
       - name: tflint
         run: |
           tflint --init
-          tflint --recursive --chdir=infra/terraform --minimum-failure-severity=error
+          tflint --recursive --chdir=infra/terraform --minimum-failure-severity=warning
 
   checkov:
     runs-on: ubuntu-latest

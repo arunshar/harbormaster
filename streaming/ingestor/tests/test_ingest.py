@@ -29,7 +29,8 @@ T0 = datetime(2024, 6, 1, tzinfo=UTC)
 
 
 def _rec(mmsi: int, minute: int, lat: float = 40.0, lon: float = -74.0) -> AisRecord:
-    return AisRecord(mmsi=mmsi, lat=lat, lon=lon, t=T0 + timedelta(minutes=minute), sog=9.0)
+    t = T0 + timedelta(minutes=minute)
+    return AisRecord(mmsi=mmsi, lat=lat, lon=lon, t=t, sog=9.0, cog=None, heading=None)
 
 
 def test_sorted_by_time_orders_ascending():

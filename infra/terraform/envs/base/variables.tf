@@ -138,6 +138,22 @@ variable "enable_phase4" {
   default     = false
 }
 
+variable "enable_cmk" {
+  description = <<-EOT
+    Gate for the customer-managed KMS key (modules/kms: rotation-enabled key +
+    alias/harbormaster-<environment>, wired into the S3 buckets, DynamoDB
+    tables, RDS storage, and every CloudWatch log group). Default false keeps
+    the platform on its original encryption (S3 SSE-AES256, AWS-managed keys
+    elsewhere) and the plan a ZERO diff; every consumer's kms_key_arn input
+    collapses to its pre-CMK configuration when empty. Costs roughly $1 per
+    key per month plus usage when enabled. NOTE: flipping this on with an
+    EXISTING RDS instance forces its replacement (kms_key_id is a create-time
+    attribute); acceptable because Phase 1 is torn down between demo windows.
+  EOT
+  type        = bool
+  default     = false
+}
+
 variable "pidpm_image" {
   description = <<-EOT
     ECR image URI wrapping the frozen PiDpmScorer contract (built from
@@ -155,6 +171,20 @@ variable "pidpm_model_data_url" {
     S3 URI to the exported Pi-DPM checkpoint artifact (from
     mlops/manifest.py's one-way export). Empty skips the SageMaker
     model/endpoint, same reasoning as pidpm_image.
+  EOT
+  type        = string
+  default     = ""
+}
+
+variable "pidpm_candidate_model_data_url" {
+  description = <<-EOT
+    S3 URI to a challenger Pi-DPM checkpoint for the weighted-canary
+    "candidate" variant (gate 3.7). Empty (the default) keeps the endpoint
+    single-variant and the plan a ZERO diff; non-empty adds a second
+    SageMaker model plus a second production variant planted at weight 0.0.
+    The 5/25/50/100 canary ramp then shifts runtime weights via the
+    UpdateEndpointWeightsAndCapacities API (mlops/canary_actuator.py), never
+    terraform.
   EOT
   type        = string
   default     = ""

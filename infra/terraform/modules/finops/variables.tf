@@ -16,6 +16,10 @@ variable "environment" {
   }
 }
 
+# Unused inside this module today (the provider region comes from the root),
+# but envs/base passes aws_region to every regional module, so the input stays
+# for interface uniformity rather than breaking the caller.
+# tflint-ignore: terraform_unused_declarations
 variable "aws_region" {
   description = "AWS region for the teardown Lambda and EventBridge schedule."
   type        = string

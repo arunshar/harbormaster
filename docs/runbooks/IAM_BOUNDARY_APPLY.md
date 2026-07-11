@@ -12,9 +12,10 @@ automatically; each step is a command you run and verify.
   (Part A, free and standing), plus the `permissions_boundary` on every module
   role and the API Gateway authorizer + throttling + access logging (Part B,
   during a billable Phase 1 window).
-- Does NOT apply: a customer-managed KMS key. No CMK is authored in the repo
-  yet (no `aws_kms_key`, no `modules/kms`). If you want it, author the module
-  first, then apply it in a later window. It is out of scope here.
+- Does NOT apply: the customer-managed KMS key. `modules/kms` is now authored
+  behind `enable_cmk` (default false, so the default plan stays a zero diff)
+  but the flag stays off here; flip it and apply in a later window. It is out
+  of scope here.
 
 ## Identities (read before running anything)
 
@@ -138,5 +139,5 @@ alter boundaries.
   Gateway HTTP API + optional Flink). Small per hour; tear down after. The $75
   FinOps hard cap and the nightly teardown Lambda remain in force.
 - WAF is variable-gated off by default (`enable_waf = false`); turning it on
-  adds standing cost. CMK, if later authored, is roughly $1 per key per month
-  plus usage.
+  adds standing cost. CMK (authored behind `enable_cmk`, default false) is
+  roughly $1 per key per month plus usage once enabled.

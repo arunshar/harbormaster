@@ -26,6 +26,12 @@ variable "cloudmap_service_arn" {
   type = string
 }
 
+variable "kms_key_arn" {
+  description = "ARN of the customer-managed KMS key for log-group encryption. Empty (the default) keeps the CloudWatch Logs default encryption, so the default plan stays a zero diff."
+  type        = string
+  default     = ""
+}
+
 variable "tags" {
   type    = map(string)
   default = {}

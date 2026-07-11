@@ -3,6 +3,8 @@ the reference MemorySink, key vocabulary drift-guarded against serving."""
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from cdc.consumer.applier import Applier
@@ -31,8 +33,8 @@ def _messages():
     return [parse_envelope(t, k, v) for t, k, v in load_envelope_messages()]
 
 
-def _event(**overrides) -> ChangeEvent:
-    base = dict(
+def _event(**overrides: Any) -> ChangeEvent:
+    base: dict[str, Any] = dict(
         table="watchlist",
         pk={"mmsi": MMSI},
         op="c",

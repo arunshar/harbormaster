@@ -108,7 +108,6 @@ def handler(event, context):
     _publish(slots)
     return {
         "slots": [
-            {"slot_name": s.slot_name, "active": s.active, "lag_bytes": s.lag_bytes}
-            for s in slots
+            {"slot_name": s.slot_name, "active": s.active, "lag_bytes": s.lag_bytes} for s in slots
         ]
     }

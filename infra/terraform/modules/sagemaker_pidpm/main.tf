@@ -29,6 +29,10 @@ variable "environment" {
   type = string
 }
 
+# Unused inside this module today (the provider region comes from the root),
+# but envs/base passes aws_region to every regional module, so the input stays
+# for interface uniformity rather than breaking the caller.
+# tflint-ignore: terraform_unused_declarations
 variable "aws_region" {
   type    = string
   default = "us-east-1"
@@ -42,6 +46,18 @@ variable "container_image" {
 variable "model_data_url" {
   description = "S3 URI to the exported checkpoint artifact (from mlops/manifest.py's one-way export)."
   type        = string
+}
+
+variable "candidate_model_data_url" {
+  description = <<-EOT
+    S3 URI to a challenger checkpoint artifact for the weighted-canary
+    "candidate" variant (gate 3.7). Empty (the default) keeps the endpoint
+    single-variant and the plan a ZERO diff; non-empty adds a second
+    SageMaker model plus a second production variant planted at weight 0.0.
+    Same exported-artifact provenance as model_data_url (mlops/manifest.py).
+  EOT
+  type        = string
+  default     = ""
 }
 
 variable "models_bucket_arn" {
@@ -81,9 +97,12 @@ locals {
   tags          = merge(var.tags, { Module = "sagemaker_pidpm" })
   variant_name  = "champion"
   models_bucket = replace(var.models_bucket_arn, "arn:aws:s3:::", "")
-}
 
-data "aws_caller_identity" "current" {}
+  # Weighted-canary challenger (gate 3.7). Variant names match the defaults
+  # baked into mlops/canary_actuator.py's factories; change both together.
+  candidate_variant_name = "candidate"
+  candidate_enabled      = var.candidate_model_data_url != ""
+}
 
 data "aws_iam_policy_document" "sagemaker_assume" {
   statement {
@@ -160,6 +179,31 @@ resource "aws_sagemaker_model" "pidpm" {
   tags = local.tags
 }
 
+# The weighted-canary challenger model (gate 3.7). Count-gated on the
+# candidate artifact being supplied at all: with candidate_model_data_url
+# empty (the default) this model and the second variant below are absent and
+# the plan is a ZERO diff. Same container image as the champion, a promotion
+# swaps the checkpoint, never the frozen PiDpmScorer scoring contract.
+resource "aws_sagemaker_model" "candidate" {
+  count              = local.candidate_enabled ? 1 : 0
+  name               = "${local.name_prefix}-pidpm-candidate"
+  execution_role_arn = aws_iam_role.execution.arn
+
+  # CKV_AWS_370: on for the candidate (the scorer makes no outbound calls;
+  # SageMaker still handles the S3 model download and async output upload at
+  # the platform layer). The champion above predates this and its finding is
+  # an accepted baseline entry; flipping the champion is a live-window
+  # decision, not a silent config change to a live-verified resource.
+  enable_network_isolation = true
+
+  primary_container {
+    image          = var.container_image
+    model_data_url = var.candidate_model_data_url
+  }
+
+  tags = local.tags
+}
+
 # The promotion registry (mlops/registry.py's register_candidate) calls
 # create_model_package with a ModelPackageGroupName, which creates a
 # VERSIONED model package; SageMaker requires that named group to already
@@ -185,6 +229,28 @@ resource "aws_sagemaker_endpoint_configuration" "pidpm" {
     initial_variant_weight = 1.0
   }
 
+  # The candidate rides the same endpoint as a second variant, planted at
+  # weight 0.0 (the champion above keeps 1.0). Terraform only ever plants it
+  # there: the 5/25/50/100 canary ramp and the full-weight rollback shift
+  # runtime weights via the UpdateEndpointWeightsAndCapacities API on the
+  # ENDPOINT (mlops/canary_actuator.py), which never touches this endpoint
+  # configuration, so a post-ramp plan stays clean. A dynamic block rather
+  # than a second static one so the champion block above stays byte-equivalent
+  # and the no-candidate plan a ZERO diff. NOTE: endpoint configs are
+  # immutable, so flipping the candidate on REPLACES this config; do it on a
+  # fresh Phase 3 window, not against a live endpoint (the enable_cmk RDS
+  # replacement precedent in envs/base).
+  dynamic "production_variants" {
+    for_each = local.candidate_enabled ? [1] : []
+    content {
+      variant_name           = local.candidate_variant_name
+      model_name             = aws_sagemaker_model.candidate[0].name
+      instance_type          = var.instance_type
+      initial_instance_count = 1
+      initial_variant_weight = 0.0
+    }
+  }
+
   async_inference_config {
     output_config {
       s3_output_path = "s3://${local.models_bucket}/pidpm/async-output"
@@ -204,6 +270,13 @@ resource "aws_sagemaker_endpoint" "pidpm" {
 }
 
 # ---- Scale-to-zero: target tracking (1 <-> 0, and above 1) ----
+#
+# CHAMPION VARIANT ONLY, deliberately. The candidate variant is excluded from
+# autoscaling and holds its fixed initial_instance_count of 1 for the length
+# of a canary ramp (demo-scoped: a ramp lasts minutes and the endpoint is
+# torn down with enable_phase3 after the window, so a second scalable target
+# plus its HasBacklogWithoutCapacity alarm pair for a variant planted at
+# weight 0.0 is standing complexity with nothing to scale).
 
 resource "aws_appautoscaling_target" "pidpm" {
   service_namespace  = "sagemaker"
@@ -304,4 +377,10 @@ output "model_name" {
 
 output "model_package_group_name" {
   value = aws_sagemaker_model_package_group.pidpm.model_package_group_name
+}
+
+# Empty when no candidate artifact is supplied, the kms_key_arn
+# empty-string-collapse convention.
+output "candidate_model_name" {
+  value = local.candidate_enabled ? aws_sagemaker_model.candidate[0].name : ""
 }

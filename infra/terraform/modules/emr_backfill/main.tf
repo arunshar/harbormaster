@@ -59,6 +59,12 @@ variable "log_retention_days" {
   default = 14
 }
 
+variable "kms_key_arn" {
+  description = "ARN of the customer-managed KMS key for log-group encryption. Empty (the default) keeps the CloudWatch Logs default encryption, so the default plan stays a zero diff."
+  type        = string
+  default     = ""
+}
+
 variable "tags" {
   type    = map(string)
   default = {}
@@ -73,7 +79,6 @@ variable "permissions_boundary_arn" {
 locals {
   name_prefix = "${var.project}-${var.environment}"
   tags        = merge(var.tags, { Module = "emr_backfill" })
-  lake_bucket = replace(var.lake_bucket_arn, "arn:aws:s3:::", "")
 }
 
 data "aws_caller_identity" "current" {}
@@ -81,7 +86,9 @@ data "aws_caller_identity" "current" {}
 resource "aws_cloudwatch_log_group" "backfill" {
   name              = "/harbormaster/${var.environment}/lake-backfill"
   retention_in_days = var.log_retention_days
-  tags              = local.tags
+  # CMK when set; null keeps the CloudWatch Logs default encryption (zero diff).
+  kms_key_id = var.kms_key_arn != "" ? var.kms_key_arn : null
+  tags       = local.tags
 }
 
 resource "aws_emrserverless_application" "backfill" {
