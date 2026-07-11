@@ -64,3 +64,22 @@ async def test_a_scorer_returning_none_falls_back_to_the_analytic_estimate():
     assert len(calls) == 1  # the scorer was actually invoked
     assert gaps_a[0].p_data == gaps_b[0].p_data  # identical to the no-scorer path
     assert gaps_a[0].abnormal_gap_measure == gaps_b[0].abnormal_gap_measure
+
+
+@pytest.mark.asyncio
+async def test_transitive_gap_prisms_merge_into_one_connected_region():
+    """Wave 3 finding: the DRM merge must be connected-components, not single-pass
+    seed clustering. Three consecutive gaps whose prism MOBRs chain (0 overlaps 1,
+    1 overlaps 2, 0 disjoint from 2) are ONE region, not two: seed clustering
+    double-counted the middle prism and dropped the tail one."""
+    # a vessel stepping north, 2000s (> 600s threshold) between each fix, so each
+    # consecutive pair is a gap and the gap prisms overlap transitively
+    traj = [
+        Anchor(lat=0.0 + 0.2 * i, lon=0.0, t=T0 + timedelta(seconds=2000 * i)) for i in range(4)
+    ]
+    gaps = await GapDetectorAgent(Settings()).detect({"trajectory": traj, "domain": "vessel"})
+    assert len(gaps) == 1, f"expected one connected region, got {len(gaps)} (seed-cluster bug)"
+    # the head is the earliest gap; the later gaps are folded into its coverage,
+    # not emitted as separate (previously double-counted / dropped) records
+    assert gaps[0].start.lat == 0.0
+    assert gaps[0].end.lat == pytest.approx(0.2)
