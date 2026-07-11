@@ -1,0 +1,32 @@
+docs/PLATFORM_BOOK.md
+  s_a2e22b769416de::t_149955d8b59dc1 266
+  s_a2e22b769416de::t_0d40393ed9a2d6 307-309
+mlops/route_optimizer/rollout.py
+  s_a2e22b769416de::t_2d7d760d12ff37 207-208,215-217,237-238
+docs/WAVE3_FINDINGS.md
+  s_a2e22b769416de::t_0d5dd06956e5f1 1-33
+mlops/route_optimizer/service.py
+  s_a2e22b769416de::t_32f81cc0d19c84 115-118,122-124,135-136
+PLATFORM_WAR_STORIES.md
+  s_a2e22b769416de::t_514bc271138179 474-515
+mlops/tests/test_route_optimizer_reward.py
+  s_a2e22b769416de::t_796a6479ef32aa 82-92
+mlops/tests/test_route_optimizer_rollout.py
+  s_a2e22b769416de::t_aaaeac7974663d 110-131
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "f15e081f07d6647826059c44be9f95c5c56f1c70",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
