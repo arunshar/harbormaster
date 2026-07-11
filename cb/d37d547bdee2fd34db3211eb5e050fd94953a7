@@ -1,0 +1,28 @@
+scripts/loadtest_kinesis_backpressure.py
+  s_a2e22b769416de::t_7eae455d54744b 1-168,212-214,217-218,220-222,226-235,241-245
+  s_a2e22b769416de::t_d58eb5cf9bdd83 169-211,215-216,219,223-225,236-240
+  s_a2e22b769416de::t_5e0d16b75c2d83 246
+tests/e2e/test_phase5_loadtest.py
+  s_a2e22b769416de::t_694ffc68621a18 180-229
+  s_a2e22b769416de::t_7f269f3a793ddb 1-20,22-46,52-123,125-179
+  s_a2e22b769416de::t_2a7444ac53b4bd 21
+  s_a2e22b769416de::t_0aab055bab97b1 230-278
+  s_a2e22b769416de::t_1a100115640134 47-51
+  s_a2e22b769416de::t_d1bb3382c0adaa 124
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "cbd37d547bdee2fd34db3211eb5e050fd94953a7",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
