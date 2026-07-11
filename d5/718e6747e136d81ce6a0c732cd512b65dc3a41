@@ -1,0 +1,40 @@
+README.md
+  s_a2e22b769416de::t_65018da0ad2fbc 51
+  s_a2e22b769416de::t_9c1e35355183ec 65
+  s_a2e22b769416de::t_f055bcef09b61c 34
+infra/aws/harbormaster-permissions-boundary.json
+  s_a2e22b769416de::t_0a7ec7b3720d7b 19,24,31
+docs/AB_MASTERCLASS_AUDIT.md
+  s_a2e22b769416de::t_ac0b9c03a051ff 106
+  s_a2e22b769416de::t_9ceb5a6102df78 71
+  s_a2e22b769416de::t_a491926acbe092 23
+tests/e2e/test_permissions_boundary.py
+  s_a2e22b769416de::t_10b52fd3ef59dc 1-64
+pyproject.toml
+  s_a2e22b769416de::t_a4ed7d68b03705 145-148
+docs/PLATFORM_BOOK.md
+  s_a2e22b769416de::t_8835405b4e7ddc 353
+  s_a2e22b769416de::t_f6b74eeb066dcc 266
+docs/phases/PHASE_5.md
+  s_a2e22b769416de::t_011b9cffed9cf8 19
+docs/EXPERIENCE_REPORT.md
+  s_a2e22b769416de::t_f2604bd0e67e2c 73
+docs/ARCHITECTURE.md
+  s_a2e22b769416de::t_60ffba48a70431 71
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "d5718e6747e136d81ce6a0c732cd512b65dc3a41",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
