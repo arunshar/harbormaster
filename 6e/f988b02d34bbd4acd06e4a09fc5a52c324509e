@@ -1,0 +1,80 @@
+infra/terraform/modules/kms/main.tf
+  s_a2e22b769416de::t_86045e0ee678a8 1-96
+infra/terraform/modules/rds/main.tf
+  s_a2e22b769416de::t_dff48e9a045737 62-67
+  s_a2e22b769416de::t_211703001c1810 140-144
+infra/terraform/modules/kms/versions.tf
+  s_a2e22b769416de::t_3a2cc2f295ee35 1-17
+infra/terraform/modules/state_stores/main.tf
+  s_a2e22b769416de::t_b1fc4b94f3756a 237-246,280
+  s_a2e22b769416de::t_fb4db7210a4b14 160-161,164-165
+  s_a2e22b769416de::t_c26d914f648954 57
+  s_a2e22b769416de::t_6528cbb8f6b372 273-279
+  s_a2e22b769416de::t_df50bd1ccc1e95 58-61,64-65
+  s_c45195745001a4::t_7ccd9c9203008c 281
+tests/e2e/test_kms_helpers.py
+  s_a2e22b769416de::t_9b6762ebcfc2fa 1-122
+tests/e2e/kms_helpers.py
+  s_a2e22b769416de::t_334e0dcbd2eaaf 1-23,27-75
+  s_a2e22b769416de::t_d9fbfcbe306477 24-26
+infra/terraform/modules/kms/variables.tf
+  s_a2e22b769416de::t_c3291aef39b1c4 1-29
+infra/terraform/modules/state_stores/variables.tf
+  s_a2e22b769416de::t_feee91604419d6 43-48
+docs/runbooks/IAM_BOUNDARY_APPLY.md
+  s_a2e22b769416de::t_b5b095cd674252 15-18
+  s_a2e22b769416de::t_3687f5e3686b17 142-143
+infra/terraform/modules/kms/outputs.tf
+  s_a2e22b769416de::t_862ef00e96eff5 1-16
+docs/AB_MASTERCLASS_AUDIT.md
+  s_a2e22b769416de::t_14b7bc0c8994b4 70
+  s_a2e22b769416de::t_0c26d20696bf5c 9
+  s_a2e22b769416de::t_6920a9e94e20df 34
+  s_a2e22b769416de::t_1b15ad3a3e28b3 105
+docs/runbooks/MERGE_AND_APPLY.md
+  s_a2e22b769416de::t_42525e345808b5 132-137
+infra/terraform/modules/apigw/main.tf
+  s_a2e22b769416de::t_7bba6ae15a3bda 104-106,278-280
+infra/terraform/modules/apigw/variables.tf
+  s_a2e22b769416de::t_8096336355ee43 29-34
+infra/terraform/modules/drift_watch/main.tf
+  s_a2e22b769416de::t_77f4f62c949e6f 68-73,171-173
+infra/terraform/modules/ecs_cdc_consumer/main.tf
+  s_a2e22b769416de::t_435ee3749aae78 91-96,120-122
+infra/terraform/modules/ecs_connect/main.tf
+  s_a2e22b769416de::t_055d5123633739 100-105,134-136
+infra/terraform/modules/ecs_ingestor/main.tf
+  s_a2e22b769416de::t_e37adb3f0996dd 49-54,86-88
+infra/terraform/modules/ecs_serving/main.tf
+  s_a2e22b769416de::t_e0d62751e9e506 124-129,165-167
+infra/terraform/modules/emr_backfill/main.tf
+  s_a2e22b769416de::t_1497cac823170b 62-67,89-91
+infra/terraform/modules/kda_flink/main.tf
+  s_a2e22b769416de::t_3eb3f357f80203 73-78,170-172
+infra/terraform/modules/redis_fargate/main.tf
+  s_a2e22b769416de::t_638dd743894951 47-52,73-75
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "6ef988b02d34bbd4acd06e4a09fc5a52c324509e",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    },
+    "s_c45195745001a4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4fec-3590-74a3-933c-afc0f2e2c5ce",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
