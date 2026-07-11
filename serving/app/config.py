@@ -87,6 +87,15 @@ class Settings(BaseSettings):
     # only, never a scoring path (docs/ARCHITECTURE.md:71).
     bedrock_model_id: str = ""
 
+    # Phase 5 gate 5.7: the PPO route-optimization STRETCH service. A labeled
+    # stretch, INDEPENDENT of the other Phase 5 toggles: default false, and even
+    # when true it only gates the standalone mlops/route_optimizer FastAPI
+    # service (never the scoring path, never the promotion pipeline). CPU-only,
+    # never on AWS. Mirrors the empty/false-disables convention of the toggles
+    # above; kept a plain bool because it flips a whole separate service on, not
+    # a client endpoint.
+    enable_phase5_ppo_stretch: bool = False
+
     # Phase 5 gate 5.4: this deployment's tenant. Empty means single-tenant
     # back-compat (every Postgres session pins the zero-UUID sentinel, so the
     # RLS policies pass and Phase 1-4 behavior is unchanged), matching the

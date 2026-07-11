@@ -14,7 +14,7 @@ COST_CAP := 75
         drill-l1-training-serving-skew drill-l2-canary-rollback lake-e2e \
         pidpm-demo-checkpoint lake-package lake-package-venv drift-smoke \
         drift-lambda-package drill-l3-drift-classification drill-l4-reward-hacking phase4-e2e \
-        phase5-tenant-smoke
+        phase5-tenant-smoke ppo-stretch-smoke
 
 help:
 	@echo "Harbormaster Phase 0 targets (operate on $(TF_DIR)):"
@@ -220,3 +220,6 @@ phase4-e2e:           ## Phase 4 e2e acceptance: all 5 criteria, pure functions 
 
 phase5-tenant-smoke:  ## gate 5.4: RLS fail-closed + per-tenant burn-rate boundary vs a local Postgres (HM_TEST_PG_DSN or a throwaway docker pg)
 	$(PY) scripts/phase5_tenant_smoke.py
+
+ppo-stretch-smoke:    ## gate 5.7: one CPU PPO training step end to end on the tiny synthetic corridor graph (zero GPU, zero AWS, labeled stretch)
+	$(PY) scripts/ppo_stretch_smoke.py

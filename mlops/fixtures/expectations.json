@@ -62,5 +62,27 @@
       "near_real_time_should_rollback": false,
       "batch_should_rollback": false
     }
+  },
+  "ppo_stretch_expectations": {
+    "note": "gate 5.7 (LABELED STRETCH, never in the core pipeline): pins on tiny_synthetic_graph(). Changing the graph or coverage_minus_fuel updates this AND docs/phases/PHASE_5.md in the same commit. Namespaced so it is never confused with a core-pipeline checksum.",
+    "canonical_route": ["n0", "n1", "n3", "n2"],
+    "coverage_weight": 1.0,
+    "fuel_weight": 1.0,
+    "reward": 0.7902652130125524,
+    "reward_repr": "0.7902652130125524",
+    "reward_sha256": "019284961487f0be56cffe4d19bf86d6018a866e448087e68d526531aa5b0915",
+    "partial_routes": {
+      "single_node_n0_coverage_only": 0.4444444444444444,
+      "n0_n1": 0.55551364778883
+    },
+    "kl_crosscheck": {
+      "note": "AdaptiveKLController vendored bit-for-bit from pi-grpo; the test re-derives the update by the explicit formula and asserts equality on these inputs (same spirit as Phase 3's sklearn/scipy cross-checks).",
+      "kl_coef_0": 0.2,
+      "target": 6.0,
+      "horizon": 10000,
+      "n_steps": 1,
+      "above_target": {"current_kl": 9.0, "kl_coef_1": 0.200004},
+      "below_target": {"current_kl": 3.0, "kl_coef_1": 0.199996}
+    }
   }
 }
