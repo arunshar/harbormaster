@@ -81,6 +81,12 @@ class Settings(BaseSettings):
     pidpm_endpoint: str = ""
     pidpm_input_bucket: str = ""
 
+    # Phase 5 gate 5.6: the Bedrock explanation layer. Empty keeps it disabled
+    # (no client is ever constructed, explain() returns None), matching the
+    # pidpm_endpoint / online_table empty-disables convention. Explanation
+    # only, never a scoring path (docs/ARCHITECTURE.md:71).
+    bedrock_model_id: str = ""
+
     # Phase 5 gate 5.4: this deployment's tenant. Empty means single-tenant
     # back-compat (every Postgres session pins the zero-UUID sentinel, so the
     # RLS policies pass and Phase 1-4 behavior is unchanged), matching the
