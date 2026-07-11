@@ -6,6 +6,8 @@ against synthetic HCL both ways, then pinned against the real tree."""
 from __future__ import annotations
 
 from e2e.phase5_helpers import (
+    EKS_CLUSTER_MODULE_PATH,
+    EKS_NODE_GROUP_MODULE_PATH,
     ENV_MAIN_TF_PATH,
     ENV_VARIABLES_TF_PATH,
     GUARD_MODULE_PATH,
@@ -13,7 +15,10 @@ from e2e.phase5_helpers import (
     enable_phase5_requires_enable_phase1,
     guard_is_armed_by_default,
     guard_window_default_hours,
+    helm_data_sources_gated_on_keda_flag,
+    keda_release_is_gated_on_install_keda,
     module_is_gated_on_enable_phase5,
+    node_group_scaling_config,
     variable_default,
 )
 
@@ -150,3 +155,145 @@ def test_real_every_phase5_count_reference_is_a_module_gate():
 def test_real_guard_lambda_source_is_the_finops_packaging_convention():
     text = ENV_MAIN_TF_PATH.read_text()
     assert "${path.module}/../../../lambda/eks_teardown" in text
+
+
+# --------------------------------------------------------------------------- #
+# Gate 5.1 helpers, both ways on synthetic HCL
+# --------------------------------------------------------------------------- #
+def test_scaling_config_extracts_the_scale_to_zero_shape():
+    text = """
+    resource "aws_eks_node_group" "this" {
+      scaling_config {
+        min_size     = var.min_size
+        max_size     = var.max_size
+        desired_size = var.desired_size
+      }
+    }
+    """
+    cfg = node_group_scaling_config(text)
+    assert cfg == {
+        "min_size": "var.min_size",
+        "max_size": "var.max_size",
+        "desired_size": "var.desired_size",
+    }
+
+
+def test_scaling_config_none_when_absent():
+    assert node_group_scaling_config('resource "aws_eks_node_group" "this" {}') is None
+
+
+def test_scaling_config_not_fooled_by_a_comment_mention():
+    text = """
+    # narrating scaling_config { min_size = 9, max_size = 9, desired_size = 9 }
+    resource "aws_eks_node_group" "this" {
+      scaling_config {
+        min_size     = var.min_size
+        max_size     = var.max_size
+        desired_size = var.desired_size
+      }
+    }
+    """
+    assert node_group_scaling_config(text) == {
+        "min_size": "var.min_size",
+        "max_size": "var.max_size",
+        "desired_size": "var.desired_size",
+    }
+
+
+def test_keda_gating_true_on_install_keda_count():
+    text = """
+    resource "helm_release" "keda" {
+      count = var.install_keda ? 1 : 0
+      name  = "keda"
+    }
+    """
+    assert keda_release_is_gated_on_install_keda(text) is True
+
+
+def test_keda_gating_false_when_unconditional():
+    text = 'resource "helm_release" "keda" {\n  name = "keda"\n}'
+    assert keda_release_is_gated_on_install_keda(text) is False
+
+
+def test_helm_data_gating_needs_both_sources():
+    only_one = """
+    data "aws_eks_cluster" "phase5" {
+      count = var.enable_phase5_keda ? 1 : 0
+    }
+    data "aws_eks_cluster_auth" "phase5" {
+      name = "x"
+    }
+    """
+    assert helm_data_sources_gated_on_keda_flag(only_one) is False
+
+
+def test_helm_data_gating_true_when_both_gated():
+    both = """
+    data "aws_eks_cluster" "phase5" {
+      count = var.enable_phase5_keda ? 1 : 0
+      name  = "x"
+    }
+    data "aws_eks_cluster_auth" "phase5" {
+      count = var.enable_phase5_keda ? 1 : 0
+      name  = "x"
+    }
+    """
+    assert helm_data_sources_gated_on_keda_flag(both) is True
+
+
+# --------------------------------------------------------------------------- #
+# The real tree: gate 5.1's properties, pinned
+# --------------------------------------------------------------------------- #
+def test_real_eks_cluster_and_node_group_are_gated_on_enable_phase5():
+    text = ENV_MAIN_TF_PATH.read_text()
+    assert module_is_gated_on_enable_phase5(text, "eks_cluster") is True
+    assert module_is_gated_on_enable_phase5(text, "eks_node_group") is True
+    gated = enable_phase5_references(text)
+    assert {"eks_teardown_guard", "eks_cluster", "eks_node_group"} <= gated
+
+
+def test_real_node_group_defaults_are_the_scale_to_zero_shape():
+    # The spec pins scaling_config { min_size = 0, max_size = 3,
+    # desired_size = 0 }; the literals live in the variables' defaults.
+    node_vars = (EKS_NODE_GROUP_MODULE_PATH / "variables.tf").read_text()
+    assert variable_default(node_vars, "min_size") == "0"
+    assert variable_default(node_vars, "max_size") == "3"
+    assert variable_default(node_vars, "desired_size") == "0"
+    cfg = node_group_scaling_config((EKS_NODE_GROUP_MODULE_PATH / "main.tf").read_text())
+    assert cfg == {
+        "min_size": "var.min_size",
+        "max_size": "var.max_size",
+        "desired_size": "var.desired_size",
+    }
+
+
+def test_real_node_group_is_spot():
+    text = (EKS_NODE_GROUP_MODULE_PATH / "main.tf").read_text()
+    assert 'capacity_type  = "SPOT"' in text
+
+
+def test_real_keda_release_is_gated_and_pinned():
+    main = (EKS_CLUSTER_MODULE_PATH / "main.tf").read_text()
+    cluster_vars = (EKS_CLUSTER_MODULE_PATH / "variables.tf").read_text()
+    assert keda_release_is_gated_on_install_keda(main) is True
+    assert variable_default(cluster_vars, "install_keda") == "false"
+    # The chart version is pinned (war-story P8), not floating.
+    assert variable_default(cluster_vars, "keda_chart_version") is not None
+
+
+def test_real_helm_provider_is_count_safe():
+    text = ENV_MAIN_TF_PATH.read_text()
+    assert helm_data_sources_gated_on_keda_flag(text) is True
+
+
+def test_real_enable_phase5_keda_requires_enable_phase5():
+    text = ENV_VARIABLES_TF_PATH.read_text()
+    assert variable_default(text, "enable_phase5_keda") == "false"
+    assert "!var.enable_phase5_keda || var.enable_phase5" in text
+
+
+def test_real_cluster_endpoint_is_private_by_default():
+    main = (EKS_CLUSTER_MODULE_PATH / "main.tf").read_text()
+    cluster_vars = (EKS_CLUSTER_MODULE_PATH / "variables.tf").read_text()
+    assert "endpoint_private_access = true" in main
+    assert variable_default(cluster_vars, "endpoint_public_access") == "false"

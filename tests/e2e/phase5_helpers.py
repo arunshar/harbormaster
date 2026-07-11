@@ -18,6 +18,8 @@ INFRA_TERRAFORM_PATH = Path(__file__).parent.parent.parent / "infra" / "terrafor
 ENV_MAIN_TF_PATH = INFRA_TERRAFORM_PATH / "envs" / "base" / "main.tf"
 ENV_VARIABLES_TF_PATH = INFRA_TERRAFORM_PATH / "envs" / "base" / "variables.tf"
 GUARD_MODULE_PATH = INFRA_TERRAFORM_PATH / "modules" / "eks_teardown_guard"
+EKS_CLUSTER_MODULE_PATH = INFRA_TERRAFORM_PATH / "modules" / "eks_cluster"
+EKS_NODE_GROUP_MODULE_PATH = INFRA_TERRAFORM_PATH / "modules" / "eks_node_group"
 
 # Matches a `module "<name>" { count = var.enable_phase5 ? 1 : 0 ... }` block
 # specifically, scoped to content between its own braces (gate 3.9's lesson:
@@ -75,6 +77,55 @@ def guard_is_armed_by_default(guard_variables_tf_text: str) -> bool:
 def guard_window_default_hours(guard_variables_tf_text: str) -> str | None:
     """The guard's default force-destroy window (the spec pins 4)."""
     return variable_default(guard_variables_tf_text, "max_age_hours")
+
+
+def _strip_hcl_comments(tf_text: str) -> str:
+    """Drop full-line # comments so prose mentions of a block (the module
+    header narrating the GKE pattern, say) can never satisfy a structural
+    check, the gate 3.9 lesson applied to block matches."""
+    return "\n".join(line for line in tf_text.splitlines() if not line.lstrip().startswith("#"))
+
+
+def node_group_scaling_config(node_group_main_tf_text: str) -> dict[str, str] | None:
+    """The min/max/desired literals inside the aws_eks_node_group's
+    scaling_config block, or None when the block is absent. Gate 5.1 pins the
+    scale-to-zero shape: min 0, max 3, desired 0 (via variable defaults, so
+    this reads the variables file's defaults instead when given it)."""
+    code_only = _strip_hcl_comments(node_group_main_tf_text)
+    block = re.search(r"scaling_config\s*\{(.*?)\}", code_only, re.DOTALL)
+    if not block:
+        return None
+    out: dict[str, str] = {}
+    for key in ("min_size", "max_size", "desired_size"):
+        m = re.search(rf"{key}\s*=\s*(\S+)", block.group(1))
+        if m:
+            out[key] = m.group(1)
+    return out
+
+
+def keda_release_is_gated_on_install_keda(eks_cluster_main_tf_text: str) -> bool:
+    """True if the keda helm_release's count is structurally tied to
+    install_keda (the documented two-step provider story), never
+    unconditional."""
+    pattern = re.compile(
+        r'resource\s+"helm_release"\s+"keda"\s*\{[^{}]*'
+        r"count\s*=\s*var\.install_keda\s*\?\s*1\s*:\s*0\b"
+    )
+    return pattern.search(eks_cluster_main_tf_text) is not None
+
+
+def helm_data_sources_gated_on_keda_flag(env_main_tf_text: str) -> bool:
+    """True if BOTH cluster-credential data sources feeding the helm provider
+    are count-gated on enable_phase5_keda, the count-safe provider property
+    that lets a default plan run with no cluster and no AWS credentials."""
+    for data_type in ("aws_eks_cluster", "aws_eks_cluster_auth"):
+        pattern = re.compile(
+            rf'data\s+"{data_type}"\s+"phase5"\s*\{{[^{{}}]*'
+            r"count\s*=\s*var\.enable_phase5_keda\s*\?\s*1\s*:\s*0\b"
+        )
+        if not pattern.search(env_main_tf_text):
+            return False
+    return True
 
 
 def enable_phase5_references(env_main_tf_text: str) -> set[str]:

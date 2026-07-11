@@ -25,6 +25,48 @@ terraform {
       source  = "hashicorp/random"
       version = "~> 3.0"
     }
+    helm = {
+      # 2.x pinned: the 3.x provider changed the kubernetes block to
+      # attribute syntax, which would silently break the provider config
+      # below on an unpinned init (war-story P8 policy).
+      source  = "hashicorp/helm"
+      version = "~> 2.13"
+    }
+  }
+}
+
+# -----------------------------------------------------------------------------
+# Helm provider (Phase 5, gate 5.1), configured COUNT-SAFELY. A provider
+# block cannot be count-gated, so the credentials come from data sources
+# that only exist while enable_phase5_keda = true (which per its validation
+# also requires enable_phase5). With the flag off, both data sources have
+# count 0, every try() below collapses to an inert empty value, and the
+# provider is never dereferenced because the only helm_release
+# (modules/eks_cluster's keda, gated on install_keda = enable_phase5_keda)
+# has count 0 too: a default plan and make validate need no cluster and no
+# AWS credentials. With the flag on, the data sources read the LIVE cluster
+# at plan time, which is why flipping it is a documented SECOND apply after
+# the cluster exists (see the enable_phase5_keda variable description).
+# -----------------------------------------------------------------------------
+
+data "aws_eks_cluster" "phase5" {
+  count = var.enable_phase5_keda ? 1 : 0
+  name  = local.phase5_cluster_name
+}
+
+data "aws_eks_cluster_auth" "phase5" {
+  count = var.enable_phase5_keda ? 1 : 0
+  name  = local.phase5_cluster_name
+}
+
+provider "helm" {
+  kubernetes {
+    host  = try(data.aws_eks_cluster.phase5[0].endpoint, "")
+    token = try(data.aws_eks_cluster_auth.phase5[0].token, "")
+    cluster_ca_certificate = try(
+      base64decode(data.aws_eks_cluster.phase5[0].certificate_authority[0].data),
+      null,
+    )
   }
 }
 
@@ -551,6 +593,63 @@ module "eks_teardown_guard" {
   # Lambda source at infra/lambda/eks_teardown relative to this root, the
   # finops teardown packaging convention (boto3-only, zipped as-is).
   lambda_source_dir = "${path.module}/../../../lambda/eks_teardown"
+
+  tags = local.common_tags
+}
+
+# -----------------------------------------------------------------------------
+# Phase 5 (gate 5.1): the EKS control plane + scale-to-zero spot node group.
+# Whole-module gates behind enable_phase5 (validated to require
+# enable_phase1: the cluster sits in the Phase 1 VPC's private subnets).
+# Zero-diff argument, from construction: both calls collapse at the default,
+# the helm provider's data sources collapse behind enable_phase5_keda, and
+# no pre-existing resource or module input changed, so the toggles-off plan
+# stays byte-identical. COST WATCH: the control plane bills ~$0.10/hour from
+# creation regardless of nodes/pods; the gate 5.0 guard above force-destroys
+# it after phase5_teardown_max_age_hours unless phase5_keep_alive_until
+# stamps a future KeepAliveUntil tag. The node group starts at desired 0
+# (no EC2 instance, no compute cost) and the demo runbook owns the bump.
+# NOT applied during authoring: validate + structural tests only, per the
+# no-credentials rule; the isolated -target plan add-count is pinned at the
+# W4 demo window.
+# -----------------------------------------------------------------------------
+
+module "eks_cluster" {
+  count                    = var.enable_phase5 ? 1 : 0
+  source                   = "../../modules/eks_cluster"
+  permissions_boundary_arn = local.permissions_boundary_arn
+
+  project     = var.project
+  environment = var.environment
+  aws_region  = var.aws_region
+
+  cluster_name       = local.phase5_cluster_name
+  private_subnet_ids = module.network.private_subnet_ids
+
+  keep_alive_until = var.phase5_keep_alive_until
+
+  # The two-step KEDA install (see enable_phase5_keda's description): the
+  # helm_release inside the module is gated on this, and the helm provider's
+  # credentials data sources are gated on the same flag above.
+  install_keda = var.enable_phase5_keda
+
+  tags = local.common_tags
+}
+
+module "eks_node_group" {
+  count  = var.enable_phase5 ? 1 : 0
+  source = "../../modules/eks_node_group"
+
+  project     = var.project
+  environment = var.environment
+
+  # Referencing the cluster module's outputs (not the deterministic name
+  # local) is deliberate here: it orders node-group creation after the
+  # control plane and ties the node role to the module that owns EKS IAM.
+  cluster_name  = module.eks_cluster[0].cluster_name
+  node_role_arn = module.eks_cluster[0].node_role_arn
+
+  private_subnet_ids = module.network.private_subnet_ids
 
   tags = local.common_tags
 }

@@ -174,6 +174,43 @@ variable "phase5_teardown_max_age_hours" {
   default     = 4
 }
 
+variable "phase5_keep_alive_until" {
+  description = <<-EOT
+    ISO 8601 UTC timestamp (e.g. "2026-07-12T02:00:00Z") stamped on the EKS
+    cluster as its KeepAliveUntil tag, the gate 5.0 teardown guard's
+    keep-alive contract: a future value extends a LIVE demo past
+    phase5_teardown_max_age_hours; empty (the default) stamps nothing so the
+    age window is the only clock. Unparseable values grant NO extension (the
+    guard fails toward teardown). Extending a demo is a tfvars update + apply
+    of this one tag, never a schedule or window rewrite.
+  EOT
+  type        = string
+  default     = ""
+}
+
+variable "enable_phase5_keda" {
+  description = <<-EOT
+    Gate for the KEDA helm_release AND the helm provider's cluster
+    credentials. SEPARATE from enable_phase5 by necessity, not taste: a
+    provider block cannot be count-gated, and the helm provider is configured
+    from aws_eks_cluster/aws_eks_cluster_auth DATA sources that read live
+    cluster credentials at plan time. Gating those data sources (and the
+    helm_release) on this flag means every enable_phase5_keda = false plan,
+    including make validate and CI, needs no cluster and no AWS credentials.
+    The documented two-step: apply #1 with enable_phase5 = true creates the
+    cluster; apply #2 adds enable_phase5_keda = true to install KEDA. Default
+    false. Requires enable_phase5 (and an EXISTING cluster, which Terraform
+    cannot cross-validate; the runbook owns that ordering).
+  EOT
+  type        = bool
+  default     = false
+
+  validation {
+    condition     = !var.enable_phase5_keda || var.enable_phase5
+    error_message = "enable_phase5_keda requires enable_phase5 = true (KEDA installs into the Phase 5 EKS cluster)."
+  }
+}
+
 variable "phase5_guard_dry_run" {
   description = <<-EOT
     When true, the teardown guard logs what it would destroy but takes no
