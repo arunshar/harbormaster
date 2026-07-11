@@ -1,0 +1,45 @@
+infra/terraform/modules/apigw/main.tf
+  s_a2e22b769416de::t_2fbe780bf1d533 71-86
+  s_a2e22b769416de::t_bbf0c9806533ec 106-114
+deploy/k8s/serving/with-cdc/scaledobject-kafka-trigger.yaml
+  s_a2e22b769416de::t_a23faf4ec9d042 1-31
+deploy/k8s/serving/README.md
+  s_a2e22b769416de::t_34fb8579086745 1-55
+tests/e2e/test_phase5_k8s_manifests.py
+  s_a2e22b769416de::t_33f15094cc9c3e 1-213
+deploy/k8s/serving/with-cdc/kustomization.yaml
+  s_a2e22b769416de::t_9787d693f42419 1-8,10-18
+  s_a2e22b769416de::t_919b45f4954d5b 9
+infra/terraform/modules/apigw/variables.tf
+  s_a2e22b769416de::t_72706ed34e69af 108-145
+deploy/k8s/serving/base/deployment.yaml
+  s_a2e22b769416de::t_957fac9fcdcf5b 1-67
+deploy/k8s/serving/base/kustomization.yaml
+  s_a2e22b769416de::t_a3f8b1ae6ad2a0 1-22
+deploy/k8s/serving/base/namespace.yaml
+  s_a2e22b769416de::t_7e2fec795a913f 1-9
+deploy/k8s/serving/base/scaledobject-kinesis.yaml
+  s_a2e22b769416de::t_0193e1d8fd7130 1-55
+deploy/k8s/serving/base/service.yaml
+  s_a2e22b769416de::t_a7c82f11917a5b 1-25
+deploy/k8s/serving/golden/base.yaml
+  s_a2e22b769416de::t_b800d88d3d0c0f 1-111
+deploy/k8s/serving/golden/with-cdc.yaml
+  s_a2e22b769416de::t_03106397b135a5 1-122
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "18db288a22bf756e1ee4d9440982b8a73b20b41c",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
