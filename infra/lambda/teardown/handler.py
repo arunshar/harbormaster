@@ -235,9 +235,7 @@ def delete_msk_serverless_clusters(dry_run, results):
             tags = cluster.get("Tags", {})
             if not tags:
                 try:
-                    tags = client.list_tags_for_resource(
-                        ResourceArn=arn
-                    ).get("Tags", {})
+                    tags = client.list_tags_for_resource(ResourceArn=arn).get("Tags", {})
                 except Exception as tag_err:  # noqa: BLE001
                     _log("msk_tag_lookup_failed", cluster=name, error=str(tag_err))
                     continue
@@ -414,8 +412,12 @@ def lambda_handler(event, context):
     reports spend. Returns a JSON-serializable dict describing what happened so
     the result is visible in the Lambda console and in step logs."""
     dry_run = _env_bool("DRY_RUN", True)
-    _log("teardown_start", dry_run=dry_run, project_tag=PROJECT_TAG_VALUE,
-         event=event if isinstance(event, dict) else str(event))
+    _log(
+        "teardown_start",
+        dry_run=dry_run,
+        project_tag=PROJECT_TAG_VALUE,
+        event=event if isinstance(event, dict) else str(event),
+    )
 
     results = {}
     # Each step is independent and catches its own exceptions, so the order is

@@ -165,15 +165,20 @@ class PiDpmClient:
         emits) parse here unchanged."""
         if not self.enabled:
             return None
+        # `enabled` above already guarantees both clients exist; this local
+        # re-check only narrows the Any | None attributes for mypy.
+        s3, sagemaker = self._s3, self._sagemaker
+        if s3 is None or sagemaker is None:  # pragma: no cover
+            return None
 
         try:
             input_key = f"{self._input_prefix}/{uuid.uuid4()}.json"
-            self._s3.put_object(
+            s3.put_object(
                 Bucket=self._input_bucket,
                 Key=input_key,
                 Body=json.dumps({"trajectory": trajectory}).encode(),
             )
-            resp = self._sagemaker.invoke_endpoint_async(
+            resp = sagemaker.invoke_endpoint_async(
                 EndpointName=self._endpoint_name,
                 InputLocation=f"s3://{self._input_bucket}/{input_key}",
                 ContentType="application/json",
@@ -187,7 +192,7 @@ class PiDpmClient:
         deadline = self._monotonic() + self._timeout_s
         while self._monotonic() < deadline:
             try:
-                obj = self._s3.get_object(Bucket=output_bucket, Key=output_key)
+                obj = s3.get_object(Bucket=output_bucket, Key=output_key)
                 payload = json.loads(obj["Body"].read())
                 variance = payload.get("epistemic_variance")
                 return PiDpmScore(
@@ -209,4 +214,9 @@ class PiDpmClient:
         """The S3 client's own NoSuchKey exception type (only resolvable
         once a real boto3 client exists; a plain KeyError-shaped fake in
         tests can raise this same attribute path)."""
-        return self._s3.exceptions.NoSuchKey
+        s3 = self._s3
+        # Only reachable from score_full after the `enabled` gate, so the
+        # client is never None here; the check narrows Any | None for mypy.
+        if s3 is None:  # pragma: no cover
+            raise RuntimeError("pidpm s3 client is not configured")
+        return s3.exceptions.NoSuchKey

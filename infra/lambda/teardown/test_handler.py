@@ -164,11 +164,7 @@ class FakeCeClient:
         self._rec = recorder
 
     def get_cost_and_usage(self, **kwargs):
-        return {
-            "ResultsByTime": [
-                {"Total": {"UnblendedCost": {"Amount": "12.34", "Unit": "USD"}}}
-            ]
-        }
+        return {"ResultsByTime": [{"Total": {"UnblendedCost": {"Amount": "12.34", "Unit": "USD"}}}]}
 
 
 class FakeSnsClient:
