@@ -101,17 +101,33 @@ class GapDetectorAgent:
             return []
 
         bboxes = [p.mobr().bounds for p in prisms]  # (xmin, ymin, xmax, ymax) in lon/lat
-        merged: list[set[int]] = []
-        seen: set[int] = set()
-        for i in range(len(prisms)):
-            if i in seen:
-                continue
-            cluster = {i}
-            for j in range(len(prisms)):
-                if j != i and _bbox_overlap(bboxes[i], bboxes[j]):
-                    cluster.add(j)
-            seen |= cluster
-            merged.append(cluster)
+        # Connected components over the "bboxes overlap" graph, union-find, so a
+        # TRANSITIVE chain (0 overlaps 1, 1 overlaps 2, 0 disjoint from 2) merges
+        # into ONE region (the DRM maximal-union the docstring promises). The
+        # previous single-pass seed clustering put the middle prism in two
+        # clusters (double-counting its coverage) and, because each cluster's
+        # head is its lowest-index member, never emitted the tail prism's gap.
+        n = len(prisms)
+        parent = list(range(n))
+
+        def _find(x: int) -> int:
+            while parent[x] != x:
+                parent[x] = parent[parent[x]]
+                x = parent[x]
+            return x
+
+        for i in range(n):
+            for j in range(i + 1, n):
+                if _bbox_overlap(bboxes[i], bboxes[j]):
+                    ri, rj = _find(i), _find(j)
+                    if ri != rj:
+                        parent[max(ri, rj)] = min(ri, rj)
+
+        components: dict[int, list[int]] = {}
+        for i in range(n):
+            components.setdefault(_find(i), []).append(i)
+        # deterministic order: components by their lowest (earliest-gap) member
+        merged: list[list[int]] = [sorted(m) for _, m in sorted(components.items())]
 
         gaps: list[Gap] = []
         for cluster in merged:

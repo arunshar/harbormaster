@@ -79,3 +79,14 @@ def test_fuel_weight_scales_only_fuel():
 
 def test_fuel_norm_constant_is_100km():
     assert FUEL_NORM_M == 100_000.0
+
+
+def test_coverage_weight_scales_only_coverage():
+    """Wave 3 finding [30]: pin coverage_weight at a non-default value so a
+    mutation dropping the coverage_weight factor is caught."""
+    g = tiny_synthetic_graph()
+    # n0 alone: coverage 8/18, no fuel. Doubling coverage_weight doubles reward.
+    base = coverage_minus_fuel(["n0"], g, coverage_weight=1.0)
+    doubled = coverage_minus_fuel(["n0"], g, coverage_weight=2.0)
+    assert base == pytest.approx(8 / 18)
+    assert doubled == pytest.approx(2.0 * 8 / 18)

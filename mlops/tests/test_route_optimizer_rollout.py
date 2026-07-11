@@ -107,3 +107,25 @@ def test_training_on_an_all_infeasible_graph_does_not_crash():
     # the empty-batch guard returns finite zero-metrics instead of dividing by n=0
     assert all(np.isfinite(h["loss"]) for h in hist)
     assert all(h["mean_reward"] >= 0.0 for h in hist)  # start-node coverage only
+
+
+def test_greedy_route_picks_the_most_probable_feasible_edge():
+    """Wave 3 finding [29]: pin greedy's argmax direction so a mutation to
+    argsort(+p) (least-probable first) is caught."""
+    g = tiny_synthetic_graph()
+    # node 0 has edges to slots [n1, n2]; bias the policy hard toward slot 1 (n2)
+    logits = np.zeros((g.n_nodes, g.max_out_degree))
+    logits[0, 1] = 10.0  # n2 is by far the most probable first hop
+    pol = TabularPolicy(g.n_nodes, g.max_out_degree, logits=logits)
+    r = greedy_route(pol, g, start_idx=0, horizon=1, dt_s=3600.0, v_max_mps=V_MAX)
+    assert r.node_ids[1] == "n2"  # took the highest-probability feasible edge, not the lowest
+
+
+def test_greedy_route_does_not_reuse_an_edge():
+    """Wave 3 finding [15]: pin the visited-edges dedup so greedy cannot spin in
+    a 2-cycle; every consecutive hop is a distinct directed edge."""
+    g = tiny_synthetic_graph()
+    pol = TabularPolicy(g.n_nodes, g.max_out_degree)
+    r = greedy_route(pol, g, start_idx=0, horizon=20, dt_s=3600.0, v_max_mps=V_MAX)
+    edges = list(zip(r.node_ids, r.node_ids[1:], strict=False))
+    assert len(edges) == len(set(edges)), f"greedy reused an edge: {edges}"

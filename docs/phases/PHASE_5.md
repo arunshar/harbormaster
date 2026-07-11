@@ -16,7 +16,7 @@ Anchor fact-check findings folded in at authoring time (2026-07-04, every reuse 
 
 ## Sprint-honest scope (cannot close this sprint, by design, stated up front)
 
-- This is a plan-authoring session only. No branch cut, no Terraform written beyond what this doc specifies in prose, no code. Build is explicitly a later sprint per Arun's locked sprint decision.
+- This section described the ORIGINAL 2026-07-04 plan-authoring session (no branch, no code then). The build has since happened: gates 5.-1 through 5.9 are committed and merged (PR #4, 2026-07-11), per the line-3 status above. The bullets below are the historical sprint-scope decisions, kept for provenance; read line 3 for current state.
 - The real EKS/KEDA migration, multi-tenant isolation, Bedrock integration, and PPO stretch service are all substantial, multi-day builds in their own right (this phase is larger in scope than any of Phases 1-4 individually); this doc plans them at the same gate granularity as Phase 3/4 but does not compress the actual engineering effort.
 - The FDE artifacts (six documents) are writing work, not code; they are listed here because the master plan ties them to Phase 5, but their authoring discipline (SIMULATED labeling per `docs/HONESTY.md`) is Block E's concern when that block runs, not a code gate.
 - The portfolio page and cover-note/resume updates the master plan's Phase 5 bullet also names are Block E's job (already a separate, queued sprint task), not duplicated here.
