@@ -1,0 +1,25 @@
+# Phase 5 gate 5.2: cluster-internal Service for the serving Deployment.
+# ClusterIP, matching the no-standing-ALB decision the ECS front door already
+# made (docs/phases/PHASE_1.md). The API Gateway retarget (modules/apigw's
+# serving_target = "eks") reaches this via the VPC Link against a Cloud Map
+# service ARN or an internal NLB listener created at demo time; an HTTP API
+# VPC Link cannot target a bare ClusterIP DNS name directly, which is why the
+# retarget input is an integration URI, not this Service's DNS (limitation
+# recorded in modules/apigw/variables.tf).
+apiVersion: v1
+kind: Service
+metadata:
+  name: serving
+  namespace: hm-serving
+  labels:
+    app: serving
+    app.kubernetes.io/part-of: harbormaster
+spec:
+  type: ClusterIP
+  selector:
+    app: serving
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8000
+      protocol: TCP

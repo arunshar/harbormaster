@@ -68,6 +68,22 @@ resource "aws_apigatewayv2_integration" "serving" {
   connection_id      = aws_apigatewayv2_vpc_link.this.id
 }
 
+# Phase 5 (gate 5.2): the EKS-path integration over the SAME VPC Link,
+# authored behind eks_integration_uri (empty default = not created = zero
+# diff). The ECS integration above and the aws_ecs_service it fronts are NOT
+# deleted: they are the documented rollback path until a live demo proves the
+# EKS path (PHASE_5.md gate 5.2's no-untested-cutover decision).
+resource "aws_apigatewayv2_integration" "serving_eks" {
+  count = var.eks_integration_uri != "" ? 1 : 0
+
+  api_id             = aws_apigatewayv2_api.this.id
+  integration_type   = "HTTP_PROXY"
+  integration_method = "ANY"
+  integration_uri    = var.eks_integration_uri
+  connection_type    = "VPC_LINK"
+  connection_id      = aws_apigatewayv2_vpc_link.this.id
+}
+
 # JWT authorizer, only when authorization_mode = JWT. Free for HTTP APIs (no
 # Lambda invoke). Requires jwt_issuer and jwt_audience from the caller.
 resource "aws_apigatewayv2_authorizer" "jwt" {
@@ -87,7 +103,15 @@ resource "aws_apigatewayv2_authorizer" "jwt" {
 resource "aws_apigatewayv2_route" "proxy" {
   api_id    = aws_apigatewayv2_api.this.id
   route_key = "ANY /{proxy+}"
-  target    = "integrations/${aws_apigatewayv2_integration.serving.id}"
+  # The gate 5.2 retarget point: at the default (serving_target = "ecs") this
+  # expression evaluates to exactly the pre-Phase-5 value, so the shipped
+  # route is unchanged; "eks" swaps the route to the EKS integration while
+  # the ECS service keeps running as the rollback path.
+  target = (
+    var.serving_target == "eks"
+    ? "integrations/${aws_apigatewayv2_integration.serving_eks[0].id}"
+    : "integrations/${aws_apigatewayv2_integration.serving.id}"
+  )
 
   # Default posture is AWS_IAM (SigV4), so the public route is not anonymously
   # open. Switch to JWT (with issuer/audience) or NONE via authorization_mode.

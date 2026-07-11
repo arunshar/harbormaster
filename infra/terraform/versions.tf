@@ -28,5 +28,12 @@ terraform {
       source  = "hashicorp/random"
       version = "~> 3.0"
     }
+    helm = {
+      # Phase 5 (gate 5.1): KEDA installs via helm_release. 2.x pinned; the
+      # 3.x provider changed the kubernetes block to attribute syntax, which
+      # would silently break the envs/base provider config on unpinned init.
+      source  = "hashicorp/helm"
+      version = "~> 2.13"
+    }
   }
 }

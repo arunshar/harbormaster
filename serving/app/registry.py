@@ -19,7 +19,7 @@ from typing import Any, Protocol
 
 import structlog
 
-from app.config import Settings
+from app.config import DEFAULT_TENANT_ID, Settings
 from app.errors import RegistryEntryNotFound
 
 log = structlog.get_logger(__name__)
@@ -118,15 +118,24 @@ class PostgresRegistryBackend:
         self._pool = pool
 
     @classmethod
-    async def connect(cls, dsn: str) -> PostgresRegistryBackend:
+    async def connect(cls, dsn: str, tenant_id: str = DEFAULT_TENANT_ID) -> PostgresRegistryBackend:
         import asyncpg  # lazy; only the real backend needs it
 
-        from cdc.schema import ddl  # lazy; serving runs without cdc unless PG is used
+        from cdc.schema import ddl, tenancy  # lazy; serving runs without cdc unless PG is used
 
-        pool = await asyncpg.create_pool(dsn=dsn, min_size=1, max_size=2)
+        async def _set_tenant(conn: Any) -> None:
+            # Phase 5 gate 5.4: pin app.tenant_id before any query (see
+            # hitl.py: per-acquire setup, not init, because asyncpg's
+            # release-time RESET ALL would wipe an init-time GUC).
+            await conn.execute("SELECT set_config('app.tenant_id', $1, false)", tenant_id)
+
+        pool = await asyncpg.create_pool(dsn=dsn, min_size=1, max_size=2, setup=_set_tenant)
         async with pool.acquire() as conn:
             for stmt in ddl.statements():
                 await conn.execute(stmt)
+            for table in ddl.CDC_TABLES:
+                for stmt in tenancy.statements_for(table):
+                    await conn.execute(stmt)
         return cls(pool)
 
     async def upsert_vessel(self, mmsi: int, fields: dict[str, str]) -> dict[str, Any]:
@@ -225,7 +234,9 @@ class RegistryStore:
         dsn = settings.resolved_pg_dsn()
         if dsn:
             try:
-                backend: RegistryBackend = await PostgresRegistryBackend.connect(dsn)
+                backend: RegistryBackend = await PostgresRegistryBackend.connect(
+                    dsn, settings.resolved_tenant_id()
+                )
                 log.info("registry_backend", kind="postgres")
                 return cls(backend)
             except Exception as exc:  # asyncpg missing or DB unreachable -> memory
