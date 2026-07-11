@@ -143,11 +143,12 @@ select = ["E", "F", "I", "UP", "B"]
 
 # ---- Coverage gate (engineering-standard ratchet) --------------------------
 # Measured 2026-07-06 on this dev machine (macOS, Python 3.12.11, .venv): the
-# full unit suite (390 passed, 9 skipped) reaches 78.62% line+branch coverage
+# full unit suite (671 passed, 14 skipped) reaches 82.12% line+branch coverage
 # across the five source packages below, test files excluded from the count.
-# fail_under is set to 75 as a real ratchet: it passes today with a small
-# margin (skipped tests can shift the exact figure run to run) and blocks any
-# regression below that floor. This is a repo-wide FLOOR, not the target. The
+# fail_under is ratcheted to 80 (Wave 3, up from 75): it passes today with a
+# ~2-point margin (skipped tests can shift the exact figure run to run) and
+# blocks any regression below that floor. This is a repo-wide FLOOR, not the
+# target. The
 # standard for any NEW or CHANGED module is 90% line+branch coverage, enforced
 # in review, not by lowering this floor toward 90 (which the repo as a whole is
 # not yet at, so a global 90 here would be a red gate reported green). branch
@@ -163,7 +164,7 @@ omit = [
 ]
 
 [tool.coverage.report]
-fail_under = 75
+fail_under = 80
 skip_covered = true
 show_missing = true
 

@@ -263,7 +263,7 @@ Findings 01 and 26 (a war story, not an audit finding number) are the clearest s
 
 ## 12. War-stories index
 
-`PLATFORM_WAR_STORIES.md` holds P1 through P28 in one file, one numbering, no collision. P1 through P8 are anticipated failure modes written as design talking points, not yet grounded in a real incident. P9 through P26 are grounded through live drills and live AWS runs. P27 and P28 were grounded through Phase 4 drills and were numbered P13 and P14 on `phase4-flywheel` before the rebase; the collision that created was resolved in the file itself at rebase time, not deferred to this book, which only documents that the resolution already happened.
+`PLATFORM_WAR_STORIES.md` holds P1 through P37 in one file, one numbering, no collision. Most are grounded in a real incident, drill, live run, or commit; only P8 (a hard-cap deny not stopping in-flight spend) and P37 (a rarely-hit tenant's scale-from-zero cold start) remain anticipated, the latter to be grounded once the W4 EKS/KEDA window measures the cold start. P9 through P26 are grounded through live drills and live AWS runs. P27 and P28 were grounded through Phase 4 drills and were numbered P13 and P14 on `phase4-flywheel` before the rebase; that collision was resolved in the file itself at rebase time. P29 through P34 are grounded through the AB masterclass audit and its first PR CI run (the checkov-baseline, pyiceberg-core, Flink-UDF-serialization, IAM-boundary, mutation-testing, and gitignored-tfvars findings). P35 and P36 are grounded through the Phase 5 multi-tenant drills (per-tenant drift hidden by a global average; RLS blocking a cross-tenant read against a real Postgres).
 
 | # | Title | Tag | Status | Transcript / commit |
 | --- | --- | --- | --- | --- |
@@ -295,6 +295,15 @@ Findings 01 and 26 (a war story, not an audit finding number) are the clearest s
 | P26 | The same class of bug survives a targeted audit fix, one alarm over | Grounded | Self-found, verified live | `a1de2a4` |
 | P27 | Cross-validating two drift proxies stops a false concept-drift retrain | Grounded | Phase 4 drill L3 | `docs/drills/L3_drift_classification.md` |
 | P28 | The reward-hacking probe blocks a gamed checkpoint, then gets hardened itself | Grounded | Phase 4 drill L4 plus same-day fix | `docs/drills/L4_reward_hacking_probe.md`; fix at `8c9f413` |
+| P29 | A checkov baseline regenerated before the code it was supposed to gate | Grounded | AB masterclass audit | `45d221c` |
+| P30 | pyiceberg partition transforms silently need the pyiceberg_core Rust extension on the write path | Grounded | AB masterclass audit | `5cb5a01` (`lake/iceberg.py`) |
+| P31 | Extracting inlined Flink UDFs to a module changes distributed serialization semantics | Grounded | AB masterclass audit | `5cb5a01` (`streaming/window_logic.py`) |
+| P32 | An IAM permissions-boundary on the deploy identity is a two-sided contract every managed role must honor | Grounded | AB masterclass audit | `45d221c` |
+| P33 | Mutation testing as the anti-tautology check on new guards | Grounded | AB masterclass audit | commits 2A/2B (CDC LSN guard, `serving/app/burn_rate.py`) |
+| P34 | A checkov baseline silently coupled to a gitignored tfvars that CI cannot reproduce | Grounded | AB masterclass audit, first PR CI run | `1943db9`, `9a75eab` |
+| P35 | A single tenant's population shift disappears into a global drift average | Grounded | Phase 5 drill M-drift-hidden | `docs/drills/M_drift_hidden.md` |
+| P36 | Tenant isolation enforced in application code is one missing WHERE from a cross-tenant leak | Grounded | Phase 5 drill M-tenant-leak (real Postgres) | `docs/drills/M_tenant_leak.md` |
+| P37 | A rarely-hit tenant pays the full scale-from-zero cold start on its first request | Anticipated | W4 EKS/KEDA window (deferred) | grounded once the W4 cold-start is measured |
 
 Full five-beat detail (symptom, wrong first hypothesis, root cause, fix, lesson) for every entry lives in `PLATFORM_WAR_STORIES.md` itself; this table is an index, not a replacement. The stories are also mirrored, with BUG_JOURNAL-format one-line entries numbered 91 through 106, to the private `arunshar/debug-war-stories` repository, bringing that catalog to 134 stories total across both files. Tier assignment (which stories get a rehearsed 60-to-90-second pitch versus recognition-level familiarity), the interview selection matrix, and the browsable guide's regeneration for the newest entries are explicitly deferred there as their own curation pass, not rushed alongside the mirror itself.
 
