@@ -105,6 +105,44 @@ variable "jwt_audience" {
   default     = []
 }
 
+# --- Phase 5 (gate 5.2): EKS front-door retarget, authored-not-cutover ------
+# The EKS migration retargets the proxy route from the ECS Cloud Map
+# integration to a second integration over the SAME VPC Link. Both defaults
+# below keep the shipped configuration byte-identical (serving_target =
+# "ecs", no EKS integration exists), so the ECS path stays the intact,
+# documented rollback path until a live demo proves the EKS one; flipping
+# serving_target is a one-variable route retarget, and flipping it back is
+# the rollback.
+#
+# LIMITATION, stated honestly: an HTTP API VPC Link integration can only
+# target an ELB listener or a Cloud Map service ARN, never a bare
+# cluster-internal DNS name, so PHASE_5.md's "retargets ... to the new EKS
+# Service's cluster-internal DNS" is realized as eks_integration_uri = the
+# ARN of a Cloud Map service (or internal NLB listener) that fronts the EKS
+# Service, registered by the demo runbook.
+
+variable "serving_target" {
+  description = "Which integration the proxy route points at: ecs (default, the Fargate/Cloud Map path) or eks (the Phase 5 front door; requires eks_integration_uri)."
+  type        = string
+  default     = "ecs"
+
+  validation {
+    condition     = contains(["ecs", "eks"], var.serving_target)
+    error_message = "serving_target must be one of: ecs, eks."
+  }
+
+  validation {
+    condition     = var.serving_target != "eks" || var.eks_integration_uri != ""
+    error_message = "serving_target = eks requires eks_integration_uri (a Cloud Map service ARN or ELB listener ARN fronting the EKS serving Service)."
+  }
+}
+
+variable "eks_integration_uri" {
+  description = "Integration URI for the EKS serving path: a Cloud Map service ARN or internal NLB listener ARN reachable through the existing VPC Link. Empty (the default) authors no EKS integration and leaves the plan a zero diff."
+  type        = string
+  default     = ""
+}
+
 # --- WAF ---------------------------------------------------------------------
 # WAF has a standing per-web-ACL and per-rule cost, so it is authored but off by
 # default. Flip enable_waf to true (and apply) to attach a managed-rule web ACL
