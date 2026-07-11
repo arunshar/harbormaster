@@ -9,9 +9,16 @@ from __future__ import annotations
 
 from functools import lru_cache
 from typing import Literal
+from uuid import UUID
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Phase 5 single-tenant sentinel: the zero UUID every row and session carries
+# when HM_TENANT_ID is unset. Mirrors cdc/schema/tenancy.py's copy (the serving
+# wheel must not depend on the cdc package at runtime; a unit test asserts the
+# two never drift, the sanctions_flag_id convention).
+DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000000"
 
 
 class Settings(BaseSettings):
@@ -74,9 +81,32 @@ class Settings(BaseSettings):
     pidpm_endpoint: str = ""
     pidpm_input_bucket: str = ""
 
+    # Phase 5 gate 5.4: this deployment's tenant. Empty means single-tenant
+    # back-compat (every Postgres session pins the zero-UUID sentinel, so the
+    # RLS policies pass and Phase 1-4 behavior is unchanged), matching the
+    # HM_PIDPM_ENDPOINT / online_table empty-disables convention. Non-empty
+    # must be a UUID: it becomes the app.tenant_id GUC on every DB session.
+    tenant_id: str = ""
+
+    @field_validator("tenant_id")
+    @classmethod
+    def _tenant_id_is_a_uuid_or_empty(cls, v: str) -> str:
+        # Validate at construction, not at query time: a malformed tenant id
+        # would otherwise surface as a ::uuid cast error inside every RLS
+        # policy evaluation, the worst possible place to learn about a typo.
+        if v:
+            UUID(v)
+        return v
+
     @property
     def vessel_v_max_mps(self) -> float:
         return self.vessel_v_max_kts * 0.514_444
+
+    def resolved_tenant_id(self) -> str:
+        """The tenant every Postgres session pins as app.tenant_id: the
+        configured tenant when set, else the single-tenant zero-UUID sentinel
+        (back-compat; rows and sessions agree, so nothing filters out)."""
+        return self.tenant_id or DEFAULT_TENANT_ID
 
     def resolved_pg_dsn(self) -> str:
         """The DSN to connect with: pg_dsn verbatim, else built from the parts

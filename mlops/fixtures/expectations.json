@@ -39,5 +39,28 @@
     "feature_b_psi": 6.652284902471817,
     "feature_b_ks": 0.5,
     "feature_b_ks_pvalue": 3.6276162006545173e-06
+  },
+  "tenant_rls": {
+    "note": "gate 5.4: sha256 of cdc/schema/tenancy.py's canonical_ddl() plus the one policy predicate every table uses; if either changes intentionally, update this AND docs/phases/PHASE_5.md in the same commit",
+    "tables": ["hitl_queue", "vessels", "watchlist", "sanctions_flags"],
+    "policy_predicate": "tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid",
+    "ddl_sha256": "40626277233f3a4acbc9db138878411a386271049482981d7d3a2b91d0a943f4"
+  },
+  "tenant_slo_tiers": {
+    "note": "gate 5.4 golden cases: tier targets (real_time IS the Phase 1 table verbatim; near_real_time/batch are DESIGN targets, live measurement deferred to the W4 demo window) and the one-series-three-verdicts boundary case, verified against the real calculator",
+    "targets": {
+      "real_time": {"score_success_ratio": 0.999, "score_kernel_p95_ms": 300.0, "replay_to_hitl_p95_s": 10.0},
+      "near_real_time": {"score_success_ratio": 0.995, "score_kernel_p95_ms": 1000.0, "replay_to_hitl_p95_s": 60.0},
+      "batch": {"score_success_ratio": 0.99, "score_kernel_p95_ms": 5000.0, "replay_to_hitl_p95_s": 900.0}
+    },
+    "boundary_case": {
+      "series": "1440 buckets at 60s, each total=1000 bad=30 (3% bad ratio, sustained)",
+      "real_time_status": "page",
+      "near_real_time_status": "warning",
+      "batch_status": "ok",
+      "real_time_should_rollback": true,
+      "near_real_time_should_rollback": false,
+      "batch_should_rollback": false
+    }
   }
 }

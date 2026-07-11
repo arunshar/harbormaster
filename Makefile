@@ -13,7 +13,8 @@ COST_CAP := 75
         lake-quality-smoke lake-backfill-smoke lake-training-export-smoke \
         drill-l1-training-serving-skew drill-l2-canary-rollback lake-e2e \
         pidpm-demo-checkpoint lake-package lake-package-venv drift-smoke \
-        drift-lambda-package drill-l3-drift-classification drill-l4-reward-hacking phase4-e2e
+        drift-lambda-package drill-l3-drift-classification drill-l4-reward-hacking phase4-e2e \
+        phase5-tenant-smoke
 
 help:
 	@echo "Harbormaster Phase 0 targets (operate on $(TF_DIR)):"
@@ -214,3 +215,8 @@ drill-l4-reward-hacking:       ## drill: a gamed candidate is blocked before sha
 
 phase4-e2e:           ## Phase 4 e2e acceptance: all 5 criteria, pure functions + fakes, no live stack
 	$(PY) -m pytest tests/e2e/test_phase4.py -v
+
+# ---- Phase 5: multi-tenant isolation (local Postgres, zero AWS, $0) ----
+
+phase5-tenant-smoke:  ## gate 5.4: RLS fail-closed + per-tenant burn-rate boundary vs a local Postgres (HM_TEST_PG_DSN or a throwaway docker pg)
+	$(PY) scripts/phase5_tenant_smoke.py

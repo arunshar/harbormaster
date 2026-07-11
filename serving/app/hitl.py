@@ -21,7 +21,7 @@ from uuid import uuid4
 
 import structlog
 
-from app.config import Settings
+from app.config import DEFAULT_TENANT_ID, Settings
 from app.errors import HitlTraceNotFound
 from app.models import AisScoreOut, FeedbackIn
 
@@ -113,12 +113,30 @@ class PostgresHitlBackend:
         )
 
     @classmethod
-    async def connect(cls, dsn: str) -> PostgresHitlBackend:
+    async def connect(cls, dsn: str, tenant_id: str = DEFAULT_TENANT_ID) -> PostgresHitlBackend:
         import asyncpg  # imported lazily; only needed for the real backend
 
-        pool = await asyncpg.create_pool(dsn=dsn, min_size=1, max_size=4, init=cls._init_conn)
+        async def _set_tenant(conn: Any) -> None:
+            # Phase 5 gate 5.4: pin app.tenant_id BEFORE any query. The RLS
+            # policies (cdc/schema/tenancy.py) filter every read and stamp
+            # every insert off this GUC; a session that skipped it would read
+            # zero rows, fail-closed by Postgres, not by this code. This is
+            # the pool's per-ACQUIRE setup hook, not the per-connection init:
+            # asyncpg's release-time reset runs RESET ALL, which would wipe an
+            # init-time GUC the first time a connection went back to the pool.
+            await conn.execute("SELECT set_config('app.tenant_id', $1, false)", tenant_id)
+
+        pool = await asyncpg.create_pool(
+            dsn=dsn, min_size=1, max_size=4, init=cls._init_conn, setup=_set_tenant
+        )
         async with pool.acquire() as conn:
             await conn.execute(_DDL)
+            # Lazy cdc import on the Postgres-only path, mirroring registry.py:
+            # the serving wheel runs without the cdc package unless PG is used.
+            from cdc.schema import tenancy
+
+            for stmt in tenancy.statements_for("hitl_queue"):
+                await conn.execute(stmt)
         return cls(pool)
 
     async def enqueue(self, trace_id: str, out: AisScoreOut, ts: datetime) -> None:
@@ -168,7 +186,9 @@ class HitlQueue:
         dsn = settings.resolved_pg_dsn()
         if dsn:
             try:
-                backend: HitlBackend = await PostgresHitlBackend.connect(dsn)
+                backend: HitlBackend = await PostgresHitlBackend.connect(
+                    dsn, settings.resolved_tenant_id()
+                )
                 log.info("hitl_backend", kind="postgres")
                 return cls(backend)
             except Exception as exc:  # asyncpg missing or DB unreachable -> degrade to memory
