@@ -1,0 +1,54 @@
+cdc/schema/tenancy.py
+  s_a2e22b769416de::t_f0abae3642ef84 1-115
+serving/tests/test_slo_tenant.py
+  s_a2e22b769416de::t_bb0e0436a9d32f 1-200
+serving/tests/test_tenant_rls.py
+  s_a2e22b769416de::t_36c1eb786a9caf 1-99,101-104,106-228
+  s_a2e22b769416de::t_0b8602efced5cb 100,105
+  s_a2e22b769416de::t_b03dd0266cace9 229
+serving/app/config.py
+  s_a2e22b769416de::t_249643bfffabcd 84-100
+  s_a2e22b769416de::t_d01af5c2ea0238 12,14,17-21
+  s_a2e22b769416de::t_3b2318495a49fe 105-110
+  s_a2e22b769416de::t_b4f35608f43c0b 22
+cdc/tests/test_tenancy.py
+  s_a2e22b769416de::t_9e196183b0bd62 1-78
+scripts/phase5_tenant_smoke.py
+  s_a2e22b769416de::t_a9dc5683055cf3 1-238
+  s_a2e22b769416de::t_ef8bb5ca933c61 239-244
+serving/app/slo_tenant.py
+  s_a2e22b769416de::t_66fbf1a06a3eb1 1-127
+serving/app/registry.py
+  s_a2e22b769416de::t_f8d6afd99d14ae 121,124,130-131,136-138
+  s_a2e22b769416de::t_86bf6ce4cca5ea 22
+  s_a2e22b769416de::t_5284949ede3ce8 126-129,132
+  s_a2e22b769416de::t_a0eb531bed3bae 237-239
+Makefile
+  s_a2e22b769416de::t_f877210ca80e60 16-17
+  s_a2e22b769416de::t_2f84a9241285b3 218-222
+serving/app/hitl.py
+  s_a2e22b769416de::t_853f9ae0584cc3 24
+  s_a2e22b769416de::t_9fce4e22bd071f 119-126,129-131
+  s_a2e22b769416de::t_0d4863d297a057 189-191
+  s_a2e22b769416de::t_1536f28692cdc3 116,127-128,134-139
+serving/tests/test_config_tenant.py
+  s_a2e22b769416de::t_96e22d9ccc9fce 1-33
+mlops/fixtures/expectations.json
+  s_a2e22b769416de::t_e55e057cedc1af 42-64
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "e24a4ee3ddae7ad2570d8383901c3d30129e291b",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
