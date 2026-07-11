@@ -1,0 +1,23 @@
+mlops/disagreement_baseline.py
+  s_a2e22b769416de::t_50cb96a318a998 1-147
+mlops/drift_decision.py
+  s_a2e22b769416de::t_57509ed7d38fc8 25-32
+mlops/tests/test_disagreement_baseline.py
+  s_a2e22b769416de::t_af33fe018a62eb 1-154
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "31c549181fa665ba97596e5bd16dd9b9db239893",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
