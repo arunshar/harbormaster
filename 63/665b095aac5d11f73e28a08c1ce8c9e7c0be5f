@@ -1,0 +1,72 @@
+mlops/tests/test_route_optimizer_ppo.py
+  s_a2e22b769416de::t_1910362954bffd 1-57,64-72,75-80,84-89,92,105-113,118-121,123-125,131-151
+  s_a2e22b769416de::t_b63de20e027479 58-63,73-74,90-91,96-104,114-117,122,126-130
+  s_a2e22b769416de::t_f5e5c9c7082b61 81-83,93-95
+mlops/route_optimizer/rollout.py
+  s_a2e22b769416de::t_e804b4eeb415d3 31-38
+  s_a2e22b769416de::t_b84e4f25ba7b00 132-136
+  s_a2e22b769416de::t_70fb32fb9ebb58 1-30,39-50,54-131,137-196,198-206,214-239
+  s_a2e22b769416de::t_c08709a447bef3 197,207-213,240-265
+  s_a2e22b769416de::t_980bf56ba6b493 51-53
+mlops/tests/test_route_optimizer_feasibility.py
+  s_a2e22b769416de::t_4e4fe6b125229a 24-29
+  s_a2e22b769416de::t_4570966ede3051 1-23,30-60
+mlops/route_optimizer/graph.py
+  s_a2e22b769416de::t_3a1b163c676ef1 1-166
+mlops/route_optimizer/reward.py
+  s_a2e22b769416de::t_19364cd61647e3 1-50
+mlops/route_optimizer/feasibility.py
+  s_a2e22b769416de::t_57ea09d9bd1539 1-101
+mlops/route_optimizer/__init__.py
+  s_a2e22b769416de::t_3deeac2964476e 1-25
+mlops/route_optimizer/service.py
+  s_a2e22b769416de::t_dfbd4795c9884d 55
+  s_a2e22b769416de::t_259b82a1dd95bb 94-95
+  s_a2e22b769416de::t_6011dfc3ce7133 114-117,119,129-130,132
+  s_a2e22b769416de::t_06ea727177a705 23,26,34-46
+  s_a2e22b769416de::t_3711f14f17ad23 96,98,102
+  s_a2e22b769416de::t_0d52862c23bd53 21-22,33
+  s_a2e22b769416de::t_b55e67e8eeea65 1-20,24-25,27-28,31-32,47-54,56-93,97,99-101,103-113,118,120-128,131,133-152
+  s_a2e22b769416de::t_3ab9aae73832de 29-30
+mlops/tests/test_route_optimizer_graph.py
+  s_a2e22b769416de::t_abb22eb573ecb4 1-112
+mlops/tests/test_route_optimizer_kl.py
+  s_a2e22b769416de::t_de4c7c98e4876d 41-43
+  s_a2e22b769416de::t_65571e181838ae 1-25,29-40,44-92
+  s_a2e22b769416de::t_1925b1bf6b5834 26-28
+mlops/route_optimizer/vendored_kl.py
+  s_a2e22b769416de::t_0167725f190125 1-53
+serving/app/config.py
+  s_a2e22b769416de::t_728c146ef68be0 90-98
+mlops/route_optimizer/ppo.py
+  s_a2e22b769416de::t_678f044f71b9e8 1-281
+scripts/ppo_stretch_smoke.py
+  s_a2e22b769416de::t_dd47f74e4830d7 40-41
+  s_a2e22b769416de::t_6cf20486fd85fb 1-39,42-62
+Makefile
+  s_a2e22b769416de::t_56347c78c46fd4 223-225
+  s_a2e22b769416de::t_ac58e34c0f85c7 17
+mlops/tests/test_route_optimizer_reward.py
+  s_a2e22b769416de::t_9446f4b0c707b6 1-81
+mlops/fixtures/expectations.json
+  s_a2e22b769416de::t_0b169fe242fc8b 65-86
+mlops/tests/test_route_optimizer_service.py
+  s_a2e22b769416de::t_61a25fc5960aed 1-111,115-155
+  s_a2e22b769416de::t_5dc4214cc4e86c 112-114
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "63665b095aac5d11f73e28a08c1ce8c9e7c0be5f",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
