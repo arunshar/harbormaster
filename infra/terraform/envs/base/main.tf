@@ -514,6 +514,47 @@ module "sagemaker_pidpm" {
   tags = local.common_tags
 }
 
+# -----------------------------------------------------------------------------
+# Phase 5 (gate 5.0): the EKS teardown guard, authored BEFORE the cluster it
+# guards (gate 5.1) so the structural cost mitigation can never lag the cost.
+# Whole-module gate behind enable_phase5 (default false; requires
+# enable_phase1, the enable_phase2/3 convention). Zero-diff argument, from
+# construction: this call is the ONLY enable_phase5 reference in the plan at
+# gate 5.0, the module's count collapses it entirely at the default, and no
+# pre-existing resource or module input anywhere in this root changed, so the
+# enable_phase5 = false plan is byte-identical to the pre-gate configuration.
+# The guarded cluster name is a deterministic local, never a module output,
+# so the guard has no Terraform dependency on the cluster it destroys.
+# -----------------------------------------------------------------------------
+
+locals {
+  # Single source of truth for the Phase 5 cluster name, shared by the guard
+  # (gate 5.0) and modules/eks_cluster (gate 5.1) so they can never disagree.
+  phase5_cluster_name = "${var.project}-${var.environment}-eks"
+}
+
+module "eks_teardown_guard" {
+  count                    = var.enable_phase5 ? 1 : 0
+  source                   = "../../modules/eks_teardown_guard"
+  permissions_boundary_arn = local.permissions_boundary_arn
+
+  project     = var.project
+  environment = var.environment
+  aws_region  = var.aws_region
+
+  cluster_name  = local.phase5_cluster_name
+  max_age_hours = var.phase5_teardown_max_age_hours
+  guard_dry_run = var.phase5_guard_dry_run
+
+  sns_topic_arn = module.finops.sns_topic_arn
+
+  # Lambda source at infra/lambda/eks_teardown relative to this root, the
+  # finops teardown packaging convention (boto3-only, zipped as-is).
+  lambda_source_dir = "${path.module}/../../../lambda/eks_teardown"
+
+  tags = local.common_tags
+}
+
 # Phase 4 (gate 4.6): the drift-alerting plane. Depends only on Phase 0 (the
 # lake bucket + the finops SNS topic), not Phase 1/3, so it is gated purely
 # on enable_phase4 with no enable_phase1 requirement, unlike Phase 2/3. NOT

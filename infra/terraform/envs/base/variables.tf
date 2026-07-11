@@ -138,6 +138,55 @@ variable "enable_phase4" {
   default     = false
 }
 
+variable "enable_phase5" {
+  description = <<-EOT
+    Gate for the Phase 5 multi-tenant EKS front-door plane (the EKS teardown
+    guard at gate 5.0, then the EKS cluster + scale-to-zero spot node group +
+    KEDA at gates 5.1/5.2). Default false keeps a base apply Phase-0-only and
+    the plan a ZERO diff (every Phase 5 module is whole-module count-gated on
+    this flag; nothing outside those modules changes on either value).
+    Requires enable_phase1 = true (the EKS cluster sits in the Phase 1 VPC's
+    private subnets), the enable_phase2/enable_phase3 convention. COST WATCH:
+    the EKS control plane bills a flat ~$73/mo (~$0.10/hour) from cluster
+    creation whether or not any node or pod runs, the one Phase 1-5 cost that
+    cannot idle to zero, which is why this flag also arms the structural
+    teardown guard (modules/eks_teardown_guard) that force-destroys the
+    cluster after phase5_teardown_max_age_hours.
+  EOT
+  type        = bool
+  default     = false
+
+  validation {
+    condition     = !var.enable_phase5 || var.enable_phase1
+    error_message = "enable_phase5 requires enable_phase1 = true (the EKS cluster sits in the Phase 1 VPC's private subnets)."
+  }
+}
+
+variable "phase5_teardown_max_age_hours" {
+  description = <<-EOT
+    Hours after EKS cluster creation before the gate 5.0 teardown guard
+    force-destroys the node groups and cluster. Default 4 bounds a demo
+    window to roughly $0.40 of control plane. Extend a LIVE demo by setting
+    a future KeepAliveUntil tag on the cluster (gate 5.1 wires
+    phase5_keep_alive_until to it), not by raising this window.
+  EOT
+  type        = number
+  default     = 4
+}
+
+variable "phase5_guard_dry_run" {
+  description = <<-EOT
+    When true, the teardown guard logs what it would destroy but takes no
+    action. Default FALSE (armed), deliberately inverted from
+    teardown_dry_run's safe-until-trusted convention: the guard being armed
+    IS the gate 5.0 structural mitigation, and a resting dry-run state would
+    reduce it back to the procedural checklist that already failed once
+    (Phase 2's MSK Serverless risk). Set true only for a rehearsal window.
+  EOT
+  type        = bool
+  default     = false
+}
+
 variable "enable_cmk" {
   description = <<-EOT
     Gate for the customer-managed KMS key (modules/kms: rotation-enabled key +
