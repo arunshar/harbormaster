@@ -154,15 +154,21 @@ def test_e_rls_ddl_is_fail_closed_by_construction():
         "RLS DDL drifted from the pinned sha256; update the fixture AND PHASE_5.md together"
     )
     ddl = "\n".join(tenancy.statements())
-    # fail-closed predicate: a NULL/unset app.tenant_id matches no row
-    assert "current_setting('app.tenant_id'" in ddl
-    assert "NULLIF" in ddl and "::uuid" in ddl
-    # every tenant table is RLS-enabled, FORCEd (owner is not exempt), and has a
-    # tenant-isolation policy: isolation is structural, not application-layer.
+    predicate = pinned["policy_predicate"]
+    # the fail-closed predicate must be the pinned one (unset app.tenant_id ->
+    # NULLIF -> NULL -> matches no row), and it must be the policy's USING
+    # clause, not merely present somewhere (a column DEFAULT also mentions
+    # current_setting). A fail-OPEN `USING (true)` must never appear.
+    assert predicate == "tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid"
+    assert "USING (true)" not in ddl and "USING(true)" not in ddl
+    # every tenant table is RLS-enabled, FORCEd (owner is not exempt), and its
+    # isolation policy USES exactly the fail-closed predicate: isolation is
+    # structural, not application-layer, and cannot silently become fail-open.
     for table in tenancy.TENANT_TABLES:
         assert f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY;" in ddl
         assert f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY;" in ddl
         assert f"CREATE POLICY {table}_tenant_isolation ON {table}" in ddl
+        assert f"USING ({predicate})" in ddl
 
 
 def test_e_live_rls_rejects_cross_tenant_read_when_postgres_available():

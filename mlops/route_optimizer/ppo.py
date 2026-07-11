@@ -1,27 +1,36 @@
 """The PPO trainer SHAPE from pi-grpo, retargeted to a tabular numpy policy
 over the corridor graph (gate 5.7). Zero torch, zero GPU, zero AWS.
 
-Provenance: the ``PpoConfig`` field set and the ``PpoTrainer.step_update`` loss
+Provenance: the ``PpoConfig`` FIELD SET and the ``PpoTrainer.step_update`` loss
 structure are ported from pi-grpo's ``app/trainers/ppo_trainer.py`` (commit
-``6b54808``, 2026-07-10, verified 2026-07-04): the clipped surrogate
-``-min(ratio*A, clip(ratio)*A)``, the value MSE scaled by ``vf_coef``, the
-entropy bonus scaled by ``ent_coef``, the adaptive-KL penalty, global-norm
-gradient clipping, and a cosine LR schedule, in that exact composition. What is
-retargeted, not copied: the policy is a masked-softmax LOOKUP TABLE over
-corridor edges (not an LM), the value function is a per-node table (not a torch
-head), and the gradients are the closed-form softmax/PPO gradients computed in
-numpy (pi-grpo backprops through torch). ``AdaptiveKLController`` and
-``cosine_lr`` come from the byte-for-byte ``vendored_kl`` module; only the
-torch-bound ``clip_grad_norm`` is reimplemented here, in numpy, as the source
-file's header states.
+``6b54808``, dated 2026-07-10; the reuse-anchor paths were verified against
+pi-grpo on 2026-07-04 per docs/phases/PHASE_5.md, and the code was vendored
+2026-07-11): the clipped surrogate ``-min(ratio*A, clip(ratio)*A)``, the value
+MSE scaled by ``vf_coef``, the entropy bonus scaled by ``ent_coef``, the
+adaptive-KL penalty, global-norm gradient clipping, and a cosine LR schedule, in
+that exact composition. What is retargeted, not copied: the policy is a
+masked-softmax LOOKUP TABLE over corridor edges (not an LM), the value function
+is a per-node table (not a torch head), and the gradients are the closed-form
+softmax/PPO gradients computed in numpy (pi-grpo backprops through torch).
+``AdaptiveKLController`` and ``cosine_lr`` come from the byte-for-byte
+``vendored_kl`` module; only the torch-bound ``clip_grad_norm`` is reimplemented
+here, in numpy, as the source file's header states.
 
 Deliberate departures from the source, all because the target is a tiny tabular
-MDP rather than LM fine-tuning: the optimizer is a minimal in-file Adam with
-weight decay OFF (torch's ``AdamW`` defaults to ``1e-2``; decaying a corridor
-lookup table toward zero has no meaning here), and advantages are Monte-Carlo
-returns minus the value baseline (not GAE-lambda). Neither changes the update
-math this gate is checked on; both are noted so the "ported shape" claim stays
-honest.
+MDP rather than LM fine-tuning:
+- The optimizer is a minimal in-file Adam with weight decay OFF (torch's
+  ``AdamW`` defaults to ``1e-2``; decaying a corridor lookup table toward zero
+  has no meaning here), and advantages are Monte-Carlo returns minus the value
+  baseline (not GAE-lambda).
+- The DEFAULT VALUES of the learning-rate and schedule fields are RETUNED for
+  the tiny MDP, not carried over from the source: ``lr`` 1e-2 (source 1e-6),
+  ``lr_min`` 1e-4 (source 1e-7), ``warmup_steps`` 5 (source 100),
+  ``total_steps`` 200 (source 5000). pi-grpo's 1e-6 LM-fine-tuning rate would
+  barely move a lookup table over a 200-step smoke; only the field set and the
+  clip/vf/ent/target-KL coefficients are the source's.
+None of this changes the update MATH this gate is checked on (the numerical
+gradient check in the tests verifies it); all of it is disclosed so the "ported
+shape" claim stays honest.
 """
 
 from __future__ import annotations
@@ -44,11 +53,14 @@ __all__ = [
 
 @dataclass
 class PpoConfig:
-    """Ported field-for-field from pi-grpo's ``PpoConfig`` (the LM-tuning
-    defaults are kept verbatim so the shared shape is obvious), plus two
-    fields the corridor MDP needs that an LM run does not: ``gamma`` (return
-    discount) and ``hop_seconds`` (the per-hop time budget the S-KBM
-    feasibility gate measures against)."""
+    """Ported field-for-field from pi-grpo's ``PpoConfig`` so the shared shape is
+    obvious. The clip/vf/ent/target-KL/minibatch/rollout coefficients keep the
+    source's values; the learning-rate and schedule defaults (``lr``,
+    ``lr_min``, ``warmup_steps``, ``total_steps``) are RETUNED for this tiny
+    tabular MDP (see the module docstring's departures list). Plus two fields
+    the corridor MDP needs that an LM run does not: ``gamma`` (return discount)
+    and ``hop_seconds`` (the per-hop time budget the S-KBM feasibility gate
+    measures against)."""
 
     lr: float = 1e-2
     lr_min: float = 1e-4
@@ -201,6 +213,23 @@ class PpoTrainer:
     def step_update(self, batch: RouteBatch) -> dict[str, float]:
         cfg = self.cfg
         n = len(batch.states)
+        if n == 0:
+            # No decisions in the batch: every rollout terminated immediately
+            # (a start node with no feasible outgoing corridor under the hop
+            # budget). There is nothing to learn from, so advance the step
+            # counter and return a zero-metrics no-op rather than dividing by
+            # zero. run_training over such a graph will simply not improve.
+            self.step += 1
+            return {
+                "loss": 0.0,
+                "pg_loss": 0.0,
+                "vf_loss": 0.0,
+                "kl": 0.0,
+                "kl_coef": float(self.kl.kl_coef),
+                "grad_norm": 0.0,
+                "lr": 0.0,
+                "entropy": 0.0,
+            }
         new_logp, ent, probs = self.policy.forward(batch.states, batch.actions, batch.masks)
 
         # --- ported loss composition (pi-grpo ppo_trainer.step_update) ---

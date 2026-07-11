@@ -32,6 +32,10 @@ def _imported_modules(path: Path) -> set[str]:
             mods.update(a.name for a in node.names)
         elif isinstance(node, ast.ImportFrom) and node.module:
             mods.add(node.module)
+            # also the bound names: `from app import orchestrator` must be
+            # recorded as `app.orchestrator`, not just `app`, or a leak written
+            # that way would slip past the forbidden-set check.
+            mods.update(f"{node.module}.{a.name}" for a in node.names)
     return mods
 
 

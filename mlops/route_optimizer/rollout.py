@@ -174,7 +174,9 @@ def build_batch(
 
     states_a = np.array(states, dtype=np.int64)
     actions_a = np.array(actions, dtype=np.int64)
-    masks_a = np.stack(masks) if masks else np.zeros((0, value_table.n_nodes), dtype=bool)
+    # empty fallback keeps the action-slot column count (max_out_degree), not
+    # n_nodes, so a zero-decision batch has a shape-consistent (0, K) mask.
+    masks_a = np.stack(masks) if masks else np.zeros((0, ref_policy.max_out_degree), dtype=bool)
     returns_a = np.array(returns, dtype=np.float64)
     baseline = value_table.values[states_a] if len(states_a) else np.zeros(0)
     adv = returns_a - baseline

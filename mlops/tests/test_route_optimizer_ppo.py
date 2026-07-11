@@ -130,6 +130,35 @@ def test_grad_clipping_bounds_the_update():
     assert 0.0 < moved < cfg.lr * 2
 
 
+def test_grad_clip_actually_clips_the_gradient_norm():
+    """Capture the gradient the trainer feeds its optimizer and assert the
+    global-norm clip bounds it. (The displacement test above cannot see this:
+    Adam renormalizes the step to ~lr regardless of the raw-gradient norm, so
+    removing the clip would still pass a displacement bound.)"""
+
+    def _captured_grad_norm(grad_clip: float) -> float:
+        pol = TabularPolicy(2, 2)
+        cfg = PpoConfig(warmup_steps=0, grad_clip=grad_clip)
+        trainer = PpoTrainer(policy=pol, ref_policy=pol.copy(), value_head=ValueTable(2), cfg=cfg)
+        seen: dict[str, float] = {}
+
+        def _fake_step(grad, lr):
+            seen["norm"] = float(np.linalg.norm(grad))
+            return np.zeros_like(grad)
+
+        trainer.opt.step = _fake_step
+        # large advantages -> a raw gradient norm well above a tight clip
+        trainer.step_update(_one_batch(pol, returns=(5.0, -5.0), advantages=(9.0, -9.0)))
+        return seen["norm"]
+
+    tight = _captured_grad_norm(0.01)
+    loose = _captured_grad_norm(1e9)
+    assert tight <= 0.01 + 1e-9, "tight grad_clip did not bound the gradient norm"
+    assert loose > 0.01, (
+        "the unclipped gradient norm should exceed the tight clip (else the test is vacuous)"
+    )
+
+
 def test_seed_determinism():
     g = tiny_synthetic_graph()
     cfg = PpoConfig()
@@ -139,13 +168,50 @@ def test_seed_determinism():
     assert [m["mean_reward"] for m in h1] == [m["mean_reward"] for m in h2]
 
 
-def test_training_improves_mean_reward():
-    """Overfit-the-fixture smoke: the policy must learn a higher-reward routing
-    distribution on the tiny graph over a few dozen CPU steps."""
+def _improvement(cfg, seed):
     g = tiny_synthetic_graph()
-    cfg = PpoConfig()
-    _, hist = train_optimizer(g, cfg, seed=0, n_steps=60, n_rollouts=32, horizon=6)
+    _, hist = train_optimizer(g, cfg, seed=seed, n_steps=60, n_rollouts=24, horizon=6)
     early = np.mean([h["mean_reward"] for h in hist[:5]])
     late = np.mean([h["mean_reward"] for h in hist[-5:]])
-    assert late > early
     assert all(np.isfinite(h["loss"]) for h in hist)  # never diverges to NaN
+    return late - early
+
+
+def test_training_improves_mean_reward():
+    """Overfit-the-fixture smoke: the policy must LEARN a higher-reward routing
+    distribution on the tiny graph, by a margin RNG alone cannot produce.
+
+    A bare ``late > early`` at one seed passes even with the reward-driven
+    gradient removed (the mean_reward series is stochastic), so this asserts a
+    real margin across several seeds: the learner's mean improvement is ~0.08
+    with a per-seed floor near 0.07, whereas a learning-disabled policy
+    (advantages zeroed) sits near 0.01 and dips negative on some seeds. The
+    thresholds below sit well inside that gap."""
+    cfg = PpoConfig()
+    gains = [_improvement(cfg, seed) for seed in range(4)]
+    assert np.mean(gains) > 0.04, f"mean improvement {np.mean(gains):.4f} too small to be learning"
+    assert min(gains) > 0.03, f"a seed failed to improve ({min(gains):.4f}); learning is not robust"
+
+
+def test_zeroing_the_reward_signal_kills_the_improvement():
+    """The companion guard proving the margin above is a LEARNING signal, not
+    RNG: with the advantage (the only reward-driven gradient) zeroed, the same
+    margin assertion must fail. If this ever passes, the improvement test is a
+    tautology."""
+    import mlops.route_optimizer.rollout as rollout_mod
+
+    cfg = PpoConfig()
+    original = rollout_mod.build_batch
+
+    def _zeroed(rollouts, value_table, ref_policy, cfg):
+        batch = original(rollouts, value_table, ref_policy, cfg)
+        batch.advantages[:] = 0.0
+        return batch
+
+    rollout_mod.build_batch = _zeroed
+    try:
+        gains = [_improvement(cfg, seed) for seed in range(4)]
+    finally:
+        rollout_mod.build_batch = original
+    # with no reward signal the learner cannot clear the learning margin
+    assert np.mean(gains) < 0.04

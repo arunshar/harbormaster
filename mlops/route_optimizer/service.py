@@ -18,7 +18,7 @@ into the API Gateway front door.
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -49,7 +49,9 @@ EnabledDep = Annotated[bool, Depends(_resolve_enabled)]
 class OptimizeRequest(BaseModel):
     start_node: str = Field(..., description="node_id the route starts from")
     horizon: int = Field(8, ge=1, le=64, description="max hops in the returned walk")
-    domain: str = Field("vessel", description="speed model for the S-KBM feasibility gate")
+    domain: Literal["vessel", "vehicle", "pedestrian", "uav"] = Field(
+        "vessel", description="speed model for the S-KBM feasibility gate"
+    )
     coverage_weight: float = Field(1.0, ge=0.0)
     fuel_weight: float = Field(1.0, ge=0.0)
     train_steps: int = Field(40, ge=0, le=500, description="CPU PPO steps before the read-out")
