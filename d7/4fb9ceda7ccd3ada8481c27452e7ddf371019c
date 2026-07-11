@@ -1,0 +1,41 @@
+docs/phases/PHASE_5.md
+  s_a2e22b769416de::t_92fcabc9ee41e8 3
+scripts/drill_m_drift_hidden.py
+  s_a2e22b769416de::t_e8fcfb326d2269 1-60,63-68,71-90
+  s_a2e22b769416de::t_0a6bb41f90c4dd 61-62,69-70
+scripts/drill_m_tenant_leak.py
+  s_a2e22b769416de::t_ab39f8b0167e6a 1-38,41-87
+  s_a2e22b769416de::t_53b89633bcbf4e 39-40
+Makefile
+  s_a2e22b769416de::t_606ad4e4928aa3 227-235
+  s_a2e22b769416de::t_19f28dee55cbe2 17-18
+tests/e2e/test_phase5.py
+  s_a2e22b769416de::t_590a7486b4a4dc 76-77
+  s_a2e22b769416de::t_325da8447c679a 57-63,67
+  s_a2e22b769416de::t_435becfa6323bd 90-98
+  s_a2e22b769416de::t_cd99f120e729de 160-161,163-165
+  s_a2e22b769416de::t_b99b25041c251b 1-56,64-66,68-75,78-89,99-159,162,166-189,191-194,196-227
+  s_a2e22b769416de::t_0eb358cbb6efc0 190,195
+PLATFORM_WAR_STORIES.md
+  s_a2e22b769416de::t_12ba83ad53c6a6 432-473
+docs/drills/M_drift_hidden.md
+  s_a2e22b769416de::t_4a5374c6fb48df 1-13
+docs/drills/M_tenant_leak.md
+  s_a2e22b769416de::t_4919afcf7eb67b 1-15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "d74fb9ceda7ccd3ada8481c27452e7ddf371019c",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
