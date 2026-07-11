@@ -204,13 +204,17 @@ def train_optimizer(
     horizon: int,
     start_idx: int = 0,
     domain: str = "vessel",
+    coverage_weight: float = 1.0,
+    fuel_weight: float = 1.0,
 ) -> tuple[TabularPolicy, list[dict[str, float]]]:
     """Drive ``n_steps`` PPO updates on ``graph`` and return the TRAINED policy
     plus one metrics dict per step (each augmented with ``mean_reward``, the
     sampled rollouts' mean reward at that step, so a caller can assert
     improvement). The frozen reference for the KL penalty is the policy snapshot
     taken before any update, so ``kl`` starts near zero and grows as the policy
-    moves off the reference, exactly the ported trainer's contract.
+    moves off the reference, exactly the ported trainer's contract. The reward
+    weights are threaded into training so the policy optimizes the SAME reward
+    the caller later reads out greedily (not the default-weighted one).
     """
     rng = np.random.default_rng(seed)
     policy = TabularPolicy(graph.n_nodes, graph.max_out_degree)
@@ -230,6 +234,8 @@ def train_optimizer(
                 horizon=horizon,
                 dt_s=cfg.hop_seconds,
                 v_max_mps=v_max,
+                coverage_weight=coverage_weight,
+                fuel_weight=fuel_weight,
             )
             for _ in range(n_rollouts)
         ]

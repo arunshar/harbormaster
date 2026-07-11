@@ -471,3 +471,45 @@ An entry graduates from ANTICIPATED to grounded only when it is backed by a real
 - **Root cause:** scale-to-zero trades standing cost for tail latency. The `0 -> 1` scale-out (image pull, container start, model load, health-check pass) lands entirely on the first request, and a real-time-tier tenant's p95 SLO may not tolerate it even though a batch-tier tenant's would.
 - **Fix (anticipated):** measure the cold start in the W4 window (drill M3 / gate 5.3); if it breaches the real-time tier, keep `minReplicaCount: 1` for real-time tenants and reserve scale-to-zero for near-real-time/batch tiers, trading a few dollars of standing cost for the tail-latency SLO. Until measured, this stays a prediction, not a claim.
 - **Lesson:** scale-to-zero is an SLO decision, not just a cost decision, and the right minimum-replica count is per-tier, not global. Do not assert the breach or the fix before the live measurement exists; the tier that can absorb a cold start is the one that should scale to zero.
+
+---
+
+## P38: A permissions boundary that omits a service silently disables its teardown
+
+**Tags:** [PLATFORM / personal-build] TOOLING SECURITY
+
+**Status: GROUNDED**; 2026-07-11, branch wave3-pressure-test (Wave 3 pressure-test finding; fix + regression test `tests/e2e/test_permissions_boundary.py`, `infra/aws/harbormaster-permissions-boundary.json`).
+
+- **Symptom:** the structural EKS teardown guard (gate 5.0) and the nightly finops sweeper are built, tested, and wired, yet a review found that once the customer-managed permissions boundary is applied, they would never actually tear anything down.
+- **Wrong first hypothesis:** the teardown Lambdas' inline IAM policies grant `eks:DeleteCluster` / `kafka:DeleteCluster`, so the delete path is covered.
+- **Root cause:** effective permissions are the role's inline policy INTERSECT the permissions boundary. The boundary's Allow ceiling was authored in Phase 2B, before EKS and the guard existed, and was never widened when Phase 5 added them, so it omitted `eks:*`, `kafka:*`, and `autoscaling:*`. Every delete call is therefore AccessDenied at runtime; the Lambda catches it, decides "nothing to tear down", and publishes a healthy-looking SNS summary while the ~$73/mo EKS control plane and ~$18/day MSK Serverless bill indefinitely past the $75 hard cap. A structural guard defeated by a stale ceiling is exactly the procedural-failure mode it was built to replace.
+- **Fix:** added `eks:*`, `kafka:*`, and `autoscaling:*` to the boundary ceiling, and a regression test that fails if any service the teardown Lambdas call is missing from the ceiling. The IAM-escalation Deny statements are unchanged.
+- **Lesson:** a deny-by-omission ceiling is a second, invisible policy on every role, and it must be updated in lockstep with every new service the platform can stand up, or the cost safety-net for that service silently fails closed. Test the intersection, not just the inline grant: assert that every service a teardown path deletes is inside the boundary.
+
+---
+
+## P39: Row-level security over single-column business keys is not multi-tenant isolation
+
+**Tags:** [PLATFORM / personal-build] SECURITY CORRECTNESS
+
+**Status: GROUNDED (defect confirmed live; the composite-key fix is routed to the production-hardening plan)**; 2026-07-11, branch wave3-pressure-test (Wave 3 finding; reproduced against postgres:16, `docs/WAVE3_FINDINGS.md` findings 1/3/5).
+
+- **Symptom:** the RLS drills pass (a no-tenant session reads zero rows, tenant B cannot read tenant A's rows), so tenant isolation looks done. A pressure test then showed two tenants sharing one Postgres still collide.
+- **Wrong first hypothesis:** adding `tenant_id` + `FORCE ROW LEVEL SECURITY` + a fail-closed policy predicate to every tenant table is sufficient for co-tenancy.
+- **Root cause:** RLS controls row VISIBILITY, not physical key uniqueness. The tenant tables kept single-column business primary keys (`vessels.mmsi`, `watchlist.mmsi`, `sanctions_flags.id`). When tenant B upserts a key tenant A already holds, `ON CONFLICT (mmsi) DO UPDATE` conflicts with A's row, which is invisible to B under the policy, so Postgres raises SQLSTATE 42501; the API returns an unhandled 500, and the very failure is a covert channel telling B that another tenant holds that key. Worse, the tenant-private annotations (watchlist reason/severity, sanctions flags) are keyed only by MMSI, so tenants overwrite and read each other's private data. The CDC read side (a tenant-oblivious Debezium consumer feeding a DynamoDB table keyed on MMSI only, plus a tenant-agnostic Redis cache) has the same gap: Debezium bypasses RLS, so last-LSN-writer wins and cross-tenant reads leak.
+- **Fix (routed to production hardening):** re-scope the tenant tables to composite `(tenant_id, business_key)` primary/unique keys with composite `ON CONFLICT` targets, an explicit sentinel backfill before the column default takes over, and carry the tenant dimension into the DynamoDB key + `WatchlistLookup` + Redis key. This ripples through the base DDL, the Debezium message-key mapper, and the registry upserts, so it is done deliberately, not rushed; the drills and `docs/WAVE3_FINDINGS.md` record the current limitation honestly meanwhile.
+- **Lesson:** RLS is a visibility filter layered on top of a schema; it does not make a globally-unique key per-tenant, and it does not reach a CDC replication stream that reads the WAL directly. Multi-tenant isolation is a property of the keys and every store in the pipeline, not of one policy on one plane. A drill that only exercises reads and no-tenant writes will certify an isolation model that a same-key upsert breaks.
+
+---
+
+## P40: Mutation testing on the shared working tree poisons __pycache__
+
+**Tags:** [PLATFORM / personal-build] TOOLING
+
+**Status: GROUNDED**; 2026-07-11, branch wave3-pressure-test (observed while remediating the Wave 3 sweep; `docs/WAVE3_FINDINGS.md`).
+
+- **Symptom:** `test_tenant_drift` began failing after the adversarial sweep, in isolation, against source that `git diff` showed was unchanged. `inspect.getsource` printed the correct function body, yet the imported function returned a wrong (broken) result on the same objects.
+- **Wrong first hypothesis:** a real logic bug in `drifted_tenants`, or a stray uncommitted mutation left in the source.
+- **Root cause:** the sweep's mutation-testing lens edited source files in place to check whether a mutation survives, then reverted them. The reverts restored the source cleanly, but Python had already compiled `.pyc` bytecode from the MUTATED source into `__pycache__`, and its invalidation check did not trigger a recompile, so the interpreter loaded stale bytecode that no longer matched the (correct) source. `inspect.getsource` reads the `.py` and looked right; the running code came from the poisoned `.pyc`.
+- **Fix:** cleared every `__pycache__` directory; the full suite went green. The lesson was recorded so future sweeps run with `PYTHONDONTWRITEBYTECODE=1` or clear the cache on exit.
+- **Lesson:** any tool that rewrites source in place (mutation testing, codemods, autofixers) can leave `.pyc` files whose bytecode outlives the source it came from, and a test failing against source that reads correctly is the signature. When behavior contradicts the source you can see, suspect the bytecode cache before the logic.

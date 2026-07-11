@@ -112,11 +112,16 @@ def create_app(*, enabled: bool | None = None) -> FastAPI:
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
 
-        cfg = PpoConfig()
+        # total_steps spans the actual run so the cosine LR schedule decays over
+        # exactly train_steps (a fixed PpoConfig() total_steps would let the
+        # schedule turn back UP once train_steps exceeded it).
+        cfg = PpoConfig(total_steps=max(req.train_steps, 1))
         # Train a fresh CPU policy per request and read it out greedily. A
         # persistent, continually-trained policy is out of scope for a labeled
         # stretch (PHASE_5.md); train_steps=0 reads out the untrained policy,
-        # which is the feasibility-respecting uniform-then-argmax heuristic.
+        # which is the feasibility-respecting uniform-then-argmax heuristic. The
+        # reward weights are threaded into training so the policy optimizes the
+        # same reward the greedy read-out below scores.
         if req.train_steps > 0:
             policy, _ = train_optimizer(
                 graph,
@@ -127,6 +132,8 @@ def create_app(*, enabled: bool | None = None) -> FastAPI:
                 horizon=req.horizon,
                 start_idx=start_idx,
                 domain=req.domain,
+                coverage_weight=req.coverage_weight,
+                fuel_weight=req.fuel_weight,
             )
         else:
             policy = TabularPolicy(graph.n_nodes, graph.max_out_degree)
