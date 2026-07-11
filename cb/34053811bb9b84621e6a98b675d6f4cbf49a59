@@ -1,0 +1,24 @@
+serving/tests/test_gap_detector_pidpm.py
+  s_a2e22b769416de::t_49b3890839da8d 77-81
+  s_a2e22b769416de::t_4c30d1fabd47c8 74-76
+  s_a2e22b769416de::t_c8e97407729a28 82-84
+  s_a2e22b769416de::t_4511885a9f41fc 67-73,85
+serving/app/agents/gap_detector.py
+  s_a2e22b769416de::t_fcc86f1f00b74e 104-130
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "cb34053811bb9b84621e6a98b675d6f4cbf49a59",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
