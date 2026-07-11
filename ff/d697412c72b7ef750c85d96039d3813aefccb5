@@ -1,0 +1,27 @@
+docs/AB_MASTERCLASS_AUDIT.md
+  s_a2e22b769416de::t_3cc897fa70ed53 32
+  s_a2e22b769416de::t_8c6fb48d0a2e0e 72
+  s_a2e22b769416de::t_c1f31927d302fb 102
+pyproject.toml
+  s_a2e22b769416de::t_acbfe6503aebae 167
+  s_a2e22b769416de::t_95166e3724a584 146,148-151
+docs/PLATFORM_BOOK.md
+  s_a2e22b769416de::t_dd871c2b54cab8 266
+  s_a2e22b769416de::t_9d505985e9d39c 298-306
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "ffd697412c72b7ef750c85d96039d3813aefccb5",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
