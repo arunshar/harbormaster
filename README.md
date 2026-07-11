@@ -31,7 +31,7 @@ See `docs/ARCHITECTURE.md` for the full diagram and the opinionated tradeoffs.
 | `docs/HONESTY.md` | The locked honesty framing, real-vs-simulated labeling rules, gap talk-track. |
 | `docs/ARCHITECTURE.md` | Hybrid architecture diagram and the key tradeoffs. |
 | `docs/SYSTEM_DESIGN_DECISIONS.md` (+ `docs/system-design-decisions.html`) | Staff-level decision records: each component mapped to its canonical pattern and source (Fowler/Joshi, Kleppmann DDIA, Newman, Richardson, Nygard, Google SRE, HelloInterview), a SAGA deep-dive, AIS capacity sizing, and a 45-minute interview walkthrough. The HTML is an interactive learning companion. |
-| `PLATFORM_WAR_STORIES.md` | Debugging war stories (P1-P28), most grounded in live runs; a handful still anticipated. |
+| `PLATFORM_WAR_STORIES.md` | Debugging war stories (P1-P37), most grounded in live runs or drills; a handful still anticipated. |
 | `docs/PLATFORM_BOOK.md` | Consolidated build record, reviews, and operations: one entry point across all five phase docs, the external audit, the runbooks, and the war-stories catalog. |
 | `Makefile` | `fmt`, `validate`, `plan`, `apply`, `destroy` over `infra/terraform/envs/base`. |
 | `.gitignore` | Terraform, Python, env, and OS ignores. |
@@ -48,7 +48,7 @@ See `docs/ARCHITECTURE.md` for the full diagram and the opinionated tradeoffs.
 | `serving/` | Model serving and the inference front door (Phase 1, built and run live on AWS). |
 | `lake/` | EMR Spark backfill + Iceberg lake + training-set export (Phase 3, built and run live on AWS). |
 | `mlops/` | Model registry, promotion pipeline, drift/HITL/preference flywheel (Phases 3-4). |
-| `fde/` | Forward-deployed-engineer simulated case studies (Phase 5, not yet built). |
+| `fde/` | Forward-deployed-engineer simulated case studies (Phase 5, gate 5.8; committed, SIMULATED-labeled per `docs/HONESTY.md`). |
 
 ## Phase status
 
@@ -62,7 +62,7 @@ originally predated it); per-phase detail lives in `docs/phases/`.
 | Phase 2 | CDC: Postgres -> Debezium -> Kafka -> online store, slot-lag monitoring. | Local stack accepted (e2e 5/5, 0.57s smoke); AWS MSK showcase not yet run |
 | Phase 3 | Lake + promotion: EMR backfill -> Iceberg, Feast export, SageMaker async Pi-DPM endpoint, holdout/shadow/canary promotion. | AWS showcase run live 2026-07-04 (EMR backfill, SageMaker scale-to-zero both directions, live promotion pipeline); torn down clean |
 | Phase 4 | Drift -> HITL -> RL flywheel: drift taxonomy, preference triples, reward-hacking probe. | Code-complete (gates 4.0-4.7, `phase4-flywheel`, local-plane only); adversarially reviewed |
-| Phase 5 | Multi-tenant + scale: EKS/KEDA, tenant isolation, FDE case studies, explanation layer. | Planned and signed off (`docs/phases/PHASE_5.md`); build is a later sprint |
+| Phase 5 | Multi-tenant + scale: EKS/KEDA, tenant isolation, FDE case studies, explanation layer. | Built and merged (PR #4, gates 5.-1..5.9, `docs/phases/PHASE_5.md`); phase gate OPEN pending the W4 live window (measured cold-start, backpressure, live teardown) |
 
 ## Phase 0 quickstart
 

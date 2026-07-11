@@ -142,9 +142,10 @@ select = ["E", "F", "I", "UP", "B"]
 "serving/app/agents/validator.py" = ["E501"]
 
 # ---- Coverage gate (engineering-standard ratchet) --------------------------
-# Measured 2026-07-06 on this dev machine (macOS, Python 3.12.11, .venv): the
-# full unit suite (671 passed, 14 skipped) reaches 82.12% line+branch coverage
-# across the five source packages below, test files excluded from the count.
+# Measured 2026-07-11 (Wave 3) on this dev machine (macOS, Python 3.12.11,
+# .venv): the full unit suite (671 passed, 14 skipped) reaches 82.12%
+# line+branch coverage across the five source packages below, test files
+# excluded from the count.
 # fail_under is ratcheted to 80 (Wave 3, up from 75): it passes today with a
 # ~2-point margin (skipped tests can shift the exact figure run to run) and
 # blocks any regression below that floor. This is a repo-wide FLOOR, not the
