@@ -1,0 +1,37 @@
+mlops/route_optimizer/ppo.py
+  s_a2e22b769416de::t_ad9b01022a1b28 4,6-17,20-33
+  s_a2e22b769416de::t_4cab75e5a4625f 56-63
+  s_a2e22b769416de::t_4e73c4a4070951 216-227
+  s_a2e22b769416de::t_8c324329cd456b 228-232
+mlops/route_optimizer/service.py
+  s_a2e22b769416de::t_e86bfefdc27e8e 21
+  s_a2e22b769416de::t_bcfab78aedaa4c 52-54
+mlops/tests/test_route_optimizer_service.py
+  s_a2e22b769416de::t_12b33414596f38 35-38
+mlops/tests/test_route_optimizer_ppo.py
+  s_a2e22b769416de::t_c3069788351bfa 171,173,177-217
+  s_a2e22b769416de::t_69d5b73c049c81 133-161
+tests/e2e/test_phase5.py
+  s_a2e22b769416de::t_e2019ad7f0f412 157-166,171
+mlops/tests/test_route_optimizer_rollout.py
+  s_a2e22b769416de::t_4567865e960294 1-105
+  s_a2e22b769416de::t_3be0d3f3a09ac2 106-109
+mlops/route_optimizer/rollout.py
+  s_a2e22b769416de::t_eb2ec5c3a98fbd 177-179
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "d7e8456e832fc8bc478945014b0d0258aef82ea9",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
