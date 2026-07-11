@@ -1,0 +1,26 @@
+docs/phases/PHASE_5.md
+  s_a2e22b769416de::t_46d354585a9ea9 46
+  s_a2e22b769416de::t_d97bb8cc28f773 31
+  s_a2e22b769416de::t_817180e6c9fb0e 38
+  s_a2e22b769416de::t_c6a963de6328c4 89
+  s_a2e22b769416de::t_0c856989d2ba55 3
+  s_a2e22b769416de::t_6a9383c68de634 93
+  s_a2e22b769416de::t_0df8ce11266e35 40
+  s_a2e22b769416de::t_cdf7fcb147fded 7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "6130b687847542108df5e8b3e4c6feaae25685dc",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
