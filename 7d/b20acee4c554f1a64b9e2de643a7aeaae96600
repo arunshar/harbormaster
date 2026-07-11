@@ -1,0 +1,21 @@
+mlops/tests/test_tenant_drift.py
+  s_a2e22b769416de::t_861d18229650dc 1-102
+mlops/tenant_drift.py
+  s_a2e22b769416de::t_6fd973b4808be7 1-81
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "7db20acee4c554f1a64b9e2de643a7aeaae96600",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
