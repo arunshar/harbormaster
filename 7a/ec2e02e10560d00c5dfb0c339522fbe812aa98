@@ -1,0 +1,45 @@
+infra/lambda/eks_teardown/test_handler.py
+  s_a2e22b769416de::t_982368e3e7d447 336-369
+  s_a2e22b769416de::t_b733d2ad9f160a 89-92
+  s_a2e22b769416de::t_a8b8e21ba4bfda 162
+  s_a2e22b769416de::t_ead4f031985349 185-186
+  s_a2e22b769416de::t_96e38f24fb028f 1-88,93-161,163-184,187-335,370-430
+infra/terraform/modules/eks_teardown_guard/variables.tf
+  s_a2e22b769416de::t_7d72e44c514b2f 1-122
+tests/e2e/phase5_helpers.py
+  s_a2e22b769416de::t_65220ca8255f1b 1-92
+infra/lambda/eks_teardown/handler.py
+  s_a2e22b769416de::t_a59de1db434a29 1-314
+infra/lambda/eks_teardown/README.md
+  s_a2e22b769416de::t_bd6375da18d494 1-31
+infra/terraform/modules/eks_teardown_guard/main.tf
+  s_a2e22b769416de::t_c01b9cced6d446 1-340
+infra/terraform/envs/base/variables.tf
+  s_a2e22b769416de::t_d95e28f583bf0e 141-189
+infra/terraform/modules/eks_teardown_guard/versions.tf
+  s_a2e22b769416de::t_1ace28363d4e64 1-21
+infra/terraform/modules/eks_teardown_guard/outputs.tf
+  s_a2e22b769416de::t_5df9501a714078 1-21
+tests/e2e/test_phase5_helpers.py
+  s_a2e22b769416de::t_c035338b802c68 1-152
+infra/lambda/eks_teardown/requirements.txt
+  s_a2e22b769416de::t_1227a94eb59b08 1-13
+infra/terraform/envs/base/main.tf
+  s_a2e22b769416de::t_4bb060fb4883e5 517-557
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "7aec2e02e10560d00c5dfb0c339522fbe812aa98",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
