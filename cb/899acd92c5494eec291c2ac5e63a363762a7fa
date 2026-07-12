@@ -1,0 +1,21 @@
+docs/AB_MASTERCLASS_AUDIT.md
+  s_a2e22b769416de::t_eba8e51dbb23d3 11-12
+sessions/CODEX_HANDOFF_2026-07-12.md
+  s_a2e22b769416de::t_4402b94558b1d0 1-162
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "cb899acd92c5494eec291c2ac5e63a363762a7fa",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
