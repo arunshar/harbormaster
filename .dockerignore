@@ -5,10 +5,14 @@
 **/.pytest_cache
 **/.ruff_cache
 infra
-cdc
 fde
 deploy
 docs
+# NOT cdc: cdc/consumer/Dockerfile COPYs it (COPY cdc ./cdc); excluding it
+# broke the first-ever consumer image build (never built before this Wave 4
+# window, caught 2026-07-12). cdc/connect/Dockerfile doesn't copy any local
+# source (it only adds a jar into the debezium base image via curl), so it
+# never surfaced this.
 # NOT streaming/replay: streaming/ingestor/Dockerfile COPYs it (the ingestor
 # imports replay.loader); excluding it broke the first-ever ingestor image
 # build (never built before this sprint's W1 prep). streaming/flink and

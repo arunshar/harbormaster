@@ -7,7 +7,7 @@
     "database.port": "5432",
     "database.dbname": "harbormaster",
     "database.user": "hm_admin",
-    "database.password": "${file:/opt/kafka/external-configuration/pg/password:password}",
+    "database.password": "${dir:/dev/shm/secrets:password}",
     "plugin.name": "pgoutput",
     "publication.name": "harbormaster_cdc",
     "publication.autocreate.mode": "disabled",
