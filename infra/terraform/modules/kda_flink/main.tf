@@ -230,17 +230,25 @@ resource "aws_kinesisanalyticsv2_application" "flink" {
 
       property_group {
         property_group_id = "FlinkJob"
-        property_map = {
-          kinesis_stream_name = var.kinesis_stream_name
-          feast_online_table  = var.feast_table_name
-          serving_endpoint    = var.serving_endpoint
-          aws_region          = var.aws_region
-          # S3 dead-letter sink for malformed AIS + unrecoverable scorer POSTs
-          # (job.py FeatureProcess._quarantine). Reuses the lake bucket; the role's
-          # LakeReadWrite statement already grants s3:PutObject on it. Empty = the
-          # job logs and counts drops but writes no S3 object (local/demo path).
-          quarantine_bucket = var.quarantine_bucket
-        }
+        # Kinesis Analytics v2 rejects any property_map value with zero length
+        # (ValidationException: "Member must have length greater than or equal
+        # to 1"), so quarantine_bucket, whose whole "disabled" contract is an
+        # empty string (see the variable doc), must be OMITTED from the map
+        # entirely when empty, not passed through as "". merge() with a
+        # conditional empty map keeps the key out unless a real bucket name is
+        # set; job.py's FeatureProcess._quarantine already treats a MISSING key
+        # the same as an empty one (getProperty returns null either way), so
+        # this changes nothing about the job's runtime behavior, only what
+        # reaches the AWS API.
+        property_map = merge(
+          {
+            kinesis_stream_name = var.kinesis_stream_name
+            feast_online_table  = var.feast_table_name
+            serving_endpoint    = var.serving_endpoint
+            aws_region          = var.aws_region
+          },
+          var.quarantine_bucket != "" ? { quarantine_bucket = var.quarantine_bucket } : {}
+        )
       }
     }
   }

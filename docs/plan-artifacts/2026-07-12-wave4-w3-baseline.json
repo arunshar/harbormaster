@@ -1,0 +1,621 @@
+{
+  "generated_utc": "2026-07-12T09:21:51Z",
+  "label": "wave4-w3-baseline",
+  "add": 7,
+  "change": 14,
+  "destroy": 0,
+  "resource_changes": [
+    {
+      "address": "module.apigw[0].aws_apigatewayv2_api.this",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.apigw[0].aws_apigatewayv2_integration.serving",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.apigw[0].aws_apigatewayv2_route.proxy",
+      "actions": [
+        "update"
+      ]
+    },
+    {
+      "address": "module.apigw[0].aws_apigatewayv2_stage.default",
+      "actions": [
+        "update"
+      ]
+    },
+    {
+      "address": "module.apigw[0].aws_apigatewayv2_vpc_link.this",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.apigw[0].aws_cloudwatch_log_group.access[0]",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "module.apigw[0].aws_security_group.vpc_link",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.ecs_cluster[0].aws_ecs_cluster.this",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.ecs_cluster[0].aws_ecs_cluster_capacity_providers.this",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.ecs_ingestor[0].aws_cloudwatch_log_group.ingestor",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.ecs_ingestor[0].aws_ecr_repository.ingestor",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.ecs_ingestor[0].aws_ecs_task_definition.ingestor",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.ecs_ingestor[0].aws_iam_role.execution",
+      "actions": [
+        "update"
+      ]
+    },
+    {
+      "address": "module.ecs_ingestor[0].aws_iam_role.task",
+      "actions": [
+        "update"
+      ]
+    },
+    {
+      "address": "module.ecs_ingestor[0].aws_iam_role_policy.task",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.ecs_ingestor[0].aws_iam_role_policy_attachment.execution",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.ecs_ingestor[0].aws_security_group.ingestor",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.ecs_serving[0].aws_appautoscaling_policy.cpu",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.ecs_serving[0].aws_appautoscaling_target.serving",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.ecs_serving[0].aws_cloudwatch_log_group.serving",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.ecs_serving[0].aws_ecr_repository.serving",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.ecs_serving[0].aws_ecs_service.serving",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.ecs_serving[0].aws_ecs_task_definition.serving",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.ecs_serving[0].aws_iam_role.execution",
+      "actions": [
+        "update"
+      ]
+    },
+    {
+      "address": "module.ecs_serving[0].aws_iam_role.task",
+      "actions": [
+        "update"
+      ]
+    },
+    {
+      "address": "module.ecs_serving[0].aws_iam_role_policy.execution_secrets[0]",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.ecs_serving[0].aws_iam_role_policy.task",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.ecs_serving[0].aws_iam_role_policy_attachment.execution",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.ecs_serving[0].aws_security_group.serving",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.ecs_serving[0].aws_service_discovery_private_dns_namespace.this",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.ecs_serving[0].aws_service_discovery_service.serving",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.finops.data.aws_iam_policy_document.scheduler_invoke",
+      "actions": [
+        "read"
+      ]
+    },
+    {
+      "address": "module.finops.aws_budgets_budget.hard",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.finops.aws_budgets_budget.soft",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.finops.aws_budgets_budget_action.spend_freeze",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.finops.aws_ce_anomaly_subscription.service",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.finops.aws_iam_policy.spend_freeze",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.finops.aws_iam_role.budget_action",
+      "actions": [
+        "update"
+      ]
+    },
+    {
+      "address": "module.finops.aws_iam_role.scheduler",
+      "actions": [
+        "update"
+      ]
+    },
+    {
+      "address": "module.finops.aws_iam_role.teardown",
+      "actions": [
+        "update"
+      ]
+    },
+    {
+      "address": "module.finops.aws_iam_role_policy.budget_action_exec",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.finops.aws_iam_role_policy.scheduler_invoke",
+      "actions": [
+        "update"
+      ]
+    },
+    {
+      "address": "module.finops.aws_iam_role_policy.teardown",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.finops.aws_lambda_function.teardown",
+      "actions": [
+        "update"
+      ]
+    },
+    {
+      "address": "module.finops.aws_lambda_permission.allow_scheduler[0]",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.finops.aws_scheduler_schedule.nightly_teardown[0]",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.finops.aws_sns_topic.budget_alerts",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.finops.aws_sns_topic_policy.budget_alerts",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.finops.aws_sns_topic_subscription.email",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.firehose[0].aws_iam_role.firehose",
+      "actions": [
+        "update"
+      ]
+    },
+    {
+      "address": "module.firehose[0].aws_iam_role_policy.firehose",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.firehose[0].aws_kinesis_firehose_delivery_stream.ais_raw",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.kda_flink[0].aws_cloudwatch_log_group.flink",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.kda_flink[0].aws_cloudwatch_log_stream.flink",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.kda_flink[0].aws_iam_role.flink",
+      "actions": [
+        "update"
+      ]
+    },
+    {
+      "address": "module.kda_flink[0].aws_iam_role_policy.flink",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.kda_flink[0].aws_kinesisanalyticsv2_application.flink[0]",
+      "actions": [
+        "update"
+      ]
+    },
+    {
+      "address": "module.kinesis[0].aws_kinesis_stream.ais_raw",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.network.aws_internet_gateway.this",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.network.aws_route.public_internet",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.network.aws_route_table.private[0]",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.network.aws_route_table.private[1]",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.network.aws_route_table.public",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.network.aws_route_table_association.private[0]",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.network.aws_route_table_association.private[1]",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.network.aws_route_table_association.public[0]",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.network.aws_route_table_association.public[1]",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.network.aws_subnet.private[0]",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.network.aws_subnet.private[1]",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.network.aws_subnet.public[0]",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.network.aws_subnet.public[1]",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.network.aws_vpc.this",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.network.aws_vpc_endpoint.dynamodb",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.network.aws_vpc_endpoint.s3",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.observability[0].aws_cloudwatch_composite_alarm.burn_fast",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "module.observability[0].aws_cloudwatch_composite_alarm.burn_slow",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "module.observability[0].aws_cloudwatch_dashboard.phase1",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.observability[0].aws_cloudwatch_metric_alarm.api_5xx",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.observability[0].aws_cloudwatch_metric_alarm.api_latency_p95",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.observability[0].aws_cloudwatch_metric_alarm.burn_window[\"fast_long\"]",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "module.observability[0].aws_cloudwatch_metric_alarm.burn_window[\"fast_short\"]",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "module.observability[0].aws_cloudwatch_metric_alarm.burn_window[\"slow_long\"]",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "module.observability[0].aws_cloudwatch_metric_alarm.burn_window[\"slow_short\"]",
+      "actions": [
+        "create"
+      ]
+    },
+    {
+      "address": "module.rds[0].aws_db_instance.this",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.rds[0].aws_db_subnet_group.this",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.rds[0].aws_security_group.this",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.state_stores.aws_dynamodb_table.feast_online",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.state_stores.aws_dynamodb_table.tf_state_lock",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.state_stores.aws_s3_bucket.lake",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.state_stores.aws_s3_bucket.models",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.state_stores.aws_s3_bucket_lifecycle_configuration.lake",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.state_stores.aws_s3_bucket_lifecycle_configuration.models",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.state_stores.aws_s3_bucket_public_access_block.lake",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.state_stores.aws_s3_bucket_public_access_block.models",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.state_stores.aws_s3_bucket_server_side_encryption_configuration.lake",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.state_stores.aws_s3_bucket_server_side_encryption_configuration.models",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.state_stores.aws_s3_bucket_versioning.lake",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.state_stores.aws_s3_bucket_versioning.models",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.state_stores.aws_s3_object.lake_prefixes[\"features/\"]",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.state_stores.aws_s3_object.lake_prefixes[\"iceberg/\"]",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.state_stores.aws_s3_object.lake_prefixes[\"raw/\"]",
+      "actions": [
+        "no-op"
+      ]
+    },
+    {
+      "address": "module.state_stores.random_id.suffix",
+      "actions": [
+        "no-op"
+      ]
+    }
+  ]
+}

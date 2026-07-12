@@ -29,11 +29,13 @@
         "budgets:*",
         "kinesisanalytics:*",
         "kafka:*",
+        "kafka-cluster:*",
         "elasticmapreduce:*",
         "sagemaker:*",
         "scheduler:*",
         "events:*",
-        "lambda:*"
+        "lambda:*",
+        "ssmmessages:*"
       ],
       "Resource": "*"
     },

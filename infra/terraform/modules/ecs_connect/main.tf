@@ -273,6 +273,28 @@ resource "aws_ecs_task_definition" "connect" {
       name      = local.service
       image     = var.image
       essential = true
+      # Secret-to-file bridge (Wave 4 live window, 2026-07-12). The database
+      # password must reach the connector config WITHOUT landing in the repo or
+      # the Connect config-storage topic (only the ${dir:...} placeholder does).
+      # The originally-authored code used a ${file:...} provider against a
+      # mounted secrets dir; Fargate has no native Secrets-Manager file volume,
+      # so the runbook first tried the EnvVarConfigProvider (${env:HM_PG_PASSWORD}).
+      # That FAILED live: in this Debezium 2.7 / Kafka Connect 3.7 image the env
+      # provider resolves connector-config references to an EMPTY string (proven
+      # against a plain non-secret env var too), so Debezium's validate hit
+      # "the password is an empty string" and the connector could never register.
+      # The robust, image-version-independent fix: a shell entrypoint wrapper
+      # (this IS PID1 at container start, where the ECS-injected secret is
+      # provably present) writes the raw secret to a tmpfs file BEFORE the JVM
+      # launches, then hands off to the stock Debezium entrypoint. The connector
+      # references it via DirectoryConfigProvider (${dir:/dev/shm/secrets:password}),
+      # which returns the whole file's bytes verbatim (no properties/escaping
+      # pitfalls). printf '%s' writes no trailing newline, so the value is exact.
+      # /dev/shm is tmpfs (in-memory, never on disk).
+      entryPoint = ["/bin/sh", "-c"]
+      command = [
+        "umask 077; mkdir -p /dev/shm/secrets; printf '%s' \"$HM_PG_PASSWORD\" > /dev/shm/secrets/password; exec /docker-entrypoint.sh start"
+      ]
       portMappings = [
         { containerPort = 8083, protocol = "tcp" }
       ]
@@ -286,10 +308,13 @@ resource "aws_ecs_task_definition" "connect" {
           { name = "HM_PG_HOST", value = var.rds_endpoint },
           { name = "CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE", value = "false" },
           { name = "CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE", value = "false" },
-          { name = "CONNECT_CONFIG_PROVIDERS", value = "env" },
+          # DirectoryConfigProvider reads /dev/shm/secrets/<key> (whole-file
+          # value) for ${dir:/dev/shm/secrets:<key>} references. The file is
+          # written by the entrypoint wrapper above from the ECS-injected secret.
+          { name = "CONNECT_CONFIG_PROVIDERS", value = "dir" },
           {
-            name  = "CONNECT_CONFIG_PROVIDERS_ENV_CLASS",
-            value = "org.apache.kafka.common.config.provider.EnvVarConfigProvider"
+            name  = "CONNECT_CONFIG_PROVIDERS_DIR_CLASS",
+            value = "org.apache.kafka.common.config.provider.DirectoryConfigProvider"
           },
         ],
         # worker + embedded producer/consumer all authenticate to MSK via IAM

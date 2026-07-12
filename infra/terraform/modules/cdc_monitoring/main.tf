@@ -23,6 +23,12 @@ variable "vpc_id" {
   type = string
 }
 
+variable "vpc_cidr" {
+  description = "VPC CIDR, same default as every other in-VPC-ingress module (ecs_connect, ecs_serving, msk_serverless, redis_fargate)."
+  type        = string
+  default     = "10.0.0.0/16"
+}
+
 variable "private_subnet_ids" {
   type = list(string)
 }
@@ -109,17 +115,40 @@ resource "aws_security_group" "slot_lag" {
 # so Secrets Manager and CloudWatch need INTERFACE endpoints or the Lambda can
 # reach neither. Two endpoints ~ $0.02/hr, inside enable_phase2 demo windows
 # only; still far cheaper than a NAT gateway.
+#
+# private_dns_enabled = true below means these endpoints hijack DNS resolution
+# for secretsmanager./monitoring.<region>.amazonaws.com VPC-WIDE, not just for
+# the slot-lag Lambda: ANY resource in the VPC (any subnet, any security
+# group) that resolves those hostnames gets routed to this endpoint's ENI.
+# Scoping this SG's ingress to only the Lambda's own SG (the original,
+# narrower version of this rule) silently broke ecs_connect's Debezium
+# container: it fetches its RDS password from Secrets Manager via ECS's
+# native `secrets` task-definition field before the container even starts,
+# got its DNS silently redirected here by the same private-DNS mechanism, and
+# then timed out because its own SG wasn't in the allow-list (Wave 4 live
+# window, 2026-07-12: ResourceInitializationError / "context deadline
+# exceeded" on GetSecretValue). CIDR-based in-VPC ingress, matching the
+# convention every other module in this repo already uses for the same
+# reason (ecs_connect, ecs_serving, msk_serverless, redis_fargate), so any
+# future in-VPC consumer of Secrets Manager/CloudWatch keeps working too.
 resource "aws_security_group" "vpce" {
-  name        = "${local.name_prefix}-cdc-vpce-sg"
+  name = "${local.name_prefix}-cdc-vpce-sg"
+  # NOTE: `description` is immutable on aws_security_group (any change forces
+  # a destroy+recreate, which then deadlocks here: the two VPC endpoints'
+  # ENIs are still attached to the OLD group until THEIR OWN update runs, so
+  # the destroy fails with DependencyViolation). Left as the original text on
+  # purpose, only the ingress rule below actually needs to change and that
+  # alone is a clean in-place update (a security group's ingress rules are
+  # mutable via the API without recreating the group).
   description = "HTTPS to the Secrets Manager / CloudWatch interface endpoints"
   vpc_id      = var.vpc_id
 
   ingress {
-    description     = "443 from the slot-lag Lambda"
-    from_port       = 443
-    to_port         = 443
-    protocol        = "tcp"
-    security_groups = [aws_security_group.slot_lag.id]
+    description = "443 from in-VPC (private-DNS endpoints resolve VPC-wide, not just for the slot-lag Lambda)"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = [var.vpc_cidr]
   }
 
   egress {

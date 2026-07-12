@@ -46,7 +46,7 @@ def build_connector_config(
     db_port: int = 5432,
     db_name: str = "harbormaster",
     db_user: str = "hm_admin",
-    db_password: str = "${file:/opt/kafka/external-configuration/pg/password:password}",
+    db_password: str = "${dir:/dev/shm/secrets:password}",
     topic_prefix: str = TOPIC_PREFIX,
     snapshot_mode: str = "initial",
     heartbeat_interval_ms: int = 10_000,
