@@ -1,0 +1,55 @@
+docs/runbooks/WAVE4_LIVE_WINDOWS.md
+  s_a2e22b769416de::t_88766e47c7b06f 280
+  s_a2e22b769416de::t_2f5fce4ab64cfa 263
+  s_a2e22b769416de::t_01285395e1130b 1-8,45-99,101-262,264-279,281-518
+  s_a2e22b769416de::t_c568302f198a4e 100
+  s_a2e22b769416de::t_5f1beb2ee27f4d 9-44
+infra/terraform/modules/kda_flink/main.tf
+  s_a2e22b769416de::t_ea0f0acb0d5c90 233-251
+infra/terraform/modules/cdc_monitoring/main.tf
+  s_a2e22b769416de::t_4f804f0c318bca 26-31
+  s_a2e22b769416de::t_c31d6e35d0f87c 135-142
+  s_a2e22b769416de::t_72a452b771a37f 118-133,147-151
+infra/aws/harbormaster-permissions-boundary.json
+  s_a2e22b769416de::t_632f40fee87b38 32,37-38
+cdc/connector/config.py
+  s_a2e22b769416de::t_9bd839c00eaff3 49
+infra/terraform/modules/ecs_connect/main.tf
+  s_a2e22b769416de::t_2e40d7db395df5 276-297,311-314,316-317
+.dockerignore
+  s_a2e22b769416de::t_91f107d66847ad 11-15
+cdc/fixtures/connector_config.expected.json
+  s_a2e22b769416de::t_1e7474fd3dabad 10
+docs/plan-artifacts/2026-07-12-wave4-w3-baseline-2.json
+  s_c339ca357cc531::t_1bc33e3d17a2ef 1-621
+docs/plan-artifacts/2026-07-12-wave4-w3-envvar-allowlist-fix.json
+  s_a2e22b769416de::t_52757fa717ea42 1-862
+docs/plan-artifacts/2026-07-12-wave4-w3-vpce-fix-v2.json
+  s_a2e22b769416de::t_02bdf72201a7bc 1-861
+docs/plan-artifacts/2026-07-12-wave4-w3-teardown.json
+  s_a2e22b769416de::t_c7366bd1b3b476 1-862
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "8ec04bf7beaee918e142134cc32bf73c8ca83c53",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    },
+    "s_c339ca357cc531": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5234-51ff-7f23-a378-2834cc7022f3",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
