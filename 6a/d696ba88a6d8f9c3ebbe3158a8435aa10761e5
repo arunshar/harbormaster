@@ -1,0 +1,70 @@
+serving/app/components/space_time_prism.py
+  s_87fd0589dba2e0::t_f9abd54a48a0d7 17-22,25-26,54-56,60-63,83,92-96,101-106,110-119,132-136,160-187,366-370,372,382-412,416-448,479,504,619,651
+  s_87fd0589dba2e0::t_b4ee9fc3a4cc05 195,205,241-242
+  s_87fd0589dba2e0::t_eb09e6eba6bf3c 57,322-330,332-343,629-633
+  s_87fd0589dba2e0::t_14c394abae9a6a 198,200
+  s_87fd0589dba2e0::t_7acbb72f7c112c 451-461,474-475,639-643
+  s_87fd0589dba2e0::t_e2018f7287becb 344-364,634
+  s_87fd0589dba2e0::t_c834841b8004a3 59,204,238-240
+  s_87fd0589dba2e0::t_d0d49ea02e2262 624-628
+  s_87fd0589dba2e0::t_12c057b67e3ece 139,481
+  s_87fd0589dba2e0::t_bfd8d4da88bb3b 97-100,120-131,138,140-141
+  s_87fd0589dba2e0::t_9b13b7cc627425 635-638
+  s_87fd0589dba2e0::t_dfcdb9d223c23e 145,147-148
+  s_87fd0589dba2e0::t_1b710806615906 58,462-473
+  s_87fd0589dba2e0::t_adcdba85fe658e 206-226,230-232,236,331,652
+  s_87fd0589dba2e0::t_68523830bd90ad 23-24,50-53
+  s_87fd0589dba2e0::t_610dcfe8aec533 233-235
+  s_87fd0589dba2e0::t_16b353ae4860a8 227-229,237
+  s_87fd0589dba2e0::t_51dcbc6fafa0d2 137
+  s_87fd0589dba2e0::t_93e2f943e4a236 188-189
+  s_87fd0589dba2e0::t_0ec19c71e9247c 449-450
+serving/tests/test_space_time_prism.py
+  s_87fd0589dba2e0::t_adcdba85fe658e 252
+  s_87fd0589dba2e0::t_9b13b7cc627425 245-250,253-260,263-270
+  s_87fd0589dba2e0::t_2cdf35397554cc 10,93-100,102-107,213-214,220-226,232-233,238-244
+  s_87fd0589dba2e0::t_62435ea500cd80 396-414
+  s_87fd0589dba2e0::t_14c394abae9a6a 496,506
+  s_87fd0589dba2e0::t_51c1f0d63cb5ef 5,12-14,16-19,23-24,55-74,88-90,129-132,155-176,178-204,206-212,215-219,227-231,234-237,273-274,320-395,415-417,419-431
+  s_87fd0589dba2e0::t_26551d6ea80715 275-288,290-315,317-319
+  s_87fd0589dba2e0::t_d0d49ea02e2262 316
+  s_87fd0589dba2e0::t_f1ab11a84ca00e 261-262
+  s_87fd0589dba2e0::t_5d7c736c9499a5 15,493-495,497-505
+  s_87fd0589dba2e0::t_05ba032d42da0b 101,251,271-272
+  s_87fd0589dba2e0::t_c0fc3258b8880d 418
+  s_87fd0589dba2e0::t_de4be8e51bf51d 541,550-551,553-560,562
+  s_87fd0589dba2e0::t_d3aa6a95de8348 11
+  s_87fd0589dba2e0::t_bf5d3cad37b6ff 91-92
+  s_87fd0589dba2e0::t_283495df0ed801 507-508
+sessions/CODEX_HANDOFF_2026-07-12.md
+  s_87fd0589dba2e0::t_1552b0263c1e02 24-25,147-151,166-167
+  s_87fd0589dba2e0::t_70ad1d363f9ead 152-156
+  s_87fd0589dba2e0::t_d1233383e09a82 157-159
+docs/drills/NEAR_POLE_PRISM_LOCAL_2026-07-13.md
+  s_87fd0589dba2e0::t_70ad1d363f9ead 91-92,99-107,109-112,136,159-160,178-179,210
+  s_87fd0589dba2e0::t_f0601479891660 108
+  s_87fd0589dba2e0::t_1552b0263c1e02 1-16,19-90,93-98,113-134,137-158,212-219
+  s_87fd0589dba2e0::t_fb7cbe00b8ef42 17-18,161-177,180-209,211
+  s_87fd0589dba2e0::t_d1233383e09a82 135
+docs/WAVE3_FINDINGS.md
+  s_87fd0589dba2e0::t_1552b0263c1e02 52-57
+  s_87fd0589dba2e0::t_70ad1d363f9ead 27
+serving/tests/test_gap_detector_pidpm.py
+  s_87fd0589dba2e0::t_7e2ea61eca82a0 138-151
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "6ad696ba88a6d8f9c3ebbe3158a8435aa10761e5",
+  "prompts": {},
+  "sessions": {
+    "s_87fd0589dba2e0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5912-4f5a-7aa3-8604-0ccba141cb86",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
