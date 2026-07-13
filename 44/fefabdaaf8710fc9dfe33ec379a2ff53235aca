@@ -1,0 +1,28 @@
+sessions/CODEX_HANDOFF_2026-07-12.md
+  s_87fd0589dba2e0::t_4407fe8f3fbf44 116-120,147-151
+streaming/ingestor/ingest.py
+  s_87fd0589dba2e0::t_76ffa3dccd86fb 294
+  s_87fd0589dba2e0::t_04cb5dbe1994b1 295
+streaming/ingestor/tests/test_ingest.py
+  s_87fd0589dba2e0::t_76ffa3dccd86fb 202
+  s_87fd0589dba2e0::t_11855d4383d8e8 169-201,203-205
+docs/WAVE3_FINDINGS.md
+  s_87fd0589dba2e0::t_4407fe8f3fbf44 3,5,28-31
+  s_87fd0589dba2e0::t_6abc5e6c6ad333 27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "44fefabdaaf8710fc9dfe33ec379a2ff53235aca",
+  "prompts": {},
+  "sessions": {
+    "s_87fd0589dba2e0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5912-4f5a-7aa3-8604-0ccba141cb86",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
