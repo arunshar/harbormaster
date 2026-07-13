@@ -113,9 +113,11 @@ architecture change mid-window). See `docs/WAVE3_FINDINGS.md`.
 
 ### 3. Deferred robustness items (from Wave 3, `docs/WAVE3_FINDINGS.md`)
 
-Pre-existing bugs found by the pressure test and left for a hardening pass: flink
-`key_by` correctness, ingest `PutRecords` partial-failure retry, prism ellipse
-center, and the remaining test-strength mutants. None are live-cost items.
+Pre-existing hardening work from the pressure test: flink `key_by` correctness,
+an ingest `PutRecords` multi-round regression plus finding-ledger correction,
+prism ellipse center, and the remaining test-strength mutants. The `PutRecords`
+production mapping was later confirmed correct; finding 21 was a false positive.
+None are live-cost items.
 
 ### 4. Structural / low-priority
 
@@ -142,8 +144,11 @@ evidence artifact in the same change. Continue with:
    registry upserts. RLS + cross-tenant tests against a local Postgres (the existing
    `make phase5-tenant-smoke` convention), never mocked.
 2. **Robustness items** (open item #3): flink `key_by` correctness, ingest
-   `PutRecords` partial-failure retry, prism ellipse center, remaining test-strength
-   mutants. Each with a test that fails before and passes after.
+   `PutRecords` multi-round test strength plus the finding-21 ledger correction,
+   prism ellipse center, and remaining test-strength mutants. Finding 21's
+   production mapping is already correct; its regression must fail the
+   original-batch mutation. Each real code defect needs a test that fails before
+   and passes after.
 3. **War stories P41-P46** to `arunshar/debug-war-stories` (the six W3 fixes; content
    is in this file + the PR #6 commit + the runbook, so it is a copy-and-format job).
 

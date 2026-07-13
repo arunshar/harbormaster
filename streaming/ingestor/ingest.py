@@ -291,8 +291,8 @@ def _kinesis_putter(
                 continue
 
             failed = [
-                pending[i]
-                for i, rec in enumerate(resp.get("Records", []))
+                entry
+                for entry, rec in zip(pending, resp.get("Records", []), strict=True)
                 if rec.get("ErrorCode")
             ]
             if not failed:

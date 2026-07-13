@@ -1,8 +1,8 @@
 # Wave 3 pressure-test findings (2026-07-11)
 
-A loop-until-dry, 6-lens adversarial sweep (correctness, concurrency, security+tenancy, cost/FinOps, honesty/doc-drift, test-strength via mutation testing) over merged `master`, run after the Phase 5 merge (PR #4). 64 verification agents across 3 rounds; every finding was refute-first verified with a concrete reproduction before it counted. 31 findings survived verification. This ledger records each one and its disposition, so nothing is silently dropped.
+A loop-until-dry, 6-lens adversarial sweep (correctness, concurrency, security+tenancy, cost/FinOps, honesty/doc-drift, test-strength via mutation testing) over merged `master`, run after the Phase 5 merge (PR #4). 64 verification agents across 3 rounds. The sweep originally recorded 31 findings as verified; a later targeted audit refuted finding 21, leaving 30 verified findings. This ledger preserves that correction so nothing is silently dropped.
 
-Disposition key: **Fixed** (with a regression test, this wave) / **Documented** (a real limitation, war-storied and routed to the Codex production-hardening plan) / **Deferred** (real but lower-priority pre-existing robustness or test-strength, routed to Codex).
+Disposition key: **Fixed** (with a regression test, this wave) / **Documented** (a real limitation, war-storied and routed to the Codex production-hardening plan) / **Deferred** (real but lower-priority pre-existing robustness or test-strength, routed to Codex) / **Refuted** (the recorded production defect did not exist; the ledger and test gap were corrected).
 
 ## Fixed this wave (with regression tests)
 
@@ -24,7 +24,11 @@ Disposition key: **Fixed** (with a regression test, this wave) / **Documented** 
 
 ## Deferred to the Codex production-hardening plan (real, lower-priority)
 
-Pre-existing robustness (not Phase 5): **4** (`streaming/flink/job.py` `key_by` `json.loads` crashes the partitioning operator on a non-JSON record); **20** (`space_time_prism.py` `ellipse_polygon` center ignores the passed ellipse's own foci); **21** (`streaming/ingestor/ingest.py` Kinesis `PutRecords` partial-failure retry re-sends already-succeeded interior records); **11** (`watchlist.py` `... or 0.9` is a redundant no-op after `_attr`'s default); **12** (the stretch service trains inline in an `async def` handler, blocking the loop — acceptable for a demo stretch, noted).
+Pre-existing robustness (not Phase 5): **4** (`streaming/flink/job.py` `key_by` `json.loads` crashes the partitioning operator on a non-JSON record); **20** (`space_time_prism.py` `ellipse_polygon` center ignores the passed ellipse's own foci); **11** (`watchlist.py` `... or 0.9` is a redundant no-op after `_attr`'s default); **12** (the stretch service trains inline in an `async def` handler, blocking the loop; acceptable for a demo stretch, noted).
+
+## Refuted during production hardening
+
+**21** (`streaming/ingestor/ingest.py`) was a false positive. The production putter has mapped every `PutRecords` response against the current pending list since commit `5cb5a01`, so later retry rounds do not re-send records that already succeeded. The real issue was test strength: the two-call regression never exercised a failure after the pending list shrank. A three-round noncontiguous regression now pins `[0,1,2,3,4,5,6] -> [1,4,6] -> [1,6]`. A mutation that maps the second response against the original batch fails that regression. No production retry-mapping defect was fixed.
 
 Remaining test-strength (surviving mutants, new modules): **9/31** (`bedrock_explainer.py` forbidden-substring list + inclusive `score <= 1.0` bound untested); **10/16** (`disagreement_baseline.py` `>=` boundary + q95 nearest-rank off-by-one untested at some `k`); **17** (`tenant_drift.py` `sorted()` output order untested against an unsorted-insertion fixture); **28** (`ppo.py` clipped surrogate has no unit assertion, though the full gradient is numerically verified against finite differences in `test_route_optimizer_ppo` and by the Wave 2 review).
 
