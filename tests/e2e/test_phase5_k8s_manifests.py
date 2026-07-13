@@ -129,11 +129,15 @@ def test_runbook_stabilizes_keda_after_flink_before_retargeting():
 
 def test_runbook_proves_nightly_teardown_is_wet_before_eks_plan():
     runbook = W4_RUNBOOK.read_text()
+    schedule = runbook.index("nightly-teardown-preflight.json")
+    target_lookup = runbook.index(".Target.Arn | select(startswith($prefix))")
     preflight = runbook.index("nightly-teardown-lambda-preflight.json")
     guard_only_plan = runbook.index("PLAN_LABEL=wave4-w4-nightly-guard")
     wet_recheck = runbook.index("nightly-teardown-lambda-before-eks.json")
     eks_plan = runbook.index("PLAN_LABEL=wave4-w4-eks")
-    assert preflight < guard_only_plan < wet_recheck < eks_plan
+    assert schedule < target_lookup < preflight < guard_only_plan < wet_recheck < eks_plan
+    assert "TEARDOWN_LAMBDA=harbormaster-base-nightly-teardown" not in runbook
+    assert '--function-name "$TEARDOWN_LAMBDA_ARN"' in runbook
     assert runbook.count('.Environment.Variables.DRY_RUN == "false"') >= 3
     assert '(.address | startswith("module.finops."))' in runbook
     assert '((.actions | index("delete")) == null)' in runbook
@@ -147,6 +151,16 @@ def test_runbook_simulates_platform_boundary_intersection_before_assume_role():
     assume_role = runbook.index("PLATFORM_SESSION=$(aws sts assume-role")
     assert simulator < self_deny < boundary_deny < assume_role
     assert "aws iam simulate-principal-policy" in runbook
+
+
+def test_runbook_restores_the_admin_identity_before_refreshing_an_expired_session():
+    runbook = W4_RUNBOOK.read_text()
+    admin_capture = runbook.index("ADMIN_CALLER_ARN=$(jq -r .Arn")
+    assume_role = runbook.index("PLATFORM_SESSION=$(aws sts assume-role")
+    unset_session = runbook.index("unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN")
+    restored_caller = runbook.index('test "$RESTORED_CALLER_ARN" = "$ADMIN_CALLER_ARN"')
+
+    assert admin_capture < assume_role < unset_session < restored_caller
 
 
 def test_observer_timeout_covers_load_and_scaler_recovery_budget():

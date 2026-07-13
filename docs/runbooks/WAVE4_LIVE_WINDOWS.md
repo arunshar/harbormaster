@@ -104,6 +104,13 @@ export AWS_DEFAULT_REGION=us-east-1
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 test "$ACCOUNT_ID" = "645322802947"
 aws sts get-caller-identity | tee "$ARTIFACT_DIR/caller-identity.json"
+ADMIN_CALLER_ARN=$(jq -r .Arn "$ARTIFACT_DIR/caller-identity.json")
+case "$ADMIN_CALLER_ARN" in
+  "arn:aws:iam::${ACCOUNT_ID}:user/"*) ;;
+  *) printf 'expected a direct IAM administrator, got: %s\n' \
+       "$ADMIN_CALLER_ARN" >&2; exit 1 ;;
+esac
+export ADMIN_CALLER_ARN
 
 aws budgets describe-budget \
   --account-id "$ACCOUNT_ID" \
@@ -115,8 +122,11 @@ aws budgets describe-budget-actions-for-budget \
   | tee "$ARTIFACT_DIR/hard-budget-actions.json"
 aws scheduler get-schedule --name harbormaster-base-nightly-teardown \
   | tee "$ARTIFACT_DIR/nightly-teardown-preflight.json"
-TEARDOWN_LAMBDA=harbormaster-base-nightly-teardown
-aws lambda get-function-configuration --function-name "$TEARDOWN_LAMBDA" \
+TEARDOWN_LAMBDA_PREFIX="arn:aws:lambda:${AWS_REGION}:${ACCOUNT_ID}:function:"
+TEARDOWN_LAMBDA_ARN=$(jq -er --arg prefix "$TEARDOWN_LAMBDA_PREFIX" \
+  '.Target.Arn | select(startswith($prefix))' \
+  "$ARTIFACT_DIR/nightly-teardown-preflight.json")
+aws lambda get-function-configuration --function-name "$TEARDOWN_LAMBDA_ARN" \
   | tee "$ARTIFACT_DIR/nightly-teardown-lambda-preflight.json"
 
 jq -e '
@@ -419,8 +429,19 @@ esac
 aws sts get-caller-identity | tee "$ARTIFACT_DIR/platform-caller-identity.json"
 ```
 
-Run every remaining command in this same shell. If the session expires, repeat
-the assume-role block with a fresh MFA code before continuing.
+Run every remaining command in this same shell. If the session expires,
+restore and verify the original direct administrator before repeating the
+assume-role block with a fresh MFA code:
+
+```bash
+unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+RESTORED_CALLER_ARN=$(aws sts get-caller-identity --query Arn --output text)
+test "$RESTORED_CALLER_ARN" = "$ADMIN_CALLER_ARN"
+```
+
+Then repeat the MFA prompt and `aws sts assume-role` block above, export the
+three fresh session values, and re-run the `PLATFORM_CALLER_ARN` assertion
+before continuing.
 
 ## 4. Create EKS only after both teardown guards are wet
 
@@ -465,7 +486,7 @@ if test "$NIGHTLY_TEARDOWN_WET" = false; then
   make apply-plan PLAN="$PLAN_FILE"
 fi
 
-aws lambda get-function-configuration --function-name "$TEARDOWN_LAMBDA" \
+aws lambda get-function-configuration --function-name "$TEARDOWN_LAMBDA_ARN" \
   | tee "$ARTIFACT_DIR/nightly-teardown-lambda-before-eks.json"
 jq -e '.Environment.Variables.DRY_RUN == "false"' \
   "$ARTIFACT_DIR/nightly-teardown-lambda-before-eks.json"
