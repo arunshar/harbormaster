@@ -1,0 +1,54 @@
+docs/drills/FLINK_MMSI_KEY_LOCAL_2026-07-13.md
+  s_87fd0589dba2e0::t_e089cdccd735e9 1-15,18-20,24-30,36-47,49-125
+  s_87fd0589dba2e0::t_d927082881b15c 16-17,21-23,31-35
+  s_87fd0589dba2e0::t_fea454aa959f28 48
+docs/WAVE3_FINDINGS.md
+  s_87fd0589dba2e0::t_e089cdccd735e9 24,26,32-39,42
+streaming/flink/tests/test_transforms.py
+  s_87fd0589dba2e0::t_2be4e177f19e02 8-9,48-50
+  s_87fd0589dba2e0::t_8a7b44896f0bbe 51-52
+streaming/flink/job.py
+  s_87fd0589dba2e0::t_d4870f63aa32f3 73,310
+  s_87fd0589dba2e0::t_d927082881b15c 217-218
+streaming/flink/transforms.py
+  s_87fd0589dba2e0::t_2be4e177f19e02 46
+  s_87fd0589dba2e0::t_d4870f63aa32f3 50-55,59-66
+  s_87fd0589dba2e0::t_d927082881b15c 22-26,56-58
+  s_87fd0589dba2e0::t_a26ebd767ac6d9 29-35
+  s_87fd0589dba2e0::t_4b15e790d5f7af 36-38
+streaming/flink/tests/test_window_logic.py
+  s_87fd0589dba2e0::t_2be4e177f19e02 29,290-318,366-412
+  s_87fd0589dba2e0::t_6e6979174ce49a 413-414
+sessions/CODEX_HANDOFF_2026-07-12.md
+  s_87fd0589dba2e0::t_e089cdccd735e9 23-24,133,135,139-144,170-172
+  s_87fd0589dba2e0::t_d927082881b15c 136-138
+streaming/flink/window_logic.py
+  s_87fd0589dba2e0::t_a26ebd767ac6d9 156-162
+  s_87fd0589dba2e0::t_4b15e790d5f7af 163-165
+  s_87fd0589dba2e0::t_2be4e177f19e02 173
+  s_87fd0589dba2e0::t_d4870f63aa32f3 177-182,186-193
+  s_87fd0589dba2e0::t_d927082881b15c 149-153,183-185
+streaming/flink/tests/test_job_wiring.py
+  s_87fd0589dba2e0::t_4b15e790d5f7af 57-72
+  s_87fd0589dba2e0::t_a26ebd767ac6d9 73-97
+  s_87fd0589dba2e0::t_2be4e177f19e02 15-18,21-23,26,30-32,36,42,100-131
+  s_87fd0589dba2e0::t_2a1db84b424142 6,12,134-142,159-197
+  s_87fd0589dba2e0::t_a07d9c36a5e89d 1-5,7-11,14,19-20,24-25,27-29,33-35,37-41,43-56,98-99,132-133,143-158
+  s_87fd0589dba2e0::t_d49c025fa5e22a 13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "8d17b10f59bb8b86f5ce3a887001f2ae62c52e0b",
+  "prompts": {},
+  "sessions": {
+    "s_87fd0589dba2e0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5912-4f5a-7aa3-8604-0ccba141cb86",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    }
+  }
+}
