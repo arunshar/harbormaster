@@ -1,0 +1,33 @@
+streaming/ingestor/ingest.py
+  s_87fd0589dba2e0::t_22fc3618fc3ea8 325
+  s_87fd0589dba2e0::t_760000a7f1062b 55-76,326-328
+  s_87fd0589dba2e0::t_c6cfe3449c0323 294-295,314-315,318,324,329
+streaming/ingestor/tests/test_live.py
+  s_87fd0589dba2e0::t_66186231beea71 6,9,11,130-158
+  s_87fd0589dba2e0::t_9cee8b3d6ce798 78-102
+  s_87fd0589dba2e0::t_760000a7f1062b 109-129,159-160
+streaming/ingestor/tests/test_ingest.py
+  s_87fd0589dba2e0::t_760000a7f1062b 15,238,241-243,259,262,264,270-292
+  s_87fd0589dba2e0::t_c6cfe3449c0323 229-230,239,248-252,254-255,257-258,260-261,265-268
+  s_87fd0589dba2e0::t_9cee8b3d6ce798 253,256,263,269
+  s_87fd0589dba2e0::t_8df92415e75f86 293-294
+streaming/ingestor/live.py
+  s_87fd0589dba2e0::t_659349b15200f5 73-79,83,88
+  s_87fd0589dba2e0::t_3e01c095556684 89-106
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "a5a4ead9e269c32f3c80190ecd04b07bec3959d6",
+  "prompts": {},
+  "sessions": {
+    "s_87fd0589dba2e0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5912-4f5a-7aa3-8604-0ccba141cb86",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
