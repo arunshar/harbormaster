@@ -140,14 +140,17 @@ The focused source test run passed 93 tests at 99.64% line and branch coverage,
 and isolated checks passed against the packaged Flink ZIP. No Managed Flink job
 was run. The sentinel removes the pre-quarantine exception but can still become
 a hot key group during sustained malformed traffic. The prism ellipse-center
-defect is also locally complete with direct and dynamic-merge regressions.
-Its pre-existing antimeridian and near-pole projection limits remain documented
-outside finding 20. Bedrock forbidden-vocabulary and inclusive-score boundaries
-are pinned, as are disagreement usable-window and q95 boundaries. Tenant-drift
-ordering is pinned under reverse insertion, and four hand-computed PPO cases pin
-the clipped surrogate across both advantage signs and both clip sides. The ordered
+and antimeridian defects are locally complete. Wrapped longitude math follows
+the shortest path, seam-crossing output is a normalized MultiPolygon, Boolean
+geometry preserves GeoJSON ring winding, and DRM compares component bounds.
+Near-pole projection stability remains separate debt. Bedrock
+forbidden-vocabulary and inclusive-score boundaries are pinned, as are
+disagreement usable-window and q95 boundaries. Tenant-drift ordering is pinned
+under reverse insertion, and four hand-computed PPO cases pin the clipped
+surrogate across both advantage signs and both clip sides. The ordered
 robustness queue is complete. See
-`docs/drills/FLINK_MMSI_KEY_LOCAL_2026-07-13.md`.
+`docs/drills/FLINK_MMSI_KEY_LOCAL_2026-07-13.md` and
+`docs/drills/ANTIMERIDIAN_PRISM_LOCAL_2026-07-13.md`.
 
 ### 4. Structural / low-priority
 

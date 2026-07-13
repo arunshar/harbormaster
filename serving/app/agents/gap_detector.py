@@ -35,7 +35,7 @@ import numpy as np
 import structlog
 from shapely.geometry import mapping
 
-from app.components.space_time_prism import Prism, speed_bounds_for
+from app.components.space_time_prism import Polygonal, Prism, haversine_m, speed_bounds_for
 from app.config import Settings
 from app.models import Anchor, AnchorPair, GeoEllipse
 
@@ -100,7 +100,7 @@ class GapDetectorAgent:
         if not prisms:
             return []
 
-        bboxes = [p.mobr().bounds for p in prisms]  # (xmin, ymin, xmax, ymax) in lon/lat
+        mobrs = [p.mobr() for p in prisms]
         # Connected components over the "bboxes overlap" graph, union-find, so a
         # TRANSITIVE chain (0 overlaps 1, 1 overlaps 2, 0 disjoint from 2) merges
         # into ONE region (the DRM maximal-union the docstring promises). The
@@ -118,7 +118,7 @@ class GapDetectorAgent:
 
         for i in range(n):
             for j in range(i + 1, n):
-                if _bbox_overlap(bboxes[i], bboxes[j]):
+                if _mobr_bounds_overlap(mobrs[i], mobrs[j]):
                     ri, rj = _find(i), _find(j)
                     if ri != rj:
                         parent[max(ri, rj)] = min(ri, rj)
@@ -147,7 +147,7 @@ class GapDetectorAgent:
                     start=head.pair.a,
                     end=head.pair.b,
                     duration_s=head.duration_s,
-                    distance_m=self._euclidean_anchor(head.pair),
+                    distance_m=self._anchor_distance_m(head.pair),
                     p_physical=p_phys,
                     p_data=p_data,
                     abnormal_gap_measure=float(agm),
@@ -160,16 +160,13 @@ class GapDetectorAgent:
     # --------------------------------------------------------- internals
 
     @staticmethod
-    def _euclidean_anchor(pair: AnchorPair) -> float:
-        lat_ref = 0.5 * (pair.a.lat + pair.b.lat)
-        dx = math.radians(pair.b.lon - pair.a.lon) * math.cos(math.radians(lat_ref)) * 6_371_000.0
-        dy = math.radians(pair.b.lat - pair.a.lat) * 6_371_000.0
-        return math.hypot(dx, dy)
+    def _anchor_distance_m(pair: AnchorPair) -> float:
+        return haversine_m(pair.a.lat, pair.a.lon, pair.b.lat, pair.b.lon)
 
     def _physical_plausibility(self, prism: Prism) -> float:
         """min(1, v_max / v_required): 1.0 when the reappearance is reachable."""
 
-        v_req = self._euclidean_anchor(prism.pair) / max(prism.duration_s, 1.0)
+        v_req = self._anchor_distance_m(prism.pair) / max(prism.duration_s, 1.0)
         return float(min(1.0, prism.v_max_mps / max(v_req, 1e-6)))
 
     def _pi_dpm_score(self, prism: Prism) -> float:
@@ -180,7 +177,7 @@ class GapDetectorAgent:
         the same signature once promoted into the serving plane.
         """
 
-        distance = self._euclidean_anchor(prism.pair)
+        distance = self._anchor_distance_m(prism.pair)
         z = math.log1p(distance) + 0.001 * prism.duration_s
         return float(1 / (1 + np.exp(-((z - 12) / 3))))
 
@@ -189,3 +186,13 @@ def _bbox_overlap(a: tuple, b: tuple) -> bool:
     """Axis-aligned bbox overlap test in (xmin, ymin, xmax, ymax)."""
 
     return not (a[2] < b[0] or b[2] < a[0] or a[3] < b[1] or b[3] < a[1])
+
+
+def _mobr_bounds_overlap(a: Polygonal, b: Polygonal) -> bool:
+    """Preserve bbox overlap semantics for antimeridian-cut components."""
+
+    a_parts = a.geoms if a.geom_type == "MultiPolygon" else (a,)
+    b_parts = b.geoms if b.geom_type == "MultiPolygon" else (b,)
+    return any(
+        _bbox_overlap(a_part.bounds, b_part.bounds) for a_part in a_parts for b_part in b_parts
+    )

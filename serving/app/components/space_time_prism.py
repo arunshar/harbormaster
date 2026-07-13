@@ -16,9 +16,10 @@ This module computes prisms, ellipses, MOBRs, and their intersections.
 
 Math is done in a local equirectangular projection centered on the active
 ellipse's foci so that distances are Euclidean to first order. The base ellipse
-uses the prism anchor pair; a supplied ellipse uses its own foci. For
-continental-scale, antimeridian-crossing, or near-polar anchors, switch to a
-projection and geometry representation designed for that domain.
+uses the prism anchor pair; a supplied ellipse uses its own foci. Longitude
+deltas follow the shortest wrapped path, and geometry crossing the
+antimeridian is cut into normalized polygon components. For continental-scale
+or near-polar anchors, switch to a projection designed for that domain.
 """
 
 from __future__ import annotations
@@ -31,8 +32,10 @@ from typing import Any
 
 import numpy as np
 from shapely.affinity import rotate, translate
-from shapely.geometry import MultiPolygon, Polygon
+from shapely.geometry import LineString, MultiPolygon, Polygon
+from shapely.geometry.base import BaseGeometry
 from shapely.geometry.polygon import orient as orient_polygon
+from shapely.ops import split
 
 from app.models import AnchorPair, GeoEllipse, SpeedBounds
 
@@ -40,8 +43,12 @@ EARTH_RADIUS_M = 6_371_000.0
 KNOTS_TO_MPS = 0.514_444
 KMH_TO_MPS = 1 / 3.6
 
+Polygonal = Polygon | MultiPolygon
 
-def speed_bounds_for(domain: str, *, vessel_v_max_kts: float, vehicle_v_max_kmh: float) -> SpeedBounds:
+
+def speed_bounds_for(
+    domain: str, *, vessel_v_max_kts: float, vehicle_v_max_kmh: float
+) -> SpeedBounds:
     if domain == "vessel":
         return SpeedBounds(v_max_mps=vessel_v_max_kts * KNOTS_TO_MPS, domain="vessel")
     if domain == "vehicle":
@@ -63,7 +70,8 @@ class _LocalProjection:
     def to_xy(self, lat_deg: float, lon_deg: float) -> tuple[float, float]:
         lat = math.radians(lat_deg)
         lon = math.radians(lon_deg)
-        x = (lon - self.lon_ref_rad) * math.cos(self.lat_ref_rad) * EARTH_RADIUS_M
+        lon_delta = _wrapped_radians(lon - self.lon_ref_rad)
+        x = lon_delta * math.cos(self.lat_ref_rad) * EARTH_RADIUS_M
         y = (lat - self.lat_ref_rad) * EARTH_RADIUS_M
         return x, y
 
@@ -73,10 +81,117 @@ class _LocalProjection:
         return lon, lat
 
 
+def _wrapped_radians(angle: float) -> float:
+    """Normalize an angle to the half-open interval [-pi, pi)."""
+
+    return (angle + math.pi) % (2 * math.pi) - math.pi
+
+
+def _midpoint_longitude_rad(a_lon_deg: float, b_lon_deg: float) -> float:
+    """Longitude halfway along the shortest wrapped path from A to B."""
+
+    a_lon_rad = math.radians(a_lon_deg)
+    b_lon_rad = math.radians(b_lon_deg)
+    return a_lon_rad + 0.5 * _wrapped_radians(b_lon_rad - a_lon_rad)
+
+
+def _shifted_polygon(polygon: Polygon, x_offset: float) -> Polygon:
+    """Shift one component and clamp seam roundoff to exact longitude limits."""
+
+    def shift_ring(coords) -> list[tuple[float, float]]:  # type: ignore[no-untyped-def]
+        shifted: list[tuple[float, float]] = []
+        for x, y in coords:
+            longitude = x + x_offset
+            if math.isclose(longitude, -180.0, abs_tol=1e-10):
+                longitude = -180.0
+            elif math.isclose(longitude, 180.0, abs_tol=1e-10):
+                longitude = 180.0
+            if not -180.0 <= longitude <= 180.0:
+                raise ValueError("normalized polygon longitude is outside [-180, 180]")
+            shifted.append((longitude, y))
+        return shifted
+
+    shell = shift_ring(polygon.exterior.coords)
+    holes = [shift_ring(ring.coords) for ring in polygon.interiors]
+    return orient_polygon(Polygon(shell, holes), sign=1.0)
+
+
+def _orient_polygonal(geometry: BaseGeometry) -> Polygonal:
+    """Retain positive-area components and apply RFC 7946 winding.
+
+    Shapely Boolean operations may return boundary-only Point or LineString
+    intersections, or a GeometryCollection that mixes those with polygons.
+    The prism API intentionally exposes only reachable regions with area, so
+    non-polygonal components are discarded and boundary-only contact is empty.
+    """
+
+    if isinstance(geometry, Polygon):
+        return orient_polygon(geometry, sign=1.0)
+    if isinstance(geometry, MultiPolygon):
+        parts = list(geometry.geoms)
+    else:
+        parts = []
+        for part in getattr(geometry, "geoms", ()):
+            if isinstance(part, Polygon):
+                parts.append(part)
+            elif isinstance(part, MultiPolygon):
+                parts.extend(part.geoms)
+    oriented = [
+        orient_polygon(part, sign=1.0) for part in parts if not part.is_empty and part.area > 0
+    ]
+    if not oriented:
+        return Polygon()
+    if len(oriented) == 1:
+        return oriented[0]
+    return MultiPolygon(oriented)
+
+
+def _normalize_polygon_longitudes(polygon: Polygon) -> Polygonal:
+    """Cut a continuous polygon at every antimeridian seam and normalize it.
+
+    Projection output stays continuous around its local reference and can use
+    longitudes outside [-180, 180]. GeoJSON should not draw the closing edge
+    across the planet, so each crossed 180 + 360k seam becomes a component
+    boundary before the components are shifted into the canonical range.
+    """
+
+    min_x, min_y, max_x, max_y = polygon.bounds
+    if max_x - min_x >= 360.0:
+        raise ValueError("polygon spans 360 degrees or more")
+
+    pieces = [polygon]
+    first_k = math.floor((min_x - 180.0) / 360.0) + 1
+    last_k = math.ceil((max_x - 180.0) / 360.0) - 1
+    for k in range(first_k, last_k + 1):
+        seam_x = 180.0 + 360.0 * k
+        cutter = LineString([(seam_x, min_y - 1.0), (seam_x, max_y + 1.0)])
+        next_pieces: list[Polygon] = []
+        for piece in pieces:
+            if piece.bounds[0] < seam_x < piece.bounds[2]:
+                next_pieces.extend(
+                    part
+                    for part in split(piece, cutter).geoms
+                    if isinstance(part, Polygon) and not part.is_empty
+                )
+            else:
+                next_pieces.append(piece)
+        pieces = next_pieces
+
+    normalized: list[Polygon] = []
+    for piece in pieces:
+        center_x = piece.representative_point().x
+        turns = math.floor((center_x + 180.0) / 360.0)
+        normalized.append(_shifted_polygon(piece, -360.0 * turns))
+    normalized.sort(key=lambda part: part.bounds)
+    if len(normalized) == 1:
+        return normalized[0]
+    return MultiPolygon(normalized)
+
+
 def _projection_for(pair: AnchorPair) -> _LocalProjection:
     return _LocalProjection(
         lat_ref_rad=math.radians(0.5 * (pair.a.lat + pair.b.lat)),
-        lon_ref_rad=math.radians(0.5 * (pair.a.lon + pair.b.lon)),
+        lon_ref_rad=_midpoint_longitude_rad(pair.a.lon, pair.b.lon),
     )
 
 
@@ -89,7 +204,7 @@ def _ellipse_center_xy(proj: _LocalProjection, ellipse: GeoEllipse) -> tuple[flo
 def _projection_for_ellipse(ellipse: GeoEllipse) -> _LocalProjection:
     return _LocalProjection(
         lat_ref_rad=math.radians(0.5 * (ellipse.a_lat + ellipse.b_lat)),
-        lon_ref_rad=math.radians(0.5 * (ellipse.a_lon + ellipse.b_lon)),
+        lon_ref_rad=_midpoint_longitude_rad(ellipse.a_lon, ellipse.b_lon),
     )
 
 
@@ -225,8 +340,12 @@ class Prism:
             rotation_rad=self.base_ellipse.rotation_rad,
         )
 
-    def mobr(self, ellipse: GeoEllipse | None = None) -> Polygon:
-        """Minimum Orthogonal Bounding Rectangle of an ellipse, in lon/lat."""
+    def mobr(self, ellipse: GeoEllipse | None = None) -> Polygonal:
+        """Minimum Orthogonal Bounding Rectangle in normalized lon/lat.
+
+        A rectangle crossing the antimeridian is returned as a MultiPolygon so
+        GeoJSON consumers do not draw a world-spanning edge.
+        """
 
         e = ellipse or self.base_ellipse
         proj = _projection_for_ellipse(e)
@@ -237,9 +356,11 @@ class Prism:
         local = rotate(local, math.degrees(theta), origin=(0, 0))
         local = translate(local, cx, cy)
         coords = [proj.to_lonlat(x, y) for x, y in local.exterior.coords]
-        return orient_polygon(Polygon(coords), sign=1.0)
+        return _normalize_polygon_longitudes(Polygon(coords))
 
-    def ellipse_polygon(self, ellipse: GeoEllipse | None = None, n: int = 64) -> Polygon:
+    def ellipse_polygon(self, ellipse: GeoEllipse | None = None, n: int = 64) -> Polygonal:
+        """Approximate an ellipse as normalized Polygon or MultiPolygon geometry."""
+
         e = ellipse or self.base_ellipse
         proj = _projection_for_ellipse(e)
         cx, cy = _ellipse_center_xy(proj, e)
@@ -248,12 +369,10 @@ class Prism:
         xs = cx + a * np.cos(ts) * math.cos(theta) - b * np.sin(ts) * math.sin(theta)
         ys = cy + a * np.cos(ts) * math.sin(theta) + b * np.sin(ts) * math.cos(theta)
         coords = [proj.to_lonlat(float(x), float(y)) for x, y in zip(xs, ys, strict=True)]
-        return orient_polygon(Polygon(coords), sign=1.0)
+        return _normalize_polygon_longitudes(Polygon(coords))
 
     @staticmethod
-    def merge_dynamic(
-        ellipses: Iterable[GeoEllipse], pair: AnchorPair
-    ) -> Polygon | MultiPolygon:
+    def merge_dynamic(ellipses: Iterable[GeoEllipse], pair: AnchorPair) -> Polygonal:
         """Dynamic Region Merge: maximal-union of overlapping ellipses.
 
         Mirrors STAGD-DRM: indexes ellipses by R*-tree and unions
@@ -262,7 +381,7 @@ class Prism:
         """
 
         proj = _projection_for(pair)
-        polys: list[Polygon] = []
+        polys: list[Polygonal] = []
         for e in ellipses:
             p = Prism(
                 pair=pair,
@@ -278,14 +397,16 @@ class Prism:
         merged = polys[0]
         for poly in polys[1:]:
             merged = merged.union(poly)
-        return merged
+        return _orient_polygonal(merged)
 
 
-def intersect(a: Prism, b: Prism, *, n_slices: int = 16) -> Polygon:
+def intersect(a: Prism, b: Prism, *, n_slices: int = 16) -> Polygonal:
     """Time-slice intersection of two prisms.
 
     Returns the union of per-slice ellipse intersections within the
-    overlapping time window. Empty if the time windows do not overlap.
+    overlapping time window. Only positive-area polygonal overlap is retained;
+    boundary-only point or line contact returns an empty Polygon. Empty also
+    means the time windows do not overlap.
     """
 
     t0 = max(a.pair.a.t, b.pair.a.t)
@@ -303,4 +424,4 @@ def intersect(a: Prism, b: Prism, *, n_slices: int = 16) -> Polygon:
         inter = pa.intersection(pb)
         if not inter.is_empty:
             accum = accum.union(inter)
-    return accum
+    return _orient_polygonal(accum)
