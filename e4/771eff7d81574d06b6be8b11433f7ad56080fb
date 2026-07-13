@@ -1,0 +1,66 @@
+cdc/connector/config.py
+  s_87fd0589dba2e0::t_721e99baa8c67e 28
+  s_87fd0589dba2e0::t_34451f34f3a557 50
+docs/AB_MASTERCLASS_AUDIT.md
+  s_87fd0589dba2e0::t_2913101bf661ee 11
+.github/workflows/serving-ci.yml
+  s_87fd0589dba2e0::t_9edb2b8de721b5 16-19,31-34
+scripts/cdc_smoke.py
+  s_87fd0589dba2e0::t_f0346c1019249a 31
+  s_87fd0589dba2e0::t_13295d9d74fdba 32,131-139
+deploy/k8s/cdc/30-connect.yaml
+  s_87fd0589dba2e0::t_24ec4d72e7f323 28-37,49-54
+infra/terraform/modules/ecs_connect/main.tf
+  s_87fd0589dba2e0::t_4b5f728fa74f68 11-13,17,278-280,285-288
+docs/runbooks/PHASE_2_AWS_SHOWCASE.md
+  s_87fd0589dba2e0::t_675daf828655c4 121-123,126-131,135
+  s_87fd0589dba2e0::t_595123299714e1 92-96,101-102,104-108,118
+cdc/connector/registration.py
+  s_87fd0589dba2e0::t_12501f4294c8bd 51
+  s_87fd0589dba2e0::t_33c6bcaa53784e 1-15,17,19,25-50,56-64,117-169
+  s_87fd0589dba2e0::t_721e99baa8c67e 77-79
+  s_87fd0589dba2e0::t_b97f9a985a460d 100-103
+  s_87fd0589dba2e0::t_41aa104042f541 16,18
+  s_87fd0589dba2e0::t_9f18be848b99fb 20-24,65-76,80-99,104-106,108-116
+  s_87fd0589dba2e0::t_1d63b068198416 107
+  s_87fd0589dba2e0::t_34451f34f3a557 52-55
+docs/runbooks/WAVE4_LIVE_WINDOWS.md
+  s_87fd0589dba2e0::t_2913101bf661ee 35-47
+  s_87fd0589dba2e0::t_a1bdb9d01e49c1 30-31
+cdc/tests/test_connector_registration.py
+  s_87fd0589dba2e0::t_d81b767e7ce323 7-9,110-126,128-134,136-138,140
+  s_87fd0589dba2e0::t_675daf828655c4 18,153-199,228
+  s_87fd0589dba2e0::t_632a67b52795d4 127,135,139
+  s_87fd0589dba2e0::t_34451f34f3a557 15,75,105,141,149
+  s_87fd0589dba2e0::t_0f05d8b71d3610 1-6,10-14,16-17,19-60,62-74,76-94,96-104,106-109,142-143,200-227,229
+  s_87fd0589dba2e0::t_9edb2b8de721b5 230-241
+  s_87fd0589dba2e0::t_a4a3f82ae83341 61
+  s_87fd0589dba2e0::t_e0309e55616963 144-145,147
+  s_87fd0589dba2e0::t_12501f4294c8bd 146,148,150-152
+  s_87fd0589dba2e0::t_ef0d6fb7c19e5a 95
+docs/drills/CDC_connector_registration_local_2026-07-12.md
+  s_87fd0589dba2e0::t_8d22787a1a3b51 45-49,51
+  s_87fd0589dba2e0::t_675daf828655c4 50
+  s_87fd0589dba2e0::t_1bc5dd0fbecb0e 1-44,52-106
+  s_87fd0589dba2e0::t_8f85fae6ee8f06 107-119
+sessions/CODEX_HANDOFF_2026-07-12.md
+  s_87fd0589dba2e0::t_25724a169066a9 17-19,26-28,68-69,73-87,90,105,114,120,137-140,144,147,206-208
+scripts/cdc_record_fixture.py
+  s_87fd0589dba2e0::t_13295d9d74fdba 44,80-84
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "e4771eff7d81574d06b6be8b11433f7ad56080fb",
+  "prompts": {},
+  "sessions": {
+    "s_87fd0589dba2e0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5912-4f5a-7aa3-8604-0ccba141cb86",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
