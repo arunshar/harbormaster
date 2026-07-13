@@ -50,6 +50,11 @@ DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000000"
 # The session GUC every Postgres-backed path sets before querying.
 TENANT_GUC = "app.tenant_id"
 
+# Serialize idempotent schema bootstrap across serving workers and replicas.
+# 0x484D5F534348454D is the positive signed-bigint encoding of "HM_SCHEM";
+# keep this stable because PostgreSQL advisory locks coordinate by integer key.
+SCHEMA_BOOTSTRAP_LOCK_ID = 0x484D5F534348454D
+
 # Column default: stamp the session's tenant on every insert; fall to the
 # single-tenant sentinel only so the ALTER backfill can never NULL-violate
 # (the policy's WITH CHECK still rejects a no-tenant session's writes).
