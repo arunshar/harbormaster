@@ -75,6 +75,22 @@ def test_prompt_construction_rejects_anything_that_is_not_a_reason_code(leaky_re
         build_prompt([leaky_reason], SCORE)
 
 
+@pytest.mark.parametrize(
+    "code_shaped_leak",
+    [
+        "latitude_spoof",
+        "longitude_spoof",
+        "fix_sequence",
+        "prism_reachable_area",
+        "trajectory_gap",
+        "coordinate_hint",
+    ],
+)
+def test_every_forbidden_vocabulary_token_is_rejected(code_shaped_leak):
+    with pytest.raises(ValueError, match="forbidden vocabulary"):
+        build_prompt([code_shaped_leak], SCORE)
+
+
 def test_prompt_construction_rejects_an_empty_reason_list_and_bad_scores():
     with pytest.raises(ValueError):
         build_prompt([], SCORE)
@@ -86,6 +102,12 @@ def test_prompt_construction_rejects_an_empty_reason_list_and_bad_scores():
 def test_every_real_reason_code_is_accepted():
     prompt = build_prompt(ALL_REASON_CODES, 0.0)
     assert "implausible_speed, abnormal_gap, off_corridor" in prompt
+
+
+@pytest.mark.parametrize("boundary_score", [0.0, 1.0])
+def test_score_interval_is_inclusive_at_both_boundaries(boundary_score):
+    prompt = build_prompt(["off_corridor"], boundary_score)
+    assert f"{boundary_score:.3f}" in prompt
 
 
 # ---- disabled by default ----------------------------------------------------
