@@ -21,7 +21,8 @@ P39 composite-key hardening is also implemented and verified locally against
 PostgreSQL 16, two local production-image containers, and a fresh kind CDC stack.
 Its live Postgres migration and tenant-qualified DynamoDB/Redis rebuild have not run.
 The Flink malformed-key defect and the `PutRecords` finding-21 test-strength gap
-are also fixed and verified locally; neither establishes new live AWS behavior.
+are also fixed and verified locally. The final near-pole prism projection debt is
+fixed and locally regression-tested as well. None establishes new live AWS behavior.
 
 ## Repo facts
 
@@ -143,14 +144,27 @@ a hot key group during sustained malformed traffic. The prism ellipse-center
 and antimeridian defects are locally complete. Wrapped longitude math follows
 the shortest path, seam-crossing output is a normalized MultiPolygon, Boolean
 geometry preserves GeoJSON ring winding, and DRM compares component bounds.
-Near-pole projection stability remains separate debt. Bedrock
+The near-pole kernel now uses a spherical azimuthal-equidistant projection
+centered on the active foci's spherical midpoint, with wrapped haversine focus
+distance and a numerically stable inverse. North and south non-containing
+footprints pass at latitudes 89.9999 and 89.99999; a requested ellipse or MOBR
+that contains or touches either pole raises a deterministic domain error, as do
+antipodal or numerically singular foci. Adaptive sampling keeps supported
+rotated footprints valid, conservative MOBR polygonization preserves the
+downstream bounds contract, and corner-only mapping retains infeasible
+zero-axis prisms. The focused geometry consumer run passed 75 tests at 90.85%
+combined line and branch coverage. The full local gate passed with 1,094 tests
+at 83.86% total coverage, and the serving Docker smoke returned HTTP 200 for
+health and a near-pole score request. This is local evidence, not a
+deployed-service claim. Bedrock
 forbidden-vocabulary and inclusive-score boundaries are pinned, as are
 disagreement usable-window and q95 boundaries. Tenant-drift ordering is pinned
 under reverse insertion, and four hand-computed PPO cases pin the clipped
 surrogate across both advantage signs and both clip sides. The ordered
 robustness queue is complete. See
 `docs/drills/FLINK_MMSI_KEY_LOCAL_2026-07-13.md` and
-`docs/drills/ANTIMERIDIAN_PRISM_LOCAL_2026-07-13.md`.
+`docs/drills/ANTIMERIDIAN_PRISM_LOCAL_2026-07-13.md`, and
+`docs/drills/NEAR_POLE_PRISM_LOCAL_2026-07-13.md`.
 
 ### 4. Structural / low-priority
 

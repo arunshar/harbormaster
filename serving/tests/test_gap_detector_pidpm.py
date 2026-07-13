@@ -135,3 +135,17 @@ async def test_antimeridian_gap_uses_short_distance_and_cut_geojson():
     assert gaps[0].distance_m == pytest.approx(22_238.985_329, rel=1e-9)
     assert gaps[0].p_physical == 1.0
     assert gaps[0].coverage_polygon_geojson["type"] == "MultiPolygon"
+
+
+@pytest.mark.asyncio
+async def test_infeasible_gap_retains_a_finite_degenerate_coverage_polygon():
+    traj = [
+        Anchor(lat=0.0, lon=0.0, t=T0),
+        Anchor(lat=0.0, lon=0.1, t=T0 + timedelta(seconds=601)),
+    ]
+
+    gaps = await GapDetectorAgent(Settings()).detect({"trajectory": traj, "domain": "vessel"})
+
+    assert len(gaps) == 1
+    assert gaps[0].p_physical < 1.0
+    assert gaps[0].coverage_polygon_geojson["type"] == "Polygon"

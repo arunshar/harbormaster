@@ -14,12 +14,16 @@ a geo-ellipse with foci A and B and semi-major axis
 The full prism is the union of these ellipses across t in [t_A, t_B].
 This module computes prisms, ellipses, MOBRs, and their intersections.
 
-Math is done in a local equirectangular projection centered on the active
-ellipse's foci so that distances are Euclidean to first order. The base ellipse
-uses the prism anchor pair; a supplied ellipse uses its own foci. Longitude
-deltas follow the shortest wrapped path, and geometry crossing the
-antimeridian is cut into normalized polygon components. For continental-scale
-or near-polar anchors, switch to a projection designed for that domain.
+Math is done in a local spherical azimuthal-equidistant projection centered on
+the spherical midpoint of the active ellipse's foci. The base ellipse uses the
+prism anchor pair; a supplied ellipse uses its own foci. Longitude deltas follow
+the shortest wrapped path, and inverse projection keeps longitude continuous so
+geometry crossing the antimeridian can be cut into normalized components.
+
+Near-pole footprints are supported only when the requested ellipse or MOBR does
+not contain or touch a geographic pole. That boundary is rejected explicitly
+because longitude is undefined at a pole and a lon/lat polygon around it cannot
+honor the module's continuous-ring contract.
 """
 
 from __future__ import annotations
@@ -43,6 +47,20 @@ EARTH_RADIUS_M = 6_371_000.0
 KNOTS_TO_MPS = 0.514_444
 KMH_TO_MPS = 1 / 3.6
 
+# The normalized vector sum amplifies floating-point error by 1 / norm. This
+# cutoff rejects focus pairs within about 6.37 m of antipodal separation and
+# keeps the midpoint's conditioning near the millimeter scale.
+_FOCUS_MIDPOINT_EPS = 1e-6
+_PROJECTION_ANTIPODE_EPS = 1e-12
+_POLE_LINEAR_TOL_M = 1e-6
+_POLE_NORMALIZED_TOL = 1e-12
+_MOBR_EDGE_SEGMENTS = 64
+_MAX_ELLIPSE_SEGMENTS = 4096
+_RING_COORD_TOL_DEG = 1e-12
+_FOCUS_DOMAIN_ERROR = "active foci are antipodal or numerically singular"
+_PROJECTION_DOMAIN_ERROR = "azimuthal projection is singular at the antipode"
+_POLE_DOMAIN_ERROR = "prism footprint contains or touches a geographic pole"
+
 Polygonal = Polygon | MultiPolygon
 
 
@@ -62,7 +80,7 @@ def speed_bounds_for(
 
 @dataclass(frozen=True)
 class _LocalProjection:
-    """Equirectangular projection around a reference latitude."""
+    """Spherical azimuthal-equidistant projection around a local center."""
 
     lat_ref_rad: float
     lon_ref_rad: float
@@ -71,19 +89,63 @@ class _LocalProjection:
         lat = math.radians(lat_deg)
         lon = math.radians(lon_deg)
         lon_delta = _wrapped_radians(lon - self.lon_ref_rad)
-        x = lon_delta * math.cos(self.lat_ref_rad) * EARTH_RADIUS_M
-        y = (lat - self.lat_ref_rad) * EARTH_RADIUS_M
+        sin_ref = math.sin(self.lat_ref_rad)
+        cos_ref = math.cos(self.lat_ref_rad)
+        sin_lat = math.sin(lat)
+        cos_lat = math.cos(lat)
+        cos_delta = math.cos(lon_delta)
+        half_chord_sq = math.sin(0.5 * (lat - self.lat_ref_rad)) ** 2 + (
+            cos_ref * cos_lat * math.sin(0.5 * lon_delta) ** 2
+        )
+        c = 2.0 * math.asin(math.sqrt(_clamp_unit_interval(half_chord_sq)))
+        if c >= math.pi - _PROJECTION_ANTIPODE_EPS:
+            raise ValueError(_PROJECTION_DOMAIN_ERROR)
+        sin_c = math.sin(c)
+        k = 1.0 if c == 0.0 else c / sin_c
+        x = EARTH_RADIUS_M * k * cos_lat * math.sin(lon_delta)
+        y = EARTH_RADIUS_M * k * (cos_ref * sin_lat - sin_ref * cos_lat * cos_delta)
         return x, y
 
     def to_lonlat(self, x: float, y: float) -> tuple[float, float]:
-        lat = math.degrees(self.lat_ref_rad + y / EARTH_RADIUS_M)
-        lon = math.degrees(self.lon_ref_rad + x / (EARTH_RADIUS_M * math.cos(self.lat_ref_rad)))
-        return lon, lat
+        rho = math.hypot(x, y)
+        if rho == 0.0:
+            return math.degrees(self.lon_ref_rad), math.degrees(self.lat_ref_rad)
+        c = rho / EARTH_RADIUS_M
+        if c >= math.pi - _PROJECTION_ANTIPODE_EPS:
+            raise ValueError(_PROJECTION_DOMAIN_ERROR)
+        sin_c = math.sin(c)
+        cos_c = math.cos(c)
+        sin_ref = math.sin(self.lat_ref_rad)
+        cos_ref = math.cos(self.lat_ref_rad)
+        sin_lon = math.sin(self.lon_ref_rad)
+        cos_lon = math.cos(self.lon_ref_rad)
+        unit_x, unit_y = x / rho, y / rho
+        direction_x = -unit_x * sin_lon - unit_y * sin_ref * cos_lon
+        direction_y = unit_x * cos_lon - unit_y * sin_ref * sin_lon
+        direction_z = unit_y * cos_ref
+        point_x = cos_c * cos_ref * cos_lon + sin_c * direction_x
+        point_y = cos_c * cos_ref * sin_lon + sin_c * direction_y
+        point_z = cos_c * sin_ref + sin_c * direction_z
+        lat = math.atan2(point_z, math.hypot(point_x, point_y))
+        canonical_lon = math.atan2(point_y, point_x)
+        lon_delta = _wrapped_radians(canonical_lon - self.lon_ref_rad)
+        # Do not wrap here. The seam normalizer needs a continuous longitude
+        # around the local reference so it can cut before canonicalizing.
+        lon = self.lon_ref_rad + lon_delta
+        return math.degrees(lon), math.degrees(lat)
+
+
+def _clamp_unit_interval(value: float) -> float:
+    """Clamp roundoff before inverse trigonometric calls."""
+
+    return min(1.0, max(0.0, value))
 
 
 def _wrapped_radians(angle: float) -> float:
-    """Normalize an angle to the half-open interval [-pi, pi)."""
+    """Wrap to [-pi, pi] while preserving canonical inputs exactly."""
 
+    if -math.pi <= angle <= math.pi:
+        return angle
     return (angle + math.pi) % (2 * math.pi) - math.pi
 
 
@@ -95,20 +157,89 @@ def _midpoint_longitude_rad(a_lon_deg: float, b_lon_deg: float) -> float:
     return a_lon_rad + 0.5 * _wrapped_radians(b_lon_rad - a_lon_rad)
 
 
+def _spherical_midpoint_rad(
+    a_lat_deg: float,
+    a_lon_deg: float,
+    b_lat_deg: float,
+    b_lon_deg: float,
+) -> tuple[float, float]:
+    """Return the continuous spherical midpoint of two non-antipodal foci."""
+
+    a_lat = math.radians(a_lat_deg)
+    a_lon = math.radians(a_lon_deg)
+    b_lat = math.radians(b_lat_deg)
+    b_lon = math.radians(b_lon_deg)
+    ax = math.cos(a_lat) * math.cos(a_lon)
+    ay = math.cos(a_lat) * math.sin(a_lon)
+    az = math.sin(a_lat)
+    bx = math.cos(b_lat) * math.cos(b_lon)
+    by = math.cos(b_lat) * math.sin(b_lon)
+    bz = math.sin(b_lat)
+    sx, sy, sz = ax + bx, ay + by, az + bz
+    norm = math.sqrt(sx * sx + sy * sy + sz * sz)
+    if norm <= _FOCUS_MIDPOINT_EPS:
+        raise ValueError(_FOCUS_DOMAIN_ERROR)
+    sx, sy, sz = sx / norm, sy / norm, sz / norm
+    lat_ref = math.atan2(sz, math.hypot(sx, sy))
+    canonical_lon = math.atan2(sy, sx)
+    lon_hint = _midpoint_longitude_rad(a_lon_deg, b_lon_deg)
+    turns = round((lon_hint - canonical_lon) / (2 * math.pi))
+    return lat_ref, canonical_lon + turns * 2 * math.pi
+
+
 def _shifted_polygon(polygon: Polygon, x_offset: float) -> Polygon:
     """Shift one component and clamp seam roundoff to exact longitude limits."""
 
     def shift_ring(coords) -> list[tuple[float, float]]:  # type: ignore[no-untyped-def]
         shifted: list[tuple[float, float]] = []
+        shifted_with_repeats: list[tuple[float, float]] = []
         for x, y in coords:
             longitude = x + x_offset
-            if math.isclose(longitude, -180.0, abs_tol=1e-10):
+            if math.isclose(longitude, -180.0, rel_tol=0.0, abs_tol=1e-10):
                 longitude = -180.0
-            elif math.isclose(longitude, 180.0, abs_tol=1e-10):
+            elif math.isclose(longitude, 180.0, rel_tol=0.0, abs_tol=1e-10):
                 longitude = 180.0
             if not -180.0 <= longitude <= 180.0:
                 raise ValueError("normalized polygon longitude is outside [-180, 180]")
-            shifted.append((longitude, y))
+            coordinate = (longitude, y)
+            shifted_with_repeats.append(coordinate)
+            if (
+                shifted
+                and math.isclose(
+                    shifted[-1][0],
+                    coordinate[0],
+                    rel_tol=0.0,
+                    abs_tol=_RING_COORD_TOL_DEG,
+                )
+                and math.isclose(
+                    shifted[-1][1],
+                    coordinate[1],
+                    rel_tol=0.0,
+                    abs_tol=_RING_COORD_TOL_DEG,
+                )
+            ):
+                continue
+            shifted.append(coordinate)
+        if (
+            shifted
+            and math.isclose(
+                shifted[0][0],
+                shifted[-1][0],
+                rel_tol=0.0,
+                abs_tol=_RING_COORD_TOL_DEG,
+            )
+            and math.isclose(
+                shifted[0][1],
+                shifted[-1][1],
+                rel_tol=0.0,
+                abs_tol=_RING_COORD_TOL_DEG,
+            )
+        ):
+            shifted[-1] = shifted[0]
+        elif shifted:
+            shifted.append(shifted[0])
+        if len(shifted) < 4:
+            return shifted_with_repeats
         return shifted
 
     shell = shift_ring(polygon.exterior.coords)
@@ -188,11 +319,57 @@ def _normalize_polygon_longitudes(polygon: Polygon) -> Polygonal:
     return MultiPolygon(normalized)
 
 
+def _densify_closed_ring(
+    coordinates: Iterable[tuple[float, float]],
+    *,
+    segments_per_edge: int,
+) -> list[tuple[float, float]]:
+    """Sample straight projected edges before their nonlinear inverse map."""
+
+    vertices = list(coordinates)
+    dense: list[tuple[float, float]] = []
+    for (start_x, start_y), (end_x, end_y) in zip(vertices[:-1], vertices[1:], strict=True):
+        for step in range(segments_per_edge):
+            fraction = step / segments_per_edge
+            dense.append(
+                (
+                    start_x + fraction * (end_x - start_x),
+                    start_y + fraction * (end_y - start_y),
+                )
+            )
+    dense.append(dense[0])
+    return dense
+
+
+def _unwrap_ring_longitudes(
+    coordinates: Iterable[tuple[float, float]],
+) -> list[tuple[float, float]]:
+    """Lift sequential ring vertices onto one continuous longitude branch."""
+
+    points = list(coordinates)
+    if len(points) > 1 and points[-1] == points[0]:
+        points.pop()
+    if not points:
+        return []
+    unwrapped = [points[0]]
+    for longitude, latitude in points[1:]:
+        previous_longitude = unwrapped[-1][0]
+        while longitude - previous_longitude > 180.0:
+            longitude -= 360.0
+        while longitude - previous_longitude < -180.0:
+            longitude += 360.0
+        unwrapped.append((longitude, latitude))
+    return unwrapped
+
+
 def _projection_for(pair: AnchorPair) -> _LocalProjection:
-    return _LocalProjection(
-        lat_ref_rad=math.radians(0.5 * (pair.a.lat + pair.b.lat)),
-        lon_ref_rad=_midpoint_longitude_rad(pair.a.lon, pair.b.lon),
+    lat_ref_rad, lon_ref_rad = _spherical_midpoint_rad(
+        pair.a.lat,
+        pair.a.lon,
+        pair.b.lat,
+        pair.b.lon,
     )
+    return _LocalProjection(lat_ref_rad=lat_ref_rad, lon_ref_rad=lon_ref_rad)
 
 
 def _ellipse_center_xy(proj: _LocalProjection, ellipse: GeoEllipse) -> tuple[float, float]:
@@ -202,18 +379,106 @@ def _ellipse_center_xy(proj: _LocalProjection, ellipse: GeoEllipse) -> tuple[flo
 
 
 def _projection_for_ellipse(ellipse: GeoEllipse) -> _LocalProjection:
-    return _LocalProjection(
-        lat_ref_rad=math.radians(0.5 * (ellipse.a_lat + ellipse.b_lat)),
-        lon_ref_rad=_midpoint_longitude_rad(ellipse.a_lon, ellipse.b_lon),
+    lat_ref_rad, lon_ref_rad = _spherical_midpoint_rad(
+        ellipse.a_lat,
+        ellipse.a_lon,
+        ellipse.b_lat,
+        ellipse.b_lon,
     )
+    return _LocalProjection(lat_ref_rad=lat_ref_rad, lon_ref_rad=lon_ref_rad)
+
+
+def _axis_contains_or_touches(value: float, extent: float) -> bool:
+    extent = abs(extent)
+    return abs(value) <= extent or math.isclose(
+        abs(value),
+        extent,
+        rel_tol=_POLE_NORMALIZED_TOL,
+        abs_tol=_POLE_LINEAR_TOL_M,
+    )
+
+
+def _ellipse_contains_or_touches(u: float, v: float, a: float, b: float) -> bool:
+    a, b = abs(a), abs(b)
+    if a <= _POLE_LINEAR_TOL_M:
+        return abs(u) <= _POLE_LINEAR_TOL_M and _axis_contains_or_touches(v, b)
+    if b <= _POLE_LINEAR_TOL_M:
+        return abs(v) <= _POLE_LINEAR_TOL_M and _axis_contains_or_touches(u, a)
+    normalized = (u / a) ** 2 + (v / b) ** 2
+    return normalized <= 1.0 or math.isclose(
+        normalized,
+        1.0,
+        rel_tol=_POLE_NORMALIZED_TOL,
+        abs_tol=_POLE_NORMALIZED_TOL,
+    )
+
+
+def _assert_poles_outside_footprint(
+    proj: _LocalProjection,
+    ellipse: GeoEllipse,
+    center_xy: tuple[float, float],
+    *,
+    rectangle: bool,
+) -> None:
+    """Reject ellipse or MOBR containment and contact at either pole."""
+
+    cx, cy = center_xy
+    cos_theta = math.cos(ellipse.rotation_rad)
+    sin_theta = math.sin(ellipse.rotation_rad)
+    for pole_lat_rad in (math.pi / 2, -math.pi / 2):
+        # In an azimuthal-equidistant plane, either pole lies due north or
+        # south of the center at its exact spherical radial distance.
+        pole_x = 0.0
+        pole_y = EARTH_RADIUS_M * (pole_lat_rad - proj.lat_ref_rad)
+        dx, dy = pole_x - cx, pole_y - cy
+        u = dx * cos_theta + dy * sin_theta
+        v = -dx * sin_theta + dy * cos_theta
+        if rectangle:
+            contains = _axis_contains_or_touches(u, ellipse.semi_major_m) and (
+                _axis_contains_or_touches(v, ellipse.semi_minor_m)
+            )
+        else:
+            contains = _ellipse_contains_or_touches(
+                u,
+                v,
+                ellipse.semi_major_m,
+                ellipse.semi_minor_m,
+            )
+        if contains:
+            raise ValueError(_POLE_DOMAIN_ERROR)
+
+
+def _ellipse_polygon_unwrapped(
+    proj: _LocalProjection,
+    ellipse: GeoEllipse,
+    center_xy: tuple[float, float],
+    *,
+    n: int = 64,
+) -> Polygon:
+    """Sample an ellipse in continuous longitude before seam normalization."""
+
+    cx, cy = center_xy
+    a, b, theta = ellipse.semi_major_m, ellipse.semi_minor_m, ellipse.rotation_rad
+    sample_count = n
+    while True:
+        ts = np.linspace(0, 2 * math.pi, sample_count, endpoint=False)
+        xs = cx + a * np.cos(ts) * math.cos(theta) - b * np.sin(ts) * math.sin(theta)
+        ys = cy + a * np.cos(ts) * math.sin(theta) + b * np.sin(ts) * math.cos(theta)
+        coords = [proj.to_lonlat(float(x), float(y)) for x, y in zip(xs, ys, strict=True)]
+        polygon = Polygon(_unwrap_ring_longitudes(coords))
+        if polygon.is_valid or a == 0.0 or b == 0.0:
+            return polygon
+        if sample_count >= _MAX_ELLIPSE_SEGMENTS:
+            raise ValueError("inverse-projected ellipse is numerically invalid")
+        sample_count = min(2 * sample_count, _MAX_ELLIPSE_SEGMENTS)
 
 
 def haversine_m(a_lat: float, a_lon: float, b_lat: float, b_lon: float) -> float:
     phi1, phi2 = math.radians(a_lat), math.radians(b_lat)
     dphi = phi2 - phi1
-    dlam = math.radians(b_lon - a_lon)
+    dlam = _wrapped_radians(math.radians(b_lon - a_lon))
     s = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2
-    return 2 * EARTH_RADIUS_M * math.asin(min(1.0, math.sqrt(s)))
+    return 2 * EARTH_RADIUS_M * math.asin(math.sqrt(_clamp_unit_interval(s)))
 
 
 @dataclass(frozen=True)
@@ -236,7 +501,7 @@ class Prism:
         proj = _projection_for(pair)
         ax, ay = proj.to_xy(pair.a.lat, pair.a.lon)
         bx, by = proj.to_xy(pair.b.lat, pair.b.lon)
-        d_ab = math.hypot(bx - ax, by - ay)
+        d_ab = haversine_m(pair.a.lat, pair.a.lon, pair.b.lat, pair.b.lon)
         duration_s = (pair.b.t - pair.a.t).total_seconds()
         if duration_s <= 0:
             raise ValueError("anchor B must be strictly after anchor A in time")
@@ -351,12 +616,31 @@ class Prism:
         proj = _projection_for_ellipse(e)
         # rectangle in local xy aligned with ellipse axes and centered on its foci
         cx, cy = _ellipse_center_xy(proj, e)
+        _assert_poles_outside_footprint(proj, e, (cx, cy), rectangle=True)
         a, b, theta = e.semi_major_m, e.semi_minor_m, e.rotation_rad
         local = Polygon([(-a, -b), (a, -b), (a, b), (-a, b)])
         local = rotate(local, math.degrees(theta), origin=(0, 0))
         local = translate(local, cx, cy)
-        coords = [proj.to_lonlat(x, y) for x, y in local.exterior.coords]
-        return _normalize_polygon_longitudes(Polygon(coords))
+        if a == 0.0 or b == 0.0:
+            degenerate_coords = [proj.to_lonlat(x, y) for x, y in local.exterior.coords]
+            return _normalize_polygon_longitudes(
+                Polygon(_unwrap_ring_longitudes(degenerate_coords))
+            )
+        projected_ring = _densify_closed_ring(
+            local.exterior.coords,
+            segments_per_edge=_MOBR_EDGE_SEGMENTS,
+        )
+        coords = [proj.to_lonlat(x, y) for x, y in projected_ring]
+        mapped_rectangle = Polygon(_unwrap_ring_longitudes(coords))
+        # Chords between inverse-projected rectangle samples can fall inside
+        # the true curved boundary near a pole. The smallest conservative
+        # correction for the public sampled geometry is its polygonal union
+        # with the mapped local minimum rectangle.
+        sampled_ellipse = _ellipse_polygon_unwrapped(proj, e, (cx, cy))
+        conservative_rectangle = mapped_rectangle.union(sampled_ellipse)
+        if not isinstance(conservative_rectangle, Polygon):
+            raise ValueError("projected MOBR union is not a single polygon")
+        return _normalize_polygon_longitudes(conservative_rectangle)
 
     def ellipse_polygon(self, ellipse: GeoEllipse | None = None, n: int = 64) -> Polygonal:
         """Approximate an ellipse as normalized Polygon or MultiPolygon geometry."""
@@ -364,12 +648,8 @@ class Prism:
         e = ellipse or self.base_ellipse
         proj = _projection_for_ellipse(e)
         cx, cy = _ellipse_center_xy(proj, e)
-        a, b, theta = e.semi_major_m, e.semi_minor_m, e.rotation_rad
-        ts = np.linspace(0, 2 * math.pi, n, endpoint=False)
-        xs = cx + a * np.cos(ts) * math.cos(theta) - b * np.sin(ts) * math.sin(theta)
-        ys = cy + a * np.cos(ts) * math.sin(theta) + b * np.sin(ts) * math.cos(theta)
-        coords = [proj.to_lonlat(float(x), float(y)) for x, y in zip(xs, ys, strict=True)]
-        return _normalize_polygon_longitudes(Polygon(coords))
+        _assert_poles_outside_footprint(proj, e, (cx, cy), rectangle=False)
+        return _normalize_polygon_longitudes(_ellipse_polygon_unwrapped(proj, e, (cx, cy), n=n))
 
     @staticmethod
     def merge_dynamic(ellipses: Iterable[GeoEllipse], pair: AnchorPair) -> Polygonal:
