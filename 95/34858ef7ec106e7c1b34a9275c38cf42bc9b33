@@ -1,0 +1,25 @@
+docs/WAVE3_FINDINGS.md
+  s_87fd0589dba2e0::t_620ee16d36e3c4 29-31
+mlops/tests/test_disagreement_baseline.py
+  s_87fd0589dba2e0::t_484b35b388b923 60-67
+  s_87fd0589dba2e0::t_b6da0012717c6b 124-135
+  s_87fd0589dba2e0::t_752bc278213608 136-137
+sessions/CODEX_HANDOFF_2026-07-12.md
+  s_87fd0589dba2e0::t_620ee16d36e3c4 146-148
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "9534858ef7ec106e7c1b34a9275c38cf42bc9b33",
+  "prompts": {},
+  "sessions": {
+    "s_87fd0589dba2e0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5912-4f5a-7aa3-8604-0ccba141cb86",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
