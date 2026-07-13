@@ -98,13 +98,10 @@ serve-docker:         ## build the serving container image (build context = repo
 flink-jar:            ## build the Kinesis-connector fat-jar via Maven in Docker -> streaming/flink/target/pyflink-dependencies.jar
 	docker run --rm -v "$$(pwd)/streaming/flink":/build -w /build maven:3-eclipse-temurin-11 mvn -q -B package
 
-flink-package: flink-jar  ## package the PyFlink feature job for Managed Flink -> dist/flink-app.zip
-	rm -rf dist/flink-app dist/flink-app.zip && mkdir -p dist/flink-app/lib
-	cp streaming/flink/job.py dist/flink-app/main.py
-	cp streaming/flink/requirements.txt dist/flink-app/requirements.txt
-	cp streaming/flink/target/pyflink-dependencies.jar dist/flink-app/lib/
-	cd dist/flink-app && zip -qr ../flink-app.zip main.py requirements.txt lib
-	@echo "packaged dist/flink-app.zip (main.py at root + lib/pyflink-dependencies.jar) -> upload to the lake bucket, set flink_code_s3_key on"
+flink-package:  ## package the PyFlink feature job for Managed Flink -> dist/flink-app.zip
+	rm -rf dist/flink-app dist/flink-app.zip
+	$(MAKE) flink-jar
+	PYTHONPATH=streaming $(PY) -m flink.package_app
 
 e2e:                  ## Phase 1 e2e acceptance against a live demo apply (needs HM_E2E=1 + SERVING_URL)
 	HM_E2E=1 $(PY) -m pytest tests/e2e/test_phase1.py -v

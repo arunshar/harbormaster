@@ -6,24 +6,18 @@ to the DynamoDB online feature store and POSTed to the serving scorer
 (/v1/score-ais). The raw stream is teed to S3/Iceberg by the Firehose module, not
 here.
 
-The feature/transform logic below is a deliberate, byte-identical duplicate of the
-pure, unit-tested functions in streaming.features.features and
-streaming.flink.transforms (those files remain the tested source of truth; their
-own test suites are unaffected). It is inlined here, not imported, because
-FeatureProcess.process_element's stateful KeyedProcessFunction runs in a separate
-Python UDF worker subprocess (Beam's process-mode harness) that does not inherit
-the driver's sys.path. cloudpickle only serializes a referenced function/class BY
-VALUE when it is defined in __main__ (confirmed via cloudpickle's own documented
-behavior); anything imported from a real package gets pickled BY REFERENCE, and
-the worker then needs that package importable on ITS OWN sys.path. Three separate
-attempts to ship streaming.flink.transforms/streaming.features.features as a
-runtime dependency all hit real, confirmed bugs in Managed Flink's Python
-dependency staging (env.add_python_file: ModuleNotFoundError unchanged across two
-full redeploys; pyFiles as two comma-separated paths: FileAlreadyExistsException,
-reproduced twice, deterministic; pyFiles as one merged directory: rejected by
-AWS's own UpdateApplication validation despite the zip demonstrably containing the
-entry) -- real first-live-run findings, W1 sprint window, 2026-07-04. Inlining
-into __main__ sidesteps the whole dependency-staging subsystem.
+The feature/transform logic lives in the bundled flink.window_logic module as a
+deliberate, byte-identical duplicate of the pure, unit-tested functions in
+streaming.features.features and streaming.flink.transforms. The driver imports
+that module from the application zip, then cloudpickle.register_pickle_by_value
+embeds it in the UDF payload. This matters because FeatureProcess runs in a
+separate Python worker subprocess that does not inherit the driver's sys.path.
+Three attempts to ship the packages through Managed Flink's pyFiles mechanisms
+hit confirmed dependency-staging failures (env.add_python_file left the worker
+module missing; comma-separated paths raised FileAlreadyExistsException; a merged
+directory was rejected by UpdateApplication validation). Bundling the module for
+the driver and serializing it by value keeps the logic testable without requiring
+pyFiles in the worker. These are W1 live-run findings from 2026-07-04.
 
 Config comes from Managed Flink's real Runtime Properties mechanism: AWS writes
 /etc/flink/application_properties.json at container start (generated from the
