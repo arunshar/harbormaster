@@ -19,11 +19,23 @@ P_PHYS_GATE = 0.3
 
 
 def parse_ais_json(raw: str | bytes) -> tuple[int, Fix]:
-    """Parse one ais-raw Kinesis record into (mmsi, Fix). Raises ValueError on a
-    malformed record so the job can route it to a dead-letter path."""
+    """Parse one ais-raw Kinesis record into (mmsi, Fix).
+
+    Raises ValueError when JSON decoding, required-field conversion, or MMSI
+    validation fails so the job can route the record to a dead-letter path.
+    """
     try:
         d = json.loads(raw)
-        return int(d["mmsi"]), Fix(
+        raw_mmsi = d["mmsi"]
+        if type(raw_mmsi) is int:
+            mmsi = raw_mmsi
+        elif isinstance(raw_mmsi, str) and raw_mmsi.isascii() and raw_mmsi.isdecimal():
+            mmsi = int(raw_mmsi)
+        else:
+            raise TypeError("mmsi must be an integer or ASCII digit string")
+        if not 0 <= mmsi <= 999_999_999:
+            raise ValueError(f"mmsi out of range: {mmsi}")
+        return mmsi, Fix(
             lat=float(d["lat"]),
             lon=float(d["lon"]),
             t=datetime.fromisoformat(str(d["t"]).replace("Z", "+00:00")),
@@ -31,8 +43,25 @@ def parse_ais_json(raw: str | bytes) -> tuple[int, Fix]:
             cog=None if d.get("cog") is None else float(d["cog"]),
             heading=None if d.get("heading") is None else float(d["heading"]),
         )
-    except (KeyError, ValueError, TypeError) as exc:
+    except (KeyError, OverflowError, RecursionError, ValueError, TypeError) as exc:
         raise ValueError(f"malformed ais record: {exc}") from exc
+
+
+INVALID_AIS_KEY = -1
+
+
+def mmsi_partition_key(raw: str | bytes) -> int:
+    """Return a LONG-compatible MMSI key without failing before quarantine.
+
+    Flink evaluates key_by before the keyed process function. Records rejected
+    by this parser share a sentinel partition so FeatureProcess can quarantine
+    them; they return before reading or updating keyed state.
+    """
+    try:
+        mmsi, _ = parse_ais_json(raw)
+        return mmsi
+    except ValueError:
+        return INVALID_AIS_KEY
 
 
 def window_representative(fixes: list[Fix]) -> Fix:

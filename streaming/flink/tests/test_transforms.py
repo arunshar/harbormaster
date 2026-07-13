@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
 from features.features import VESSEL_V_MAX_MPS, Fix, window_features
 from flink.transforms import (
     P_PHYS_GATE,
@@ -29,8 +31,6 @@ def test_parse_ais_json_roundtrip():
 
 
 def test_parse_ais_json_malformed_raises():
-    import pytest
-
     with pytest.raises(ValueError):
         parse_ais_json('{"lat": 1.0}')  # missing mmsi
 
@@ -43,6 +43,11 @@ def test_window_representative_picks_latest():
     ]
     rep = window_representative(fixes)
     assert rep.t == T0 + timedelta(seconds=50)
+
+
+def test_window_representative_rejects_empty_window():
+    with pytest.raises(ValueError, match="empty window"):
+        window_representative([])
 
 
 def test_p_physical_gate_matches_config_constant():
