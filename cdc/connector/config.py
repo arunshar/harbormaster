@@ -25,6 +25,7 @@ from cdc.schema.ddl import CDC_TABLES, PUBLICATION_NAME, SLOT_NAME
 CONNECTOR_NAME = "harbormaster-postgres"
 TOPIC_PREFIX = "hm"
 SCHEMA = "public"
+DATABASE_PASSWORD_REFERENCE = "${dir:/dev/shm/secrets:password}"  # nosec B105  # provider reference, not a credential
 
 
 def topic_for(table: str, prefix: str = TOPIC_PREFIX) -> str:
@@ -46,7 +47,7 @@ def build_connector_config(
     db_port: int = 5432,
     db_name: str = "harbormaster",
     db_user: str = "hm_admin",
-    db_password: str = "${dir:/dev/shm/secrets:password}",
+    db_password: str = DATABASE_PASSWORD_REFERENCE,
     topic_prefix: str = TOPIC_PREFIX,
     snapshot_mode: str = "initial",
     heartbeat_interval_ms: int = 10_000,

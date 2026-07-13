@@ -89,20 +89,23 @@ aws ecs wait services-stable --region us-east-1 \
 ## 5. Register the connector (in-VPC, via ECS exec)
 
 Connect REST (8083) is in-VPC only, and the RDS password never leaves the
-task: the config references `${env:HM_PG_PASSWORD}` through the
-EnvVarConfigProvider, injected by the task definition from the RDS managed
-secret. Generate the JSON locally, then PUT it from inside the container.
+task: the config references `${dir:/dev/shm/secrets:password}` through the
+DirectoryConfigProvider. The task entrypoint writes the ECS-injected secret to
+that tmpfs file before Connect starts. Generate a base64 transport command
+locally, then run it inside the container. Base64 is required here because an
+unquoted heredoc expands `${dir:...}` in Bash before curl can send it.
 
 ```
 cd ~/code/harbormaster
 RDS_HOST=$(terraform -chdir=infra/terraform/envs/base output -raw rds_endpoint | cut -d: -f1)
-.venv/bin/python -c "
-import json
+CONNECTOR_COMMAND=$(RDS_HOST="$RDS_HOST" .venv/bin/python -c '
+import os
 from cdc.connector.config import build_connector_config
-body = build_connector_config(db_host='$RDS_HOST', db_port=5432,
-                              db_password='\${env:HM_PG_PASSWORD}')
-print(json.dumps(body['config']))
-" > /tmp/connector.json
+from cdc.connector.registration import build_ecs_exec_registration_command
+
+body = build_connector_config(db_host=os.environ["RDS_HOST"], db_port=5432)
+print(build_ecs_exec_registration_command(body))
+')
 
 TASK_ARN=$(aws ecs list-tasks --region us-east-1 \
   --cluster harbormaster-base-cluster \
@@ -112,18 +115,24 @@ TASK_ARN=$(aws ecs list-tasks --region us-east-1 \
 aws ecs execute-command --region us-east-1 \
   --cluster harbormaster-base-cluster --task "$TASK_ARN" \
   --container connect --interactive \
-  --command "/bin/bash -c 'curl -s -X PUT -H \"Content-Type: application/json\" -d @- http://localhost:8083/connectors/harbormaster-postgres/config <<JSON
-$(cat /tmp/connector.json)
-JSON'"
+  --command "$CONNECTOR_COMMAND"
 ```
 
-Confirm status RUNNING (same exec pattern):
+Poll until the connector and every task are `RUNNING`. The generated command is
+bounded, waits through transitional states, and exits nonzero on `FAILED` or
+timeout:
 
 ```
+STATUS_COMMAND=$(.venv/bin/python -c '
+from cdc.connector.registration import build_ecs_exec_readiness_command
+
+print(build_ecs_exec_readiness_command())
+')
+
 aws ecs execute-command --region us-east-1 \
   --cluster harbormaster-base-cluster --task "$TASK_ARN" \
   --container connect --interactive \
-  --command "curl -s http://localhost:8083/connectors/harbormaster-postgres/status"
+  --command "$STATUS_COMMAND"
 ```
 
 ## 6. The five acceptance criteria on AWS

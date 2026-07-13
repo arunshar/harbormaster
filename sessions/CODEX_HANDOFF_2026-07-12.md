@@ -14,17 +14,18 @@ BUILD, pressure-tested, and now partially live-validated. `master` has Phases 0-
 merged. The Phase 5 phase gate is intentionally still OPEN pending three live legs
 in a future AWS window (the "W4" window below). The most recent work (PR #6, the
 W3 live window) applied the IAM boundary + apigw hardening + Phase 2 CDC live, found
-and fixed six real infra bugs, and left exactly one thing deferred to free offline
-debugging: Debezium connector registration.
+and fixed six real infra bugs. The deferred Debezium connector-registration issue
+is now fixed and verified on the local Debezium 2.7 / Connect 3.7 stack. The
+corrected command has not been retried on AWS, so no new live-AWS claim is made.
 
 ## Repo facts
 
 - Path: `~/code/harbormaster`. Remote: `https://github.com/arunshar/harbormaster.git`.
 - Branch: `master`. Commit stack of note: Wave 1 merged (PR #3, `864562f`), Phase 5
   build merged (PR #4, `1ebd2e0`), Wave 3 pressure test merged (PR #5, `d38d8a5`),
-  and the W3 live-window fixes on PR #6 (`feat/wave4-w3-live-fixes`, head `8ec04bf`).
-  Check `git log --oneline -8` and `gh pr list` for the live state; PR #6 may be
-  merged by the time you read this.
+  and the W3 live-window fixes merged as PR #6 (`86f3d63`). The current master also
+  contains the local connector-registration fix described below. Check
+  `git log --oneline -8` and `gh pr list` for the live state.
 - Test command: `make serve-test` (`.venv/bin/python -m pytest -q`). There is NO
   `make test` target; do not invent one. cdc tests: `.venv/bin/python -m pytest cdc/tests -q`.
   Lint: `make serve-lint`. Terraform: `make validate` / `make plan` / `make apply`
@@ -64,46 +65,29 @@ Each is a real bug that only a live run surfaced; five verified live, one is a n
    applied live as boundary policy v2.
 5. `modules/ecs_connect` + `cdc/connector/config.py`: secret-to-file bridge
    (entrypoint wrapper writes the ECS-injected secret to `/dev/shm/secrets/password`,
-   referenced via `DirectoryConfigProvider`), replacing the non-working `${env:...}`.
+   referenced via `DirectoryConfigProvider`). The later offline RCA proved that both
+   providers were obscured by the runbook's shell transport, not broken in Connect.
 6. Operational: re-fetch the RUNNING task ARN after every apply (rolling deploys run
    old+new tasks at once).
 
+## Resolved after W3: Debezium connector registration
+
+The W3 runbook embedded connector JSON in an unquoted remote heredoc. Bash expanded
+both `${env:...}` and `${dir:...}` to empty before curl sent the request, so Kafka
+Connect never saw either placeholder. Kafka 3.7 source confirms
+`AbstractHerder.validateConnectorConfig` transforms before `Connector.validate()`;
+the runtime uses the same transformer, and no `?force` validation bypass exists.
+
+The fix base64-encodes the request payload, mirrors the DirectoryConfigProvider
+bridge in kind, removes local literal-password bypasses, and waits for connector and
+task state `RUNNING`. A fresh local Debezium 2.7 / Connect 3.7 run passed connector
+registration and all five Phase 2 e2e criteria. Evidence:
+`docs/drills/CDC_connector_registration_local_2026-07-12.md`. The corrected command
+has not been retried on AWS. That optional live leg remains a future human-run window.
+
 ## Ranked open items (what to pick up)
 
-### 1. Debezium connector registration (the deferred W3 item; free to debug on local kind)
-
-**Status:** blocked at connector-config *validate* time, diagnosed but unfixed.
-Everything else in the Phase 2 CDC pipeline is proven live (MSK cluster up; the
-Connect worker authenticating to MSK via IAM and joining group `hm-connect` gen 1;
-the consumer running; RDS logical replication enabled). The one failing step is the
-Debezium PUT `/connectors/harbormaster-postgres/config`, which returns
-`"the password is an empty string"`.
-
-**What was ruled out (do not re-do):** it is NOT the stale-task ARN (verified
-against the confirmed-new task-def revision), NOT a secret-injection problem (the
-`/dev/shm/secrets/password` file was verified present, 28 bytes, `kafka:kafka 0600`),
-and NOT provider-specific: BOTH `${env:HM_PG_PASSWORD}` (against a present env var)
-AND `${dir:/dev/shm/secrets:password}` (against a present file) resolve to EMPTY.
-So Kafka Connect's `ConfigTransformer` is not resolving ANY `${provider:...}`
-reference during connector-config VALIDATION in this Debezium 2.7 / Connect 3.7
-image; the runtime path may differ from the validate path. An 11-agent RCA
-(archived; the winning fix was the dir-provider bridge, which is correct for the
-secret-delivery half but did not resolve the validate-time behavior).
-
-**How to debug (free, fast):** reproduce on the local kind CDC stack (`make cdc-up`,
-then the cdc smoke/e2e targets) where iteration costs nothing. Hypotheses to test
-there: (a) whether the worker actually loaded `config.providers=dir` (check the
-worker startup log for the provider registration line); (b) whether Connect 3.7's
-`AbstractHerder.validateConnectorConfig` applies the transformer before
-`Connector.validate()` for this connector (a known area of version-specific
-behavior); (c) whether posting the connector and letting it reach RUNNING (where the
-transformer definitely runs) works even though validate reports empty; (d) as a last
-resort, a `PUT` with `?force` semantics or the `/connector-plugins/.../config/validate`
-endpoint to see the transformed values echoed. The infra fix (dir-provider + wrapper)
-is already correct and merged; only the Connect-version resolution behavior remains.
-This leg is OPTIONAL (not a Phase 5 gate criterion).
-
-### 2. The W4 live window (the Phase-5-gate-closing work; a human-run AWS window)
+### 1. The W4 live window (the Phase-5-gate-closing work; a human-run AWS window)
 
 Three acceptance criteria have a live leg only a real cluster and clock can close;
 the Phase 5 gate stays OPEN until they do. Runbook: `docs/runbooks/WAVE4_LIVE_WINDOWS.md`
@@ -118,7 +102,7 @@ the Phase 5 gate stays OPEN until they do. Runbook: `docs/runbooks/WAVE4_LIVE_WI
 Cost envelope: ~$0.20-3 in a bounded window (EKS control plane ~$0.10/hr flat),
 inside the $75 cap, PROVIDED the teardown guard fires.
 
-### 3. Multi-tenancy composite-key hardening (war story P39, from Wave 3)
+### 2. Multi-tenancy composite-key hardening (war story P39, from Wave 3)
 
 Row-level security over single-column business keys is not isolation: a same-key
 cross-tenant upsert 500s and can leak tenant-private annotations, and the CDC read
@@ -127,13 +111,13 @@ which ripples through the base DDL, the Debezium message-key mapper, and the reg
 upserts. Documented as a known limitation, routed here on purpose (not a rushed
 architecture change mid-window). See `docs/WAVE3_FINDINGS.md`.
 
-### 4. Deferred robustness items (from Wave 3, `docs/WAVE3_FINDINGS.md`)
+### 3. Deferred robustness items (from Wave 3, `docs/WAVE3_FINDINGS.md`)
 
 Pre-existing bugs found by the pressure test and left for a hardening pass: flink
 `key_by` correctness, ingest `PutRecords` partial-failure retry, prism ellipse
 center, and the remaining test-strength mutants. None are live-cost items.
 
-### 5. Structural / low-priority
+### 4. Structural / low-priority
 
 CMK is authored behind `enable_cmk` (default false, never applied); a Phase 2 MSK
 showcase and two-variant live SageMaker canary were set up but not fully exercised
@@ -150,20 +134,17 @@ suggestion.
 Do these in order; each is a normal PR to `master` with tests in the same change,
 CI green before merge, one concern per PR.
 
-1. **Connector-registration debug on the local kind stack** (open item #1 above).
-   `make cdc-up` brings up a full local Kafka Connect + Postgres + Redis stack for
-   free. Reproduce the empty-password validate failure there, work the hypotheses in
-   open item #1, and land the fix + a regression test. The infra half (dir-provider +
-   entrypoint wrapper) is already merged; only the Connect-version validate-time
-   resolution remains. This is the cheapest, highest-signal first move.
-2. **P39 multi-tenancy composite-key hardening** (open item #3). Composite
+Connector registration is complete locally, with its fix, regression tests, and
+evidence artifact in the same change. Continue with:
+
+1. **P39 multi-tenancy composite-key hardening** (open item #2). Composite
    `(tenant_id, key)` through the base DDL, the Debezium message-key mapper, and the
    registry upserts. RLS + cross-tenant tests against a local Postgres (the existing
    `make phase5-tenant-smoke` convention), never mocked.
-3. **Robustness items** (open item #4): flink `key_by` correctness, ingest
+2. **Robustness items** (open item #3): flink `key_by` correctness, ingest
    `PutRecords` partial-failure retry, prism ellipse center, remaining test-strength
    mutants. Each with a test that fails before and passes after.
-4. **War stories P41-P46** to `arunshar/debug-war-stories` (the six W3 fixes; content
+3. **War stories P41-P46** to `arunshar/debug-war-stories` (the six W3 fixes; content
    is in this file + the PR #6 commit + the runbook, so it is a copy-and-format job).
 
 ### B. Human-run live-AWS windows (Codex PREPARES and DRIVES WITH the human, never autonomous)
@@ -222,8 +203,6 @@ and close the Phase 5 gate in `docs/phases/PHASE_5.md` with the real numbers.
 ## Suggested first move
 
 Read `git log --oneline -8`, `gh pr list`, and `docs/runbooks/WAVE4_LIVE_WINDOWS.md`.
-If the goal is to close the Phase 5 gate, schedule the W4 human-run window. If the
-goal is to finish the optional CDC leg, reproduce the connector-registration issue on
-the local kind stack first (free) and confirm a fix there before any paid live retry.
-Everything unit-testable is green on master; the only open work is live windows and
-the offline connector debug.
+If the goal is to close the Phase 5 gate, schedule the W4 human-run window. For safe
+autonomous work, start P39 composite-key hardening as its own tested PR. Do not retry
+the optional connector command on AWS except in a scheduled human-run window.
