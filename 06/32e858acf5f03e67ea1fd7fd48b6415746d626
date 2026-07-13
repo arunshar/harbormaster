@@ -1,0 +1,168 @@
+mlops/fixtures/expectations.json
+  s_87fd0589dba2e0::t_ed00a6c9f9b400 47
+cdc/sinks/redis_cache.py
+  s_87fd0589dba2e0::t_c5c6e687a01b95 27,35-36,42,46
+cdc/sinks/dynamo.py
+  s_87fd0589dba2e0::t_c5c6e687a01b95 46-49,54-59,72,77,81,85,87
+  s_87fd0589dba2e0::t_25b8d9689a7140 20
+  s_87fd0589dba2e0::t_5985af0cda0a3a 29,50-53
+docs/phases/PHASE_2.md
+  s_87fd0589dba2e0::t_f8672b816faedf 12
+  s_87fd0589dba2e0::t_87a7fa704e56a4 89
+scripts/migrate_p39.py
+  s_87fd0589dba2e0::t_179518f39ef11e 1-13,15,106-112,118,211-227,233-237
+  s_87fd0589dba2e0::t_514c0cfd5fa95d 46-47,55-63,67-79,89-103,121,123-145,147,150-155,177,192-196
+  s_87fd0589dba2e0::t_6fbd34568a66c9 14,16-45,48-54,64-66,80-88,104-105,113,119-120,122,146,148-149,156-171,173,175-176,178-191,197-203,206-208,210
+  s_87fd0589dba2e0::t_18ee7214c69948 114-117,172,174,204-205,228-232
+  s_87fd0589dba2e0::t_f736c602f940e0 209
+docs/drills/P39_local_cdc_smoke.md
+  s_87fd0589dba2e0::t_30bea4da987a70 1-16
+  s_87fd0589dba2e0::t_f09520a49a8589 17-34
+cdc/tests/test_envelope.py
+  s_87fd0589dba2e0::t_f0056a89ed448d 18-19,49,55,82-85,94,107-109,120,154-155,188,201-209
+  s_87fd0589dba2e0::t_07be178a27ec34 164,179
+  s_87fd0589dba2e0::t_36d3e3a8fbf830 191-200
+  s_87fd0589dba2e0::t_36b2903989233c 157-161,165-166
+  s_87fd0589dba2e0::t_afdf1da5c46358 167-178,180-187
+  s_87fd0589dba2e0::t_1aed6b1e929215 156,162-163,210-219
+  s_c339ca357cc531::t_054feb47b7ff1c 189-190
+serving/tests/test_tenant_rls.py
+  s_87fd0589dba2e0::t_8ca1745dd7c0d4 287-291
+  s_87fd0589dba2e0::t_36d3e3a8fbf830 292-295,311,361
+  s_87fd0589dba2e0::t_a0f740e09822d5 112-126,283,312-360,362-395
+  s_87fd0589dba2e0::t_5482fb012967df 274-282,284-286,296-309
+  s_87fd0589dba2e0::t_55015bdc5f3873 245-273
+  s_c339ca357cc531::t_0a7b3a9b985396 310
+tests/e2e/cdc_helpers.py
+  s_87fd0589dba2e0::t_bcf7f83519e2e2 10-11,31-35,42
+cdc/tests/test_applier.py
+  s_87fd0589dba2e0::t_87f1640e9d7acd 61-63,67-69,73-75
+  s_87fd0589dba2e0::t_6eb57c8bd57406 301
+  s_87fd0589dba2e0::t_36b2903989233c 176-192
+scripts/cdc_record_fixture.py
+  s_87fd0589dba2e0::t_e81909735e6269 99,108,133-134,154-159
+docs/drills/M_tenant_leak.md
+  s_87fd0589dba2e0::t_7aad67e0e5aae9 6-7
+  s_87fd0589dba2e0::t_1e20a1a1fd33ea 1,4
+serving/app/registry.py
+  s_87fd0589dba2e0::t_2792b03dd0a19c 145-151,153-162,164-171,173-177
+  s_87fd0589dba2e0::t_3ef9f8e972ab27 28-34,58-59,66,74,78,84,93,99,106,115,128,130,178,184-186,193,199,203-208,214-217,224,230,234-238,243-247,253-256,261,267,271-275,320
+  s_87fd0589dba2e0::t_9d2d04ca64a39e 301-318
+  s_87fd0589dba2e0::t_a1545bb4cb0cae 163
+  s_87fd0589dba2e0::t_f736c602f940e0 172
+scripts/drill_p1_slot_bloat.py
+  s_87fd0589dba2e0::t_36d3e3a8fbf830 93-95
+  s_87fd0589dba2e0::t_e81909735e6269 131
+scripts/phase5_tenant_smoke.py
+  s_87fd0589dba2e0::t_7d9861fcb996a2 188-191
+  s_87fd0589dba2e0::t_b8ff29079c462d 161-180
+  s_87fd0589dba2e0::t_061716ef71849e 181-183,186-187
+tests/e2e/test_cdc_helpers.py
+  s_87fd0589dba2e0::t_bcf7f83519e2e2 6,17
+docs/runbooks/P39_COMPOSITE_KEY_MIGRATION.md
+  s_87fd0589dba2e0::t_728728bbcf6d4b 21-29,55-56,63-65,71-89,103-108,110-121,124,127-135
+  s_87fd0589dba2e0::t_5417e601af3561 31-47,90-102,122-123,125-126
+  s_87fd0589dba2e0::t_6143ee229fde59 1-20,30,48-54,57-62,66-70,109,136-142
+tests/e2e/test_phase2.py
+  s_87fd0589dba2e0::t_bcf7f83519e2e2 56,84,188,193
+  s_87fd0589dba2e0::t_36d3e3a8fbf830 233,255-259
+  s_87fd0589dba2e0::t_e81909735e6269 243-244
+serving/tests/test_watchlist.py
+  s_87fd0589dba2e0::t_d2101b038a1716 14-15
+  s_87fd0589dba2e0::t_fe3765ba33ad3f 67-79,159-164,169-173,176,182,187-203
+  s_87fd0589dba2e0::t_36d3e3a8fbf830 16,33-34,37,39-41,156-158,165-168,174-175,177-181,183-186,204-205,247
+cdc/consumer/envelope.py
+  s_87fd0589dba2e0::t_18ee7214c69948 123,127
+  s_87fd0589dba2e0::t_07be178a27ec34 46-49,179,194
+  s_87fd0589dba2e0::t_36b2903989233c 45,50-55,180-181,195-196
+  s_87fd0589dba2e0::t_5985af0cda0a3a 22-24,105-122,124-126,128-144,155-157,183
+  s_87fd0589dba2e0::t_ce1336f7b8baf9 182
+scripts/drill_p2_duplicates.py
+  s_87fd0589dba2e0::t_bcf7f83519e2e2 39-42
+cdc/sinks/base.py
+  s_87fd0589dba2e0::t_6eb57c8bd57406 108,112
+cdc/schema/ddl.py
+  s_87fd0589dba2e0::t_18ee7214c69948 93-102,104-105
+  s_87fd0589dba2e0::t_d275a457397852 28,32-33,37-38,44-45,50-51,62-63,68-69,73-76
+cdc/tests/test_tenancy.py
+  s_87fd0589dba2e0::t_7fc92c21de77d1 81-85
+  s_87fd0589dba2e0::t_f0056a89ed448d 31,33-34,36-42,61,65-71,76
+  s_87fd0589dba2e0::t_617f7ee0af0c0c 94-97
+  s_87fd0589dba2e0::t_6fbd34568a66c9 88-93,98-112
+  s_87fd0589dba2e0::t_14c50623850120 46-47
+  s_87fd0589dba2e0::t_b48c8eee219ed2 86-87
+cdc/tests/test_sinks.py
+  s_87fd0589dba2e0::t_75e10c240dea63 31-40,50,55-60,75-77,85-86,88,96,105-108,111,115,123-127,129-134,150,195-208,219,233,248-249,252,254-257,271-272,282,287-290
+  s_87fd0589dba2e0::t_36b2903989233c 137-140,296-302,304-306,308
+  s_87fd0589dba2e0::t_07be178a27ec34 307
+  s_87fd0589dba2e0::t_d7ac982fbd2c4c 6
+  s_c739fb2c80ca09::t_760ba230bd58bf 135-136,303,309-310
+cdc/tests/test_ddl.py
+  s_87fd0589dba2e0::t_f0056a89ed448d 26-33
+  s_87fd0589dba2e0::t_36d3e3a8fbf830 48-55
+cdc/sinks/iceberg_audit.py
+  s_87fd0589dba2e0::t_36b2903989233c 52-53,60-61
+  s_87fd0589dba2e0::t_07be178a27ec34 51,56
+cdc/fixtures/expectations.json
+  s_87fd0589dba2e0::t_149aa5ef9b1a52 2
+  s_87fd0589dba2e0::t_87f1640e9d7acd 10
+serving/app/watchlist.py
+  s_87fd0589dba2e0::t_c5c6e687a01b95 36,49-52,56,58,170,176,182,240,261,280,295-297
+  s_87fd0589dba2e0::t_25b8d9689a7140 4,18
+  s_87fd0589dba2e0::t_5985af0cda0a3a 32,53
+serving/app/hitl.py
+  s_87fd0589dba2e0::t_d7000a091f7fb9 132-144
+docs/drills/M_tenant_leak_p39.md
+  s_87fd0589dba2e0::t_820f9dde044028 5,7-8,10-17
+  s_87fd0589dba2e0::t_80fc50f3702eff 1-4,18
+  s_87fd0589dba2e0::t_7d9861fcb996a2 9
+  s_87fd0589dba2e0::t_a4432125abad77 6
+docs/drills/P39_test_suite.md
+  s_87fd0589dba2e0::t_cf23ba184b10bd 1-5,17-20
+  s_87fd0589dba2e0::t_8d7fcd2e5327cd 9-11,15
+  s_87fd0589dba2e0::t_03cea0019a18dc 16
+  s_87fd0589dba2e0::t_1a91e62053b32c 6
+  s_87fd0589dba2e0::t_5295678d35696b 7-8,12-14
+cdc/schema/tenancy.py
+  s_87fd0589dba2e0::t_d275a457397852 41,60-101,117-127,154-163
+  s_87fd0589dba2e0::t_6fbd34568a66c9 176-185
+  s_87fd0589dba2e0::t_14c50623850120 134-136,140,146,148-150
+  s_87fd0589dba2e0::t_f736c602f940e0 186-220
+  s_87fd0589dba2e0::t_a1545bb4cb0cae 108,128-130,164-173
+  s_c339ca357cc531::t_9abc5f49b25bf7 102
+  s_87fd0589dba2e0::t_f05f77b6b4151b 174-175
+scripts/cdc_smoke.py
+  s_87fd0589dba2e0::t_e81909735e6269 118,157-160
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "0632e858acf5f03e67ea1fd7fd48b6415746d626",
+  "prompts": {},
+  "sessions": {
+    "s_87fd0589dba2e0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5912-4f5a-7aa3-8604-0ccba141cb86",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    },
+    "s_c339ca357cc531": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5234-51ff-7f23-a378-2834cc7022f3",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    },
+    "s_c739fb2c80ca09": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fd41cdbb-bae6-4673-876e-f2e017957fa4",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
