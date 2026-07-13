@@ -44,7 +44,7 @@
     "note": "gate 5.4: sha256 of cdc/schema/tenancy.py's canonical_ddl() plus the one policy predicate every table uses; if either changes intentionally, update this AND docs/phases/PHASE_5.md in the same commit",
     "tables": ["hitl_queue", "vessels", "watchlist", "sanctions_flags"],
     "policy_predicate": "tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid",
-    "ddl_sha256": "40626277233f3a4acbc9db138878411a386271049482981d7d3a2b91d0a943f4"
+    "ddl_sha256": "3f25769bbf4cb7d105ecc9f9330763d275dba56db38ba6e0afb20289bcaa7460"
   },
   "tenant_slo_tiers": {
     "note": "gate 5.4 golden cases: tier targets (real_time IS the Phase 1 table verbatim; near_real_time/batch are DESIGN targets, live measurement deferred to the W4 demo window) and the one-series-three-verdicts boundary case, verified against the real calculator",

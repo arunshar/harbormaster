@@ -1,5 +1,5 @@
 {
-  "ddl_sha256": "d3a95ec74b49b54e43b8ba392f1135a4ae39a08d710f3f3c9c64ca85642d985f",
+  "ddl_sha256": "f407758b52f77bf8269e2ef432ca1161dde96744ec63ee50ac984bf7fd7c567c",
   "debezium_envelopes_sha256": "3a734098683818c4ce2d37bb6c093df211b30225d81ec2ce6fced10df9c2c464",
   "connector_config_sha256": "b2da51a0f8172d05885942646430d8c6aaf45910d4b559236977792040891162",
   "envelope_census": {
@@ -7,7 +7,7 @@
     "tombstones": 1,
     "skips": 2
   },
-  "final_state_sha256": "19e8ea9231b4edb7c931d892ec26bee967a3eb6143d9daf64eb10e3aff06d40c",
+  "final_state_sha256": "90e45a7723ee39a5d5f6e219c1ce0eb5dd327750a70ede41b84d01ab2d1b8551",
   "apply_census": {
     "events": 8,
     "applied": 7,

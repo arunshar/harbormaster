@@ -90,6 +90,9 @@ async def run_drill(dsn: str, log: list[str]) -> None:
     try:
         for stmt in ddl.statements():
             await conn.execute(stmt)
+        await conn.execute(
+            "SELECT set_config('app.tenant_id', $1, false)", ddl.DEFAULT_TENANT_ID
+        )
 
         prod_slot = await conn.fetchval(
             "SELECT 1 FROM pg_replication_slots WHERE slot_name = $1", ddl.SLOT_NAME
@@ -125,7 +128,7 @@ async def run_drill(dsn: str, log: list[str]) -> None:
                     """
                     INSERT INTO watchlist (mmsi, reason, severity, added_by)
                     VALUES ($1, 'drill p1 wal generation', 0.5, 'drill_p1')
-                    ON CONFLICT (mmsi) DO UPDATE SET updated_at = now()
+                    ON CONFLICT (tenant_id, mmsi) DO UPDATE SET updated_at = now()
                     """,
                     mmsi,
                 )

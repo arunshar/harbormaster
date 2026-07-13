@@ -17,7 +17,7 @@ delivery order converge (see cdc/sinks/base.py).
 put_item is issued per event because BatchWriteItem does not support condition
 expressions; registry change volume is analyst-scale, so this is fine.
 
-The key vocabulary (feature names, entity id) is duplicated from
+The key vocabulary (feature names, tenant-qualified entity id) is duplicated from
 serving/app/watchlist.py on purpose: the serving wheel is not a cdc dependency.
 A test in cdc/tests/test_sinks.py asserts the two stay identical.
 """
@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 from typing import Any
+from uuid import UUID
 
 import structlog
 
@@ -42,6 +43,20 @@ SANCTIONS_TABLE = "sanctions_flags"
 CONDITION_EXPRESSION = "attribute_not_exists(last_applied_lsn) OR last_applied_lsn < :lsn"
 
 
+def _tenant_id(pk: dict[str, Any], table: str) -> str:
+    tenant_id = pk.get("tenant_id")
+    if tenant_id is None or not str(tenant_id):
+        raise ValueError(f"{table} pk has no tenant_id: {pk!r}")
+    try:
+        return str(UUID(str(tenant_id)))
+    except (ValueError, TypeError, AttributeError) as exc:
+        raise ValueError(f"{table} pk has invalid tenant_id: {tenant_id!r}") from exc
+
+
+def _entity_id(tenant_id: str, mmsi: int | str) -> str:
+    return f"{tenant_id}:{int(mmsi)}"
+
+
 def _split_sanctions_id(flag_id: str) -> tuple[str, str]:
     """The 'mmsi:regime' primary key -> (entity_id, regime)."""
     mmsi, sep, regime = str(flag_id).partition(":")
@@ -54,20 +69,22 @@ def key_for(table: str, pk: dict[str, Any]) -> dict[str, dict[str, str]]:
     """The DynamoDB key for one source-row identity. Unknown tables fail loud:
     a new captured table must be mapped here deliberately."""
     if table in TABLE_FEATURES:
+        tenant_id = _tenant_id(pk, table)
         mmsi = pk.get("mmsi")
         if mmsi is None:
             raise ValueError(f"{table} pk has no mmsi: {pk!r}")
         return {
-            "entity_id": {"S": str(int(mmsi))},
+            "entity_id": {"S": _entity_id(tenant_id, mmsi)},
             "feature_name": {"S": TABLE_FEATURES[table]},
         }
     if table == SANCTIONS_TABLE:
+        tenant_id = _tenant_id(pk, table)
         flag_id = pk.get("id")
         if flag_id is None:
             raise ValueError(f"{table} pk has no id: {pk!r}")
-        entity_id, regime = _split_sanctions_id(flag_id)
+        mmsi, regime = _split_sanctions_id(flag_id)
         return {
-            "entity_id": {"S": entity_id},
+            "entity_id": {"S": _entity_id(tenant_id, mmsi)},
             "feature_name": {"S": FEATURE_SANCTIONS_PREFIX + regime},
         }
     raise ValueError(f"no online mapping for table {table!r}; map it in cdc/sinks/dynamo.py")

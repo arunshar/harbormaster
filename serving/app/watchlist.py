@@ -1,7 +1,7 @@
 """CDC-fed online watchlist read path (Phase 2, gate C2).
 
 The scorer never reads Postgres. It reads the online store the CDC consumer
-maintains: one DynamoDB Query per vessel (entity_id = str(mmsi)) returns the
+maintains: one DynamoDB Query per vessel (entity_id = tenant_id:mmsi) returns the
 vessel_meta item, the watchlist item, and every sanctions:<regime> item in a
 single round trip, with Redis as a read-through cache in front. The CDC
 consumer's Redis sink DELs the same key on any applied change, so the cache is
@@ -15,7 +15,7 @@ metered (docs/phases/PHASE_2.md, decisions). The inverse would let a cache
 outage stop all scoring.
 
 Online item layout (must match cdc/sinks/dynamo.py; drift-guarded by a test):
-  entity_id     S  str(mmsi)
+  entity_id     S  tenant_id:mmsi
   feature_name  S  "vessel_meta" | "watchlist" | "sanctions:<regime>"
   deleted       BOOL  soft-delete marker (read as absent)
   last_applied_lsn  N  the idempotency guard, owned by the CDC sink
@@ -29,10 +29,11 @@ import json
 import os
 from dataclasses import dataclass, field
 from typing import Any, Protocol
+from uuid import UUID
 
 import structlog
 
-from app.config import Settings
+from app.config import DEFAULT_TENANT_ID, Settings
 from app.metrics import WATCHLIST_LOOKUP_ERRORS
 
 log = structlog.get_logger(__name__)
@@ -45,13 +46,16 @@ FEATURE_WATCHLIST = "watchlist"
 FEATURE_SANCTIONS_PREFIX = "sanctions:"
 
 
-def online_entity_id(mmsi: int) -> str:
-    return str(int(mmsi))
+def online_entity_id(mmsi: int, tenant_id: str = DEFAULT_TENANT_ID) -> str:
+    """Tenant-qualified DynamoDB partition key for one vessel."""
+    if not tenant_id:
+        raise ValueError("tenant_id must not be empty")
+    return f"{UUID(tenant_id)}:{int(mmsi)}"
 
 
-def redis_key(mmsi: int) -> str:
+def redis_key(mmsi: int, tenant_id: str = DEFAULT_TENANT_ID) -> str:
     """The cache key for one vessel's online status. The CDC Redis sink DELs it."""
-    return f"hm:online:{int(mmsi)}"
+    return f"hm:online:{online_entity_id(mmsi, tenant_id)}"
 
 
 @dataclass(frozen=True)
@@ -163,17 +167,19 @@ class WatchlistLookup:
         redis_client: RedisClient | None,
         table: str,
         cache_ttl_s: int = 300,
+        tenant_id: str = DEFAULT_TENANT_ID,
     ) -> None:
         self._ddb = ddb_client
         self._redis = redis_client
         self._table = table
         self._ttl = cache_ttl_s
+        self._tenant_id = tenant_id
         # Single-flight coalescing: concurrent cache-miss reads for the same
         # vessel share one in-flight backing fetch instead of each spawning a
         # worker thread that hits DynamoDB. Keyed by mmsi; entries are removed
         # once the fetch resolves. The lock only guards the small map mutation,
         # not the fetch itself, so distinct vessels never serialize.
-        self._inflight: dict[int, asyncio.Future[WatchlistStatus]] = {}
+        self._inflight: dict[str, asyncio.Future[WatchlistStatus]] = {}
         # Bound to the running loop on first use: __init__ may run off any loop
         # (e.g. from_settings at bootstrap), and an asyncio.Lock binds to the
         # loop that first awaits it.
@@ -231,6 +237,7 @@ class WatchlistLookup:
             redis_client=redis_client,
             table=settings.online_table,
             cache_ttl_s=settings.watchlist_cache_ttl_s,
+            tenant_id=settings.resolved_tenant_id(),
         )
 
     async def aget(self, mmsi: int) -> WatchlistStatus:
@@ -251,7 +258,7 @@ class WatchlistLookup:
         if self._inflight_lock is None:
             self._inflight_lock = asyncio.Lock()
 
-        key = int(mmsi)
+        key = online_entity_id(mmsi, self._tenant_id)
         async with self._inflight_lock:
             existing = self._inflight.get(key)
             if existing is not None:
@@ -270,7 +277,7 @@ class WatchlistLookup:
         if not self.enabled:
             return EMPTY_STATUS
 
-        key = redis_key(mmsi)
+        key = redis_key(mmsi, self._tenant_id)
         if self._redis is not None:
             try:
                 cached = self._redis.get(key)
@@ -285,7 +292,7 @@ class WatchlistLookup:
             resp = self._ddb.query(
                 TableName=self._table,
                 KeyConditionExpression="entity_id = :e",
-                ExpressionAttributeValues={":e": {"S": online_entity_id(mmsi)}},
+                ExpressionAttributeValues={":e": {"S": online_entity_id(mmsi, self._tenant_id)}},
                 ConsistentRead=False,
             )
             status = parse_online_items(resp.get("Items", []))

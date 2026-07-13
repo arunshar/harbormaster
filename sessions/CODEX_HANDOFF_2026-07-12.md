@@ -17,6 +17,9 @@ W3 live window) applied the IAM boundary + apigw hardening + Phase 2 CDC live, f
 and fixed six real infra bugs. The deferred Debezium connector-registration issue
 is now fixed and verified on the local Debezium 2.7 / Connect 3.7 stack. The
 corrected command has not been retried on AWS, so no new live-AWS claim is made.
+P39 composite-key hardening is also implemented and verified locally against
+PostgreSQL 16, two local production-image containers, and a fresh kind CDC stack.
+Its live Postgres migration and tenant-qualified DynamoDB/Redis rebuild have not run.
 
 ## Repo facts
 
@@ -85,7 +88,7 @@ registration and all five Phase 2 e2e criteria. Evidence:
 `docs/drills/CDC_connector_registration_local_2026-07-12.md`. The corrected command
 has not been retried on AWS. That optional live leg remains a future human-run window.
 
-## Ranked open items (what to pick up)
+## Ranked work items and current status
 
 ### 1. The W4 live window (the Phase-5-gate-closing work; a human-run AWS window)
 
@@ -102,14 +105,28 @@ the Phase 5 gate stays OPEN until they do. Runbook: `docs/runbooks/WAVE4_LIVE_WI
 Cost envelope: ~$0.20-3 in a bounded window (EKS control plane ~$0.10/hr flat),
 inside the $75 cap, PROVIDED the teardown guard fires.
 
-### 2. Multi-tenancy composite-key hardening (war story P39, from Wave 3)
+### 2. Multi-tenancy composite-key hardening (war story P39, locally complete)
 
 Row-level security over single-column business keys is not isolation: a same-key
 cross-tenant upsert 500s and can leak tenant-private annotations, and the CDC read
-side is tenant-oblivious. The correct fix is composite `(tenant_id, key)` keys,
-which ripples through the base DDL, the Debezium message-key mapper, and the registry
-upserts. Documented as a known limitation, routed here on purpose (not a rushed
-architecture change mid-window). See `docs/WAVE3_FINDINGS.md`.
+side was tenant-oblivious. The hardening now uses composite `(tenant_id, key)` keys
+through the base DDL and registry/HITL conflict targets, explicit sentinel backfill,
+tenant-qualified Debezium envelopes, DynamoDB partitions, Redis keys, and
+`WatchlistLookup`. The explicit migration and runtime schema bootstraps share an
+advisory lock; schema and RLS errors fail fast instead of silently falling back to
+memory.
+
+Local evidence on 2026-07-13: 10 PostgreSQL integration tests passed; the tenant
+smoke passed against a throwaway non-superuser PostgreSQL 16 owner; two local
+production-image containers, each with two Uvicorn workers, preserved same-MMSI
+isolation; a fresh kind CDC smoke passed in 4.28 seconds; all five Phase 2 e2e
+criteria passed in 36.41 seconds. See `docs/drills/P39_test_suite.md`,
+`docs/drills/P39_local_cdc_smoke.md`, and
+`docs/runbooks/P39_COMPOSITE_KEY_MIGRATION.md`.
+
+This closes the safe-autonomous code item only. No live AWS database was migrated,
+and no live DynamoDB or Redis state was rebuilt. That cutover remains human-run if
+the live co-tenant deployment is scheduled.
 
 ### 3. Deferred robustness items (from Wave 3, `docs/WAVE3_FINDINGS.md`)
 
@@ -137,19 +154,18 @@ Do these in order; each is a normal PR to `master` with tests in the same change
 CI green before merge, one concern per PR.
 
 Connector registration is complete locally, with its fix, regression tests, and
-evidence artifact in the same change. Continue with:
+evidence artifact in the same change. P39 composite-key hardening is also complete
+locally, with real PostgreSQL, production-image, and fresh kind CDC evidence. Its
+live migration and derived-store rebuild remain outside the autonomous boundary.
+Continue with:
 
-1. **P39 multi-tenancy composite-key hardening** (open item #2). Composite
-   `(tenant_id, key)` through the base DDL, the Debezium message-key mapper, and the
-   registry upserts. RLS + cross-tenant tests against a local Postgres (the existing
-   `make phase5-tenant-smoke` convention), never mocked.
-2. **Robustness items** (open item #3): flink `key_by` correctness, ingest
+1. **Robustness items** (open item #3): flink `key_by` correctness, ingest
    `PutRecords` multi-round test strength plus the finding-21 ledger correction,
    prism ellipse center, and remaining test-strength mutants. Finding 21's
    production mapping is already correct; its regression must fail the
    original-batch mutation. Each real code defect needs a test that fails before
    and passes after.
-3. **War stories P41-P46** to `arunshar/debug-war-stories` (the six W3 fixes; content
+2. **War stories P41-P46** to `arunshar/debug-war-stories` (the six W3 fixes; content
    is in this file + the PR #6 commit + the runbook, so it is a copy-and-format job).
 
 ### B. Human-run live-AWS windows (Codex PREPARES and DRIVES WITH the human, never autonomous)
@@ -209,5 +225,6 @@ and close the Phase 5 gate in `docs/phases/PHASE_5.md` with the real numbers.
 
 Read `git log --oneline -8`, `gh pr list`, and `docs/runbooks/WAVE4_LIVE_WINDOWS.md`.
 If the goal is to close the Phase 5 gate, schedule the W4 human-run window. For safe
-autonomous work, start P39 composite-key hardening as its own tested PR. Do not retry
-the optional connector command on AWS except in a scheduled human-run window.
+autonomous work, continue with the next one-concern robustness PR; P39 is locally
+complete. Do not retry the optional connector command or run the P39 cutover on AWS
+except in a scheduled human-run window.

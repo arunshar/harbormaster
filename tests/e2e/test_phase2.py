@@ -53,6 +53,7 @@ pytestmark = pytest.mark.skipif(
 BASE = os.environ.get("SERVING_URL", "http://localhost:8000").rstrip("/")
 FLAG_TARGET_S = float(os.environ.get("HM_CDC_FLAG_TARGET_S", "5"))
 BUDGET_S = float(os.environ.get("HM_CDC_E2E_TIMEOUT_S", "60"))
+TENANT_ID = os.environ.get("HM_TENANT_ID") or "00000000-0000-0000-0000-000000000000"
 
 
 def _req(method: str, path: str, body: dict | None = None) -> dict | list:
@@ -80,7 +81,7 @@ def _ddb():
 def _online_item(mmsi: int, feature: str = "watchlist") -> dict | None:
     resp = _ddb().get_item(
         TableName=os.environ["HM_ONLINE_TABLE"],
-        Key={"entity_id": {"S": str(mmsi)}, "feature_name": {"S": feature}},
+        Key={"entity_id": {"S": f"{TENANT_ID}:{mmsi}"}, "feature_name": {"S": feature}},
         ConsistentRead=True,
     )
     return resp.get("Item")
@@ -184,12 +185,12 @@ def test_c_debezium_restart_loses_no_change():
     t.join()
 
     def all_online():
-        return not missing_online(written, _scan_online())
+        return not missing_online(written, _scan_online(), TENANT_ID)
 
     ok, elapsed = _poll(all_online, deadline_s=BUDGET_S, interval_s=1.0)
     assert ok, (
         f"changes lost across the Debezium restart after {elapsed:.0f}s: "
-        f"{missing_online(written, _scan_online())}"
+        f"{missing_online(written, _scan_online(), TENANT_ID)}"
     )
 
 
@@ -229,6 +230,7 @@ async def _run_stall_drill(dsn: str) -> None:
     slot = "hm_e2e_stall"
     conn = await asyncpg.connect(dsn=dsn)
     try:
+        await conn.execute("SELECT set_config('app.tenant_id', $1, false)", TENANT_ID)
         exists = await conn.fetchval(
             "SELECT 1 FROM pg_replication_slots WHERE slot_name = $1", slot
         )
@@ -238,7 +240,8 @@ async def _run_stall_drill(dsn: str) -> None:
             await conn.execute(
                 """
                 INSERT INTO watchlist (mmsi, reason, added_by)
-                VALUES ($1, 'e2e lag', 'e2e') ON CONFLICT (mmsi) DO UPDATE SET updated_at = now()
+                VALUES ($1, 'e2e lag', 'e2e')
+                ON CONFLICT (tenant_id, mmsi) DO UPDATE SET updated_at = now()
                 """,
                 368_900_000 + i,
             )
@@ -249,7 +252,11 @@ async def _run_stall_drill(dsn: str) -> None:
         breaching = evaluate_lag_alert(slots, threshold_bytes=1024)
         assert any(s.slot_name == slot for s in breaching), "lag alert did not fire"
         for i in range(200):  # cleanup rows
-            await conn.execute("DELETE FROM watchlist WHERE mmsi = $1", 368_900_000 + i)
+            await conn.execute(
+                "DELETE FROM watchlist WHERE tenant_id = $1::uuid AND mmsi = $2",
+                TENANT_ID,
+                368_900_000 + i,
+            )
     finally:
         await conn.execute("SELECT pg_drop_replication_slot($1)", slot)
         await conn.close()

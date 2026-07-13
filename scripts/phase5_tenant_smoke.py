@@ -145,7 +145,16 @@ async def rls_fail_closed_check(admin_dsn: str) -> list[str]:
 
             await seed.execute("SELECT set_config('app.tenant_id', $1, false)", TENANT_A)
             await seed.execute(
+                "INSERT INTO vessels (mmsi, name) VALUES (368000001, 'phase5 vessel A')"
+            )
+            await seed.execute(
                 "INSERT INTO watchlist (mmsi, reason) VALUES (368000001, 'phase5 smoke A')"
+            )
+            await seed.execute(
+                """
+                INSERT INTO sanctions_flags (id, mmsi, regime, reference)
+                VALUES ('368000001:ofac', 368000001, 'ofac', 'phase5 A')
+                """
             )
             await seed.execute(
                 """
@@ -153,15 +162,47 @@ async def rls_fail_closed_check(admin_dsn: str) -> list[str]:
                 VALUES ('smoke-a', 'trace-smoke-a', 368000001, now(), 1.0, '[]'::jsonb, 1.0)
                 """
             )
-            n = await seed.fetchval("SELECT count(*) FROM watchlist")
-            assert n == 1, f"tenant A should see its own row, saw {n}"
-            log.append("tenant A seeded 1 watchlist + 1 hitl_queue row; reads its own rows")
+            for table in ("vessels", "watchlist", "sanctions_flags"):
+                n = await seed.fetchval(f"SELECT count(*) FROM {table}")  # nosec B608
+                assert n == 1, f"tenant A should see its own {table} row, saw {n}"
+            log.append("tenant A seeded same-MMSI vessel, watchlist, sanctions, and HITL rows")
 
             await seed.execute("SELECT set_config('app.tenant_id', $1, false)", TENANT_B)
-            for table in ("watchlist", "hitl_queue"):
+            # P39 regression: the same business key is valid independently in
+            # both tenants. RLS must not turn B's upsert into a uniqueness error.
+            await seed.execute(
+                "INSERT INTO vessels (mmsi, name) VALUES (368000001, 'phase5 vessel B')"
+            )
+            await seed.execute(
+                "INSERT INTO watchlist (mmsi, reason) VALUES (368000001, 'phase5 smoke B')"
+            )
+            await seed.execute(
+                """
+                INSERT INTO sanctions_flags (id, mmsi, regime, reference)
+                VALUES ('368000001:ofac', 368000001, 'ofac', 'phase5 B')
+                """
+            )
+            assert await seed.fetchval("SELECT count(*) FROM vessels") == 1
+            assert await seed.fetchval("SELECT count(*) FROM watchlist") == 1
+            assert await seed.fetchval("SELECT count(*) FROM sanctions_flags") == 1
+            assert await seed.fetchval("SELECT name FROM vessels") == "phase5 vessel B"
+            assert await seed.fetchval("SELECT reason FROM watchlist") == "phase5 smoke B"
+            assert await seed.fetchval("SELECT reference FROM sanctions_flags") == "phase5 B"
+            log.append(
+                "P39 same-MMSI composite-key check passed for vessels, watchlist, and sanctions"
+            )
+            assert await seed.fetchval("SELECT count(*) FROM hitl_queue") == 0
+            for table in ("hitl_queue",):
                 n = await seed.fetchval(f"SELECT count(*) FROM {table}")  # nosec B608
                 assert n == 0, f"CROSS-TENANT LEAK: tenant B read {n} rows from {table}"
-            log.append("tenant B reads ZERO of tenant A's rows (cross-tenant blocked by RLS)")
+            await seed.execute("SELECT set_config('app.tenant_id', $1, false)", TENANT_A)
+            assert await seed.fetchval("SELECT name FROM vessels") == "phase5 vessel A"
+            assert await seed.fetchval("SELECT reason FROM watchlist") == "phase5 smoke A"
+            assert await seed.fetchval("SELECT reference FROM sanctions_flags") == "phase5 A"
+            log.append(
+                "tenant B reads its own same-MMSI row only; tenant A remains isolated "
+                "(cross-tenant blocked by RLS)"
+            )
         finally:
             await seed.close()
 

@@ -38,14 +38,10 @@ from __future__ import annotations
 
 import hashlib
 
-from cdc.schema.ddl import CDC_TABLES
+from cdc.schema.ddl import CDC_TABLES, DEFAULT_TENANT_ID
 
 # hitl_queue first (serving plane), then the registry tables (CDC plane).
 TENANT_TABLES: tuple[str, ...] = ("hitl_queue", *CDC_TABLES)
-
-# Mirrored in serving/app/config.py (kept in sync by a unit test, the
-# sanctions_flag_id convention). The zero UUID is the single-tenant sentinel.
-DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000000"
 
 # The session GUC every Postgres-backed path sets before querying.
 TENANT_GUC = "app.tenant_id"
@@ -66,12 +62,55 @@ _TENANT_DEFAULT = (
 # The one predicate every policy uses; pinned in mlops/fixtures/expectations.json.
 POLICY_PREDICATE = f"tenant_id = NULLIF(current_setting('{TENANT_GUC}', true), '')::uuid"
 
+_COMPOSITE_PRIMARY_KEYS: dict[str, tuple[str, ...]] = {
+    "vessels": ("tenant_id", "mmsi"),
+    "watchlist": ("tenant_id", "mmsi"),
+    "sanctions_flags": ("tenant_id", "id"),
+}
+
+
+def _primary_key_migration(table: str) -> str:
+    target_columns = _COMPOSITE_PRIMARY_KEYS[table]
+    business_key = target_columns[1]
+    target_sql = ", ".join(target_columns)
+    target_array = ", ".join(f"'{column}'" for column in target_columns)
+    return f"""
+DO $$
+DECLARE
+    current_pk_name text;
+    current_pk_columns text[];
+BEGIN
+    SELECT constraint_row.conname,
+           array_agg(attribute_row.attname ORDER BY key_column.ordinality)
+      INTO current_pk_name, current_pk_columns
+      FROM pg_constraint AS constraint_row
+      CROSS JOIN LATERAL unnest(constraint_row.conkey)
+          WITH ORDINALITY AS key_column(attnum, ordinality)
+      JOIN pg_attribute AS attribute_row
+        ON attribute_row.attrelid = constraint_row.conrelid
+       AND attribute_row.attnum = key_column.attnum
+     WHERE constraint_row.conrelid = '{table}'::regclass
+       AND constraint_row.contype = 'p'
+     GROUP BY constraint_row.conname;
+
+    IF current_pk_columns = ARRAY[{target_array}]::text[] THEN
+        NULL;
+    ELSIF current_pk_columns = ARRAY['{business_key}']::text[] THEN
+        EXECUTE format('ALTER TABLE %I DROP CONSTRAINT %I', '{table}', current_pk_name);
+        ALTER TABLE {table} ADD PRIMARY KEY ({target_sql});
+    ELSE
+        RAISE EXCEPTION 'unexpected primary key on {table}: %', current_pk_columns;
+    END IF;
+END
+$$;
+""".strip()  # nosec B608  # table and key names come from fixed module-level mappings
+
 
 def policy_name(table: str) -> str:
     return f"{table}_tenant_isolation"
 
 
-def statements_for(table: str) -> tuple[str, ...]:
+def statements_for(table: str, *, include_primary_key_migration: bool = True) -> tuple[str, ...]:
     """The ordered, individually idempotent tenancy DDL for one table.
 
     Each plane applies its own tables at connect: serving/app/hitl.py runs
@@ -80,30 +119,110 @@ def statements_for(table: str) -> tuple[str, ...]:
     """
     if table not in TENANT_TABLES:
         raise ValueError(f"not a tenant table: {table!r} (expected one of {TENANT_TABLES})")
-    add_column = (
-        f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS "
-        f"tenant_id uuid NOT NULL DEFAULT {_TENANT_DEFAULT};"
+    # A session-derived DEFAULT on ADD COLUMN would stamp every legacy row with
+    # whichever tenant runs the migration. Expand first, backfill the explicit
+    # single-tenant sentinel, then install the session-aware write default.
+    add_column = f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS tenant_id uuid;"
+    backfill = (
+        f"UPDATE {table} SET tenant_id = '{DEFAULT_TENANT_ID}'::uuid "  # nosec B608
+        "WHERE tenant_id IS NULL;"
+    )
+    set_default = f"ALTER TABLE {table} ALTER COLUMN tenant_id SET DEFAULT {_TENANT_DEFAULT};"
+    set_not_null = f"ALTER TABLE {table} ALTER COLUMN tenant_id SET NOT NULL;"
+    migrate_primary_key = (
+        (_primary_key_migration(table),)
+        if include_primary_key_migration and table in _COMPOSITE_PRIMARY_KEYS
+        else ()
     )
     enable_rls = f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY;"
     force_rls = f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY;"
-    # FOR ALL with only USING: Postgres applies the same predicate as the
-    # WITH CHECK, so reads filter and writes reject on the one expression.
+    # Replace the named policy in one transactionally atomic statement. A
+    # same-named drifted policy must not survive because permissive policies
+    # are ORed by Postgres.
     policy = f"""
 DO $$
 BEGIN
-    IF NOT EXISTS (
+    IF EXISTS (
         SELECT 1 FROM pg_policies
         WHERE schemaname = current_schema()
           AND tablename = '{table}'
           AND policyname = '{policy_name(table)}'
     ) THEN
-        CREATE POLICY {policy_name(table)} ON {table}
-            USING ({POLICY_PREDICATE});
+        DROP POLICY {policy_name(table)} ON {table};
     END IF;
+    CREATE POLICY {policy_name(table)} ON {table}
+        USING ({POLICY_PREDICATE})
+        WITH CHECK ({POLICY_PREDICATE});
 END
 $$;
 """.strip()  # nosec B608  # table names and the predicate are module-level constants, not untrusted input
-    return (add_column, enable_rls, force_rls, policy)
+    return (
+        add_column,
+        backfill,
+        set_default,
+        set_not_null,
+        *migrate_primary_key,
+        enable_rls,
+        force_rls,
+        policy,
+    )
+
+
+def runtime_statements_for(table: str) -> tuple[str, ...]:
+    """Return connect-time tenancy DDL after the P39 key contract is verified.
+
+    Replacing a Postgres primary key while Debezium is active can race its
+    JDBC metadata. The destructive key contract is therefore an explicit
+    migration-window operation, not an application-startup side effect.
+    """
+    return statements_for(table, include_primary_key_migration=False)
+
+
+def structural_statements_for(table: str) -> tuple[str, ...]:
+    """Column, backfill, and key DDL, before RLS is enabled."""
+    return statements_for(table)[:-3]
+
+
+def security_statements_for(table: str) -> tuple[str, ...]:
+    """RLS enablement, enforcement, and policy DDL."""
+    return statements_for(table, include_primary_key_migration=False)[-3:]
+
+
+async def assert_security_contract(conn, table: str) -> None:
+    """Refuse policy drift, including an extra permissive policy."""
+    if table not in TENANT_TABLES:
+        raise ValueError(f"not a tenant table: {table!r} (expected one of {TENANT_TABLES})")
+    flags = await conn.fetchrow(
+        """SELECT relrowsecurity, relforcerowsecurity
+             FROM pg_class
+            WHERE oid = $1::regclass""",
+        table,
+    )
+    policies = await conn.fetch(
+        """SELECT policyname, permissive, roles, cmd, qual, with_check
+             FROM pg_policies
+            WHERE schemaname = current_schema() AND tablename = $1""",
+        table,
+    )
+    if not flags or not flags["relrowsecurity"] or not flags["relforcerowsecurity"]:
+        raise RuntimeError(f"P39 postcheck failed: RLS is not forced on {table}")
+    expected_name = policy_name(table)
+    if len(policies) != 1:
+        raise RuntimeError(
+            f"P39 postcheck failed: {table} has {len(policies)} policies, expected one"
+        )
+    policy = policies[0]
+    policy_shape_ok = (
+        policy["policyname"] == expected_name
+        and policy["permissive"] == "PERMISSIVE"
+        and set(policy["roles"]) == {"public"}
+        and policy["cmd"] == "ALL"
+        and policy["qual"] == policy["with_check"]
+        and "tenant_id" in (policy["qual"] or "")
+        and "current_setting" in (policy["qual"] or "")
+    )
+    if not policy_shape_ok:
+        raise RuntimeError(f"P39 postcheck failed: tenant policy drift on {table}")
 
 
 def statements() -> tuple[str, ...]:

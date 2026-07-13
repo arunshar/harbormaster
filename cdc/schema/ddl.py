@@ -25,25 +25,30 @@ import hashlib
 CDC_TABLES: tuple[str, ...] = ("vessels", "watchlist", "sanctions_flags")
 PUBLICATION_NAME = "harbormaster_cdc"
 SLOT_NAME = "harbormaster_cdc"
+DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000000"
 
 _VESSELS = """
 CREATE TABLE IF NOT EXISTS vessels (
-    mmsi        BIGINT PRIMARY KEY,
+    tenant_id   UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000'::uuid,
+    mmsi        BIGINT NOT NULL,
     name        TEXT NOT NULL DEFAULT '',
     flag_state  TEXT NOT NULL DEFAULT '',
     vessel_type TEXT NOT NULL DEFAULT '',
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (tenant_id, mmsi)
 );
 """.strip()
 
 _WATCHLIST = """
 CREATE TABLE IF NOT EXISTS watchlist (
-    mmsi        BIGINT PRIMARY KEY,
+    tenant_id   UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000'::uuid,
+    mmsi        BIGINT NOT NULL,
     reason      TEXT NOT NULL,
     severity    DOUBLE PRECISION NOT NULL DEFAULT 0.9,
     added_by    TEXT NOT NULL DEFAULT '',
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (tenant_id, mmsi)
 );
 """.strip()
 
@@ -54,16 +59,21 @@ CREATE TABLE IF NOT EXISTS watchlist (
 # a "<mmsi>:" poison id the CDC key mapper would reject.
 _SANCTIONS = """
 CREATE TABLE IF NOT EXISTS sanctions_flags (
-    id          TEXT PRIMARY KEY CHECK (id ~ '^[0-9]+:.'),
+    tenant_id   UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000'::uuid,
+    id          TEXT NOT NULL CHECK (id ~ '^[0-9]+:.'),
     mmsi        BIGINT NOT NULL,
     regime      TEXT NOT NULL CHECK (btrim(regime) <> ''),
     reference   TEXT NOT NULL DEFAULT '',
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (tenant_id, id)
 );
 """.strip()
 
-_SANCTIONS_IDX = "CREATE INDEX IF NOT EXISTS sanctions_flags_mmsi_idx ON sanctions_flags (mmsi);"
+_SANCTIONS_IDX = (
+    "CREATE INDEX IF NOT EXISTS sanctions_flags_tenant_mmsi_idx "
+    "ON sanctions_flags (tenant_id, mmsi);"
+)
 
 _REPLICA_IDENTITY = tuple(f"ALTER TABLE {t} REPLICA IDENTITY FULL;" for t in CDC_TABLES)
 
@@ -80,9 +90,19 @@ $$;
 """.strip()  # nosec B608  # PUBLICATION_NAME and CDC_TABLES are module-level constants, not untrusted input
 
 
+def table_statements() -> tuple[str, ...]:
+    """Create the registry tables without assuming a tenancy migration ran."""
+    return (_VESSELS, _WATCHLIST, _SANCTIONS)
+
+
+def post_tenancy_statements() -> tuple[str, ...]:
+    """DDL that is safe only after every registry table has ``tenant_id``."""
+    return (_SANCTIONS_IDX, *_REPLICA_IDENTITY, _PUBLICATION)
+
+
 def statements() -> tuple[str, ...]:
-    """The ordered, individually idempotent DDL statements."""
-    return (_VESSELS, _WATCHLIST, _SANCTIONS, _SANCTIONS_IDX, *_REPLICA_IDENTITY, _PUBLICATION)
+    """The ordered, individually idempotent DDL statements for a fresh schema."""
+    return (*table_statements(), *post_tenancy_statements())
 
 
 def canonical_ddl() -> str:

@@ -23,6 +23,14 @@ def test_replica_identity_full_on_every_cdc_table():
         assert f"ALTER TABLE {table} REPLICA IDENTITY FULL;" in text
 
 
+def test_registry_primary_keys_are_tenant_qualified():
+    text = ddl.canonical_ddl()
+    assert text.count("PRIMARY KEY (tenant_id, mmsi)") == 2
+    assert "PRIMARY KEY (tenant_id, id)" in text
+    assert "ON sanctions_flags (tenant_id, mmsi)" in text
+    assert text.count(f"DEFAULT '{ddl.DEFAULT_TENANT_ID}'::uuid") == 3
+
+
 def test_publication_is_guarded_and_covers_exactly_the_cdc_tables():
     text = ddl.canonical_ddl()
     # Postgres has no CREATE PUBLICATION IF NOT EXISTS; the DO block is the guard.
@@ -35,6 +43,14 @@ def test_every_statement_is_individually_idempotent_shaped():
         assert (
             "IF NOT EXISTS" in stmt or "REPLICA IDENTITY" in stmt
         ), f"statement is not re-runnable: {stmt[:60]}"
+
+
+def test_tenant_dependent_ddl_is_separate_from_table_creation():
+    create_text = "\n".join(ddl.table_statements())
+    post_text = "\n".join(ddl.post_tenancy_statements())
+    assert "CREATE INDEX" not in create_text
+    assert "sanctions_flags_tenant_mmsi_idx" in post_text
+    assert ddl.statements() == (*ddl.table_statements(), *ddl.post_tenancy_statements())
 
 
 def test_ddl_sha256_matches_the_pinned_expectation():

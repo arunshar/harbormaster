@@ -115,7 +115,7 @@ async def apply_ddl_and_insert(insert: bool) -> None:
                 """
                 INSERT INTO watchlist (mmsi, reason, severity, added_by)
                 VALUES ($1, 'smoke: dark rendezvous', 0.9, 'cdc_smoke')
-                ON CONFLICT (mmsi) DO UPDATE SET updated_at = now()
+                ON CONFLICT (tenant_id, mmsi) DO UPDATE SET updated_at = now()
                 """,
                 SMOKE_MMSI,
             )
@@ -154,7 +154,10 @@ def poll_online(cfg: ConsumerConfig, deadline_s: float) -> float:
     while time.time() - t0 < deadline_s:
         resp = client.get_item(
             TableName=cfg.online_table,
-            Key={"entity_id": {"S": str(SMOKE_MMSI)}, "feature_name": {"S": "watchlist"}},
+            Key={
+                "entity_id": {"S": f"{ddl.DEFAULT_TENANT_ID}:{SMOKE_MMSI}"},
+                "feature_name": {"S": "watchlist"},
+            },
             ConsistentRead=True,
         )
         item = resp.get("Item")

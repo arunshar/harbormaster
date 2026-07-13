@@ -24,7 +24,7 @@ from typing import Any
 import structlog
 
 from cdc.consumer.envelope import ChangeEvent
-from cdc.sinks.dynamo import SANCTIONS_TABLE, _split_sanctions_id
+from cdc.sinks.dynamo import SANCTIONS_TABLE, _entity_id, _split_sanctions_id, _tenant_id
 
 log = structlog.get_logger(__name__)
 
@@ -32,17 +32,18 @@ REDIS_KEY_PREFIX = "hm:online:"
 
 
 def redis_key_for_event(event: ChangeEvent) -> str:
-    """The cache key an applied change invalidates. Everything keys by mmsi."""
+    """The tenant-qualified cache key an applied change invalidates."""
+    tenant_id = _tenant_id(event.pk, event.table)
     if event.table == SANCTIONS_TABLE:
         flag_id = event.pk.get("id")
         if flag_id is None:
             raise ValueError(f"sanctions event pk has no id: {event.pk!r}")
         mmsi, _ = _split_sanctions_id(flag_id)
-        return f"{REDIS_KEY_PREFIX}{int(mmsi)}"
+        return f"{REDIS_KEY_PREFIX}{_entity_id(tenant_id, mmsi)}"
     mmsi = event.pk.get("mmsi")
     if mmsi is None:
         raise ValueError(f"{event.table} event pk has no mmsi: {event.pk!r}")
-    return f"{REDIS_KEY_PREFIX}{int(mmsi)}"
+    return f"{REDIS_KEY_PREFIX}{_entity_id(tenant_id, mmsi)}"
 
 
 class RedisInvalidationSink:

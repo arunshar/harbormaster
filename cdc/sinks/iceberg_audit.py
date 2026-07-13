@@ -48,14 +48,17 @@ AUDIT_FIELDS = (
 
 def audit_row(event: ChangeEvent, applied: bool, consumed_at_ms: int) -> dict[str, Any]:
     """One audit row, exactly as delivered. Pure; golden-tested."""
+    pk = event.delivered_pk if event.delivered_pk is not None else event.pk
+    before = event.delivered_before if event.delivered_before is not None else event.before
+    after = event.delivered_after if event.delivered_after is not None else event.after
     return {
         "event_table": event.table,
-        "pk": pk_key(event.pk),
+        "pk": pk_key(pk),
         "op": event.op,
         "lsn": int(event.lsn),
         "ts_ms": int(event.ts_ms),
-        "before_json": None if event.before is None else json.dumps(event.before, sort_keys=True),
-        "after_json": None if event.after is None else json.dumps(event.after, sort_keys=True),
+        "before_json": None if before is None else json.dumps(before, sort_keys=True),
+        "after_json": None if after is None else json.dumps(after, sort_keys=True),
         "applied": bool(applied),
         "consumed_at_ms": int(consumed_at_ms),
     }

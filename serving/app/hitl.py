@@ -15,6 +15,7 @@ Row schema (both backends mirror it):
 from __future__ import annotations
 
 import json
+import socket
 from datetime import UTC, datetime
 from typing import Any, Protocol
 from uuid import uuid4
@@ -144,6 +145,7 @@ class PostgresHitlBackend:
                     await conn.execute(_DDL)
                     for stmt in tenancy.statements_for("hitl_queue"):
                         await conn.execute(stmt)
+                    await tenancy.assert_security_contract(conn, "hitl_queue")
         except BaseException:
             await pool.close()
             raise
@@ -213,7 +215,26 @@ class HitlQueue:
                 # Missing packaged runtime code is a broken image, not a
                 # recoverable dependency outage.
                 raise
-            except Exception as exc:  # DB unreachable -> development fallback
+            except Exception as exc:
+                # Preserve the established development fallback only for a
+                # connection outage. Schema, migration, and RLS failures must
+                # stop startup instead of silently switching to memory.
+                try:
+                    import asyncpg
+
+                    connection_error = isinstance(
+                        exc,
+                        (
+                            ConnectionError,
+                            TimeoutError,
+                            socket.gaierror,
+                            asyncpg.PostgresConnectionError,
+                        ),
+                    )
+                except ModuleNotFoundError:
+                    connection_error = False
+                if not connection_error:
+                    raise
                 log.warning("hitl_postgres_unavailable_fallback_memory", err=str(exc))
         return cls(MemoryHitlBackend())
 

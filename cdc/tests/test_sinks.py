@@ -3,6 +3,7 @@ the reference MemorySink, key vocabulary drift-guarded against serving."""
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import pytest
@@ -27,6 +28,16 @@ from cdc.sinks.redis_cache import (
 )
 
 MMSI = 367000003
+TENANT_A = "00000000-0000-0000-0000-000000000000"
+TENANT_B = "11111111-1111-1111-1111-111111111111"
+
+
+def _pk(mmsi: int = MMSI, tenant_id: str = TENANT_A) -> dict[str, Any]:
+    return {"tenant_id": tenant_id, "mmsi": mmsi}
+
+
+def _sanction_pk(tenant_id: str = TENANT_A) -> dict[str, Any]:
+    return {"tenant_id": tenant_id, "id": f"{MMSI}:ofac"}
 
 
 def _messages():
@@ -36,12 +47,17 @@ def _messages():
 def _event(**overrides: Any) -> ChangeEvent:
     base: dict[str, Any] = dict(
         table="watchlist",
-        pk={"mmsi": MMSI},
+        pk=_pk(),
         op="c",
         lsn=2000,
         ts_ms=1,
         before=None,
-        after={"mmsi": MMSI, "reason": "dark rendezvous", "severity": 0.9},
+        after={
+            "tenant_id": TENANT_A,
+            "mmsi": MMSI,
+            "reason": "dark rendezvous",
+            "severity": 0.9,
+        },
     )
     base.update(overrides)
     return ChangeEvent(**base)
@@ -56,9 +72,9 @@ def test_key_vocabulary_matches_the_serving_lookup_exactly():
     assert dyn.FEATURE_VESSEL_META == serving_wl.FEATURE_VESSEL_META
     assert dyn.FEATURE_WATCHLIST == serving_wl.FEATURE_WATCHLIST
     assert dyn.FEATURE_SANCTIONS_PREFIX == serving_wl.FEATURE_SANCTIONS_PREFIX
-    assert f"{REDIS_KEY_PREFIX}{MMSI}" == serving_wl.redis_key(MMSI)
-    assert key_for("watchlist", {"mmsi": MMSI})["entity_id"]["S"] == serving_wl.online_entity_id(
-        MMSI
+    assert f"{REDIS_KEY_PREFIX}{TENANT_A}:{MMSI}" == serving_wl.redis_key(MMSI, TENANT_A)
+    assert key_for("watchlist", _pk())["entity_id"]["S"] == serving_wl.online_entity_id(
+        MMSI, TENANT_A
     )
 
 
@@ -66,10 +82,10 @@ def test_sink_items_parse_back_through_the_serving_reader():
     from app.watchlist import parse_online_items
 
     items = [
-        item_for_upsert("watchlist", {"mmsi": MMSI}, {"reason": "x", "severity": 0.8}, 10),
-        item_for_upsert("vessels", {"mmsi": MMSI}, {"name": "EVER GIVEN"}, 11),
+        item_for_upsert("watchlist", _pk(), {"reason": "x", "severity": 0.8}, 10),
+        item_for_upsert("vessels", _pk(), {"name": "EVER GIVEN"}, 11),
         item_for_upsert(
-            "sanctions_flags", {"id": f"{MMSI}:ofac"}, {"regime": "ofac", "mmsi": MMSI}, 12
+            "sanctions_flags", _sanction_pk(), {"regime": "ofac", "mmsi": MMSI}, 12
         ),
     ]
     status = parse_online_items(items)
@@ -77,7 +93,7 @@ def test_sink_items_parse_back_through_the_serving_reader():
     assert status.sanctions == ("ofac",)
     assert status.vessel["name"] == "EVER GIVEN"
     # and the delete marker reads as absent end to end
-    status2 = parse_online_items([item_for_soft_delete("watchlist", {"mmsi": MMSI}, 13)])
+    status2 = parse_online_items([item_for_soft_delete("watchlist", _pk(), 13)])
     assert status2.watchlisted is False
 
 
@@ -86,13 +102,17 @@ def test_sink_items_parse_back_through_the_serving_reader():
 
 def test_item_for_upsert_watchlist_golden():
     item = item_for_upsert(
-        "watchlist", {"mmsi": MMSI}, {"mmsi": MMSI, "reason": "x", "severity": 0.9}, 2000
+        "watchlist",
+        _pk(),
+        {"tenant_id": TENANT_A, "mmsi": MMSI, "reason": "x", "severity": 0.9},
+        2000,
     )
     assert item == {
-        "entity_id": {"S": str(MMSI)},
+        "entity_id": {"S": f"{TENANT_A}:{MMSI}"},
         "feature_name": {"S": "watchlist"},
         "last_applied_lsn": {"N": "2000"},
         "deleted": {"BOOL": False},
+        "tenant_id": {"S": TENANT_A},
         "mmsi": {"N": str(MMSI)},
         "reason": {"S": "x"},
         "severity": {"N": "0.9"},
@@ -100,10 +120,24 @@ def test_item_for_upsert_watchlist_golden():
 
 
 def test_sanctions_key_mapping_splits_the_composite_id():
-    key = key_for("sanctions_flags", {"id": f"{MMSI}:ofac"})
-    assert key == {"entity_id": {"S": str(MMSI)}, "feature_name": {"S": "sanctions:ofac"}}
+    key = key_for("sanctions_flags", _sanction_pk())
+    assert key == {
+        "entity_id": {"S": f"{TENANT_A}:{MMSI}"},
+        "feature_name": {"S": "sanctions:ofac"},
+    }
     with pytest.raises(ValueError, match="mmsi:regime"):
-        key_for("sanctions_flags", {"id": "malformed"})
+        key_for("sanctions_flags", {"tenant_id": TENANT_A, "id": "malformed"})
+
+
+def test_missing_tenant_in_source_key_fails_closed():
+    with pytest.raises(ValueError, match="no tenant_id"):
+        key_for("watchlist", {"mmsi": MMSI})
+
+
+@pytest.mark.parametrize("tenant_id", ["", None, "not-a-uuid"])
+def test_invalid_tenant_in_source_key_fails_closed(tenant_id):
+    with pytest.raises(ValueError, match="tenant_id"):
+        key_for("watchlist", {"tenant_id": tenant_id, "mmsi": MMSI})
 
 
 def test_unknown_table_fails_loud():
@@ -113,7 +147,7 @@ def test_unknown_table_fails_loud():
 
 def test_payload_cannot_shadow_key_or_guard_attributes():
     item = item_for_upsert(
-        "watchlist", {"mmsi": MMSI}, {"deleted": True, "last_applied_lsn": 9999, "reason": "x"}, 5
+        "watchlist", _pk(), {"deleted": True, "last_applied_lsn": 9999, "reason": "x"}, 5
     )
     assert item["deleted"] == {"BOOL": False}
     assert item["last_applied_lsn"] == {"N": "5"}
@@ -158,16 +192,21 @@ def test_online_store_sink_matches_the_reference_memory_sink_in_lockstep():
 
     # same survivors, same guard positions, same tombstone markers
     assert len(fake.items) == len(mem.final_state())
-    deleted_mem = {k for k, v in mem.final_state().items() if v["deleted"]}
-    deleted_ddb = {
-        f"{t}|" + '{"mmsi":' + k[0] + "}"
-        for (k, item), t in (
-            ((key, item), "watchlist")
-            for key, item in fake.items.items()
-            if item["deleted"]["BOOL"] and key[1] == "watchlist"
-        )
+    assert sum(v["deleted"] for v in mem.final_state().values()) == sum(
+        item["deleted"]["BOOL"] for item in fake.items.values()
+    )
+
+
+def test_same_mmsi_in_two_tenants_has_independent_online_keys_and_lsn_guards():
+    fake = FakeDdbTable()
+    sink = OnlineStoreSink(client=fake, table_name="feast-online")
+    assert sink.upsert("watchlist", _pk(tenant_id=TENANT_A), {"reason": "a"}, 20)
+    assert sink.upsert("watchlist", _pk(tenant_id=TENANT_B), {"reason": "b"}, 10)
+    assert sink.upsert("watchlist", _pk(tenant_id=TENANT_A), {"reason": "stale"}, 19) is False
+    assert set(fake.items) == {
+        (f"{TENANT_A}:{MMSI}", "watchlist"),
+        (f"{TENANT_B}:{MMSI}", "watchlist"),
     }
-    assert deleted_ddb == {k for k in deleted_mem if k.startswith("watchlist|")}
 
 
 def test_non_conditional_ddb_error_propagates():
@@ -177,7 +216,7 @@ def test_non_conditional_ddb_error_propagates():
 
     sink = OnlineStoreSink(client=BrokenDdb(), table_name="t")
     with pytest.raises(RuntimeError, match="throttled"):
-        sink.upsert("watchlist", {"mmsi": MMSI}, {}, 1)
+        sink.upsert("watchlist", _pk(), {}, 1)
 
 
 def test_botocore_style_conditional_error_maps_to_guard_rejected():
@@ -191,7 +230,7 @@ def test_botocore_style_conditional_error_maps_to_guard_rejected():
             raise BotocoreStyleError()
 
     sink = OnlineStoreSink(client=Ddb(), table_name="t")
-    assert sink.upsert("watchlist", {"mmsi": MMSI}, {}, 1) is False
+    assert sink.upsert("watchlist", _pk(), {}, 1) is False
 
 
 # -------------------------------------------------------- redis invalidation
@@ -206,13 +245,16 @@ class FakeRedis:
 
 
 def test_redis_key_for_event_covers_all_three_tables():
-    assert redis_key_for_event(_event()) == f"hm:online:{MMSI}"
-    assert redis_key_for_event(_event(table="vessels")) == f"hm:online:{MMSI}"
+    assert redis_key_for_event(_event()) == f"hm:online:{TENANT_A}:{MMSI}"
+    assert redis_key_for_event(_event(table="vessels")) == f"hm:online:{TENANT_A}:{MMSI}"
     assert (
         redis_key_for_event(
-            _event(table="sanctions_flags", pk={"id": f"{MMSI}:ofac"}, after=None)
+            _event(table="sanctions_flags", pk=_sanction_pk(), after=None)
         )
-        == f"hm:online:{MMSI}"
+        == f"hm:online:{TENANT_A}:{MMSI}"
+    )
+    assert redis_key_for_event(_event(pk=_pk(tenant_id=TENANT_B))) != redis_key_for_event(
+        _event(pk=_pk(tenant_id=TENANT_A))
     )
 
 
@@ -226,8 +268,8 @@ def test_invalidation_fires_for_every_delivered_data_event():
     # DEL is idempotent; guard-rejected redeliveries re-fire on purpose (the
     # prior attempt may have died between the store write and the DEL)
     assert len(fake.deleted) == result.events
-    assert f"hm:online:{MMSI}" in fake.deleted
-    assert "hm:online:367000001" in fake.deleted
+    assert f"hm:online:{TENANT_A}:{MMSI}" in fake.deleted
+    assert f"hm:online:{TENANT_A}:367000001" in fake.deleted
 
 
 # ------------------------------------------------------------------- audit
@@ -237,15 +279,33 @@ def test_audit_row_golden():
     row = audit_row(_event(), applied=True, consumed_at_ms=123)
     assert row == {
         "event_table": "watchlist",
-        "pk": '{"mmsi":367000003}',
+        "pk": f'{{"mmsi":367000003,"tenant_id":"{TENANT_A}"}}',
         "op": "c",
         "lsn": 2000,
         "ts_ms": 1,
         "before_json": None,
-        "after_json": '{"mmsi": 367000003, "reason": "dark rendezvous", "severity": 0.9}',
+        "after_json": (
+            '{"mmsi": 367000003, "reason": "dark rendezvous", "severity": 0.9, '
+            f'"tenant_id": "{TENANT_A}"}}'
+        ),
         "applied": True,
         "consumed_at_ms": 123,
     }
+
+
+def test_audit_preserves_legacy_row_image_while_pk_uses_normalized_tenant():
+    value = {
+        "before": None,
+        "after": {"mmsi": MMSI, "reason": "legacy"},
+        "source": {"table": "watchlist", "lsn": 10},
+        "op": "c",
+        "ts_ms": 1,
+    }
+    event = parse_envelope("hm.public.watchlist", f'{{"mmsi":{MMSI}}}', json.dumps(value))
+    assert isinstance(event, ChangeEvent)
+    row = audit_row(event, applied=True, consumed_at_ms=2)
+    assert row["pk"] == f'{{"mmsi":{MMSI}}}'
+    assert json.loads(row["after_json"]) == {"mmsi": MMSI, "reason": "legacy"}
 
 
 def test_audit_sink_buffers_flushes_and_requeues_on_writer_failure():

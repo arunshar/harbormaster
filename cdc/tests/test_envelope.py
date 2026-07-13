@@ -15,6 +15,8 @@ from cdc.consumer.envelope import (
 )
 from cdc.fixtures.loader import envelopes_sha256, load_envelope_messages, load_expectations
 
+TENANT = "00000000-0000-0000-0000-000000000000"
+
 
 def _parse_all() -> list:
     return [parse_envelope(t, k, v) for t, k, v in load_envelope_messages()]
@@ -44,13 +46,13 @@ def test_snapshot_reads_carry_the_snapshot_lsn():
     assert isinstance(first, ChangeEvent)
     assert first.op == "r" and first.is_snapshot
     assert first.table == "vessels" and first.lsn > 0
-    assert first.pk == {"mmsi": 367000001}
+    assert first.pk == {"tenant_id": TENANT, "mmsi": 367000001}
     assert len({r.lsn for r in reads}) == 1
 
 
 def test_fixture_update_carries_both_images():
     update = [p for p in _parse_all() if isinstance(p, ChangeEvent) and p.op == "u"][0]
-    assert update.pk == {"mmsi": 367000003}
+    assert update.pk == {"tenant_id": TENANT, "mmsi": 367000003}
     assert update.after is not None and update.after["severity"] == 0.95
     assert update.before is not None and update.before["severity"] == 0.9
 
@@ -77,7 +79,10 @@ def test_delete_has_before_image_and_no_after():
     parsed = _parse_all()
     delete = [p for p in parsed if isinstance(p, ChangeEvent) and p.is_delete][0]
     update = [p for p in parsed if isinstance(p, ChangeEvent) and p.op == "u"][0]
-    assert delete.table == "watchlist" and delete.pk == {"mmsi": 367000001}
+    assert delete.table == "watchlist" and delete.pk == {
+        "tenant_id": TENANT,
+        "mmsi": 367000001,
+    }
     assert delete.after is None
     # REPLICA IDENTITY FULL: the delete carries the full before image
     assert delete.before is not None and delete.before["reason"] == "legacy flag"
@@ -86,7 +91,7 @@ def test_delete_has_before_image_and_no_after():
 
 def test_tombstone_carries_the_pk_and_nothing_else():
     ts = [p for p in _parse_all() if isinstance(p, Tombstone)][0]
-    assert ts.pk == {"mmsi": 367000001}
+    assert ts.pk == {"tenant_id": TENANT, "mmsi": 367000001}
 
 
 def test_heartbeat_and_schema_change_are_typed_skips():
@@ -99,7 +104,9 @@ def test_redelivered_duplicate_parses_identically():
     dupes = [
         e
         for e in events
-        if e.op == "c" and e.table == "watchlist" and e.pk == {"mmsi": 367000003}
+        if e.op == "c"
+        and e.table == "watchlist"
+        and e.pk == {"tenant_id": TENANT, "mmsi": 367000003}
     ]
     assert len(dupes) == 2 and dupes[0] == dupes[1]
 
@@ -110,7 +117,7 @@ def test_redelivered_duplicate_parses_identically():
 def _valid_value(**overrides) -> str:
     v = {
         "before": None,
-        "after": {"mmsi": 1, "reason": "x"},
+        "after": {"tenant_id": TENANT, "mmsi": 1, "reason": "x"},
         "source": {"table": "watchlist", "lsn": 10},
         "op": "c",
         "ts_ms": 1,
@@ -144,3 +151,69 @@ def test_missing_lsn_raises():
 def test_missing_key_on_data_event_raises():
     with pytest.raises(EnvelopeError, match="no key"):
         parse_envelope("hm.public.watchlist", None, _valid_value())
+
+
+def test_legacy_registry_event_without_tenant_normalizes_to_the_sentinel():
+    event = parse_envelope(
+        "hm.public.watchlist",
+        '{"mmsi": 1}',
+        _valid_value(after={"mmsi": 1, "reason": "x"}),
+    )
+    assert isinstance(event, ChangeEvent)
+    assert event.pk == {"tenant_id": TENANT, "mmsi": 1}
+    assert event.delivered_pk == {"mmsi": 1}
+    assert event.after == {"tenant_id": TENANT, "mmsi": 1, "reason": "x"}
+    assert event.delivered_after == {"mmsi": 1, "reason": "x"}
+
+
+def test_legacy_and_composite_keys_converge_to_one_identity():
+    legacy = parse_envelope("hm.public.watchlist", '{"mmsi": 1}', _valid_value())
+    composite = parse_envelope(
+        "hm.public.watchlist",
+        json.dumps({"tenant_id": TENANT, "mmsi": 1}),
+        _valid_value(after={"tenant_id": TENANT, "mmsi": 1, "reason": "x"}),
+    )
+    assert isinstance(legacy, ChangeEvent) and isinstance(composite, ChangeEvent)
+    assert legacy.pk == composite.pk
+    assert legacy.after == composite.after
+    assert legacy.delivered_pk != composite.delivered_pk
+
+
+def test_invalid_tenant_id_fails_closed():
+    with pytest.raises(EnvelopeError, match="invalid tenant_id"):
+        parse_envelope(
+            "hm.public.watchlist",
+            json.dumps({"tenant_id": "not-a-uuid", "mmsi": 1}),
+            _valid_value(),
+        )
+
+
+@pytest.mark.parametrize("tenant_id", ["", None])
+def test_explicit_blank_or_null_tenant_id_fails_closed(tenant_id):
+    with pytest.raises(EnvelopeError, match="invalid tenant_id"):
+        parse_envelope(
+            "hm.public.watchlist",
+            json.dumps({"tenant_id": tenant_id, "mmsi": 1}),
+            _valid_value(after={"mmsi": 1, "reason": "x"}),
+        )
+
+
+def test_registry_event_with_mismatched_tenant_fails_closed():
+    key = json.dumps({"tenant_id": TENANT, "mmsi": 1})
+    other = "11111111-1111-1111-1111-111111111111"
+    with pytest.raises(EnvelopeError, match="mismatched tenant_id"):
+        parse_envelope(
+            "hm.public.watchlist",
+            key,
+            _valid_value(after={"tenant_id": other, "mmsi": 1, "reason": "x"}),
+        )
+
+
+def test_semantically_equal_uuid_spellings_normalize_before_comparison():
+    upper = TENANT.upper()
+    event = parse_envelope(
+        "hm.public.watchlist",
+        json.dumps({"tenant_id": upper, "mmsi": 1}),
+        _valid_value(),
+    )
+    assert isinstance(event, ChangeEvent) and event.pk["tenant_id"] == TENANT

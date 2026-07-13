@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from e2e.cdc_helpers import (
+    DEFAULT_TENANT_ID,
     has_reason,
     item_is_online,
     missing_online,
@@ -13,7 +14,7 @@ from e2e.cdc_helpers import (
 
 def _wl_item(mmsi: int, deleted: bool = False) -> dict:
     return {
-        "entity_id": {"S": str(mmsi)},
+        "entity_id": {"S": f"{DEFAULT_TENANT_ID}:{mmsi}"},
         "feature_name": {"S": "watchlist"},
         "deleted": {"BOOL": deleted},
         "last_applied_lsn": {"N": "10"},
