@@ -101,7 +101,7 @@ def create_app(*, enabled: bool | None = None) -> FastAPI:
         return HealthOut(status="ok", enabled=is_on)
 
     @app.post("/v1/optimize-route", response_model=OptimizeResponse)
-    async def optimize(req: OptimizeRequest, is_on: EnabledDep) -> OptimizeResponse:
+    def optimize(req: OptimizeRequest, is_on: EnabledDep) -> OptimizeResponse:
         if not is_on:
             raise HTTPException(
                 503, "PPO route-optimizer stretch is disabled (enable_phase5_ppo_stretch=false)"

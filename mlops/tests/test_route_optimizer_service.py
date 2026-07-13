@@ -9,11 +9,14 @@ orchestrator, and neither of those may import route_optimizer.
 from __future__ import annotations
 
 import ast
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Event
 
 import pytest
 from fastapi.testclient import TestClient
 
+from mlops.route_optimizer.ppo import TabularPolicy
 from mlops.route_optimizer.service import create_app
 
 _REPO = Path(__file__).resolve().parents[2]
@@ -90,6 +93,71 @@ def test_enabled_optimizes_synthetic_demo_graph():
     assert body["n_hops"] == max(0, len(body["route"]) - 1)
     assert body["trained_steps"] == 2
     assert isinstance(body["reward"], float)
+
+
+def test_training_request_does_not_block_healthz(monkeypatch):
+    entered = Event()
+    release = Event()
+
+    def held_train_optimizer(graph, _cfg, **_kwargs):
+        entered.set()
+        assert release.wait(timeout=5.0), "test did not release fake optimizer"
+        return TabularPolicy(graph.n_nodes, graph.max_out_degree), []
+
+    monkeypatch.setattr(
+        "mlops.route_optimizer.service.train_optimizer",
+        held_train_optimizer,
+    )
+    with TestClient(create_app(enabled=True)) as client:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            optimize = pool.submit(
+                client.post,
+                "/v1/optimize-route",
+                json={
+                    "start_node": "n0",
+                    "train_steps": 1,
+                    "n_rollouts": 1,
+                    "horizon": 1,
+                },
+            )
+            try:
+                assert entered.wait(timeout=1.0), "fake optimizer was not entered"
+                assert not optimize.done()
+                health = pool.submit(client.get, "/healthz")
+                health_response = health.result(timeout=1.0)
+            finally:
+                release.set()
+            optimize_response = optimize.result(timeout=2.0)
+
+    assert health_response.status_code == 200
+    assert health_response.json()["status"] == "ok"
+    assert optimize_response.status_code == 200
+
+
+def test_training_failure_returns_500(monkeypatch):
+    def fail_train_optimizer(*_args, **_kwargs):
+        raise RuntimeError("synthetic trainer failure")
+
+    monkeypatch.setattr(
+        "mlops.route_optimizer.service.train_optimizer",
+        fail_train_optimizer,
+    )
+    with TestClient(
+        create_app(enabled=True),
+        raise_server_exceptions=False,
+    ) as client:
+        response = client.post(
+            "/v1/optimize-route",
+            json={
+                "start_node": "n0",
+                "train_steps": 1,
+                "n_rollouts": 1,
+                "horizon": 1,
+            },
+        )
+
+    assert response.status_code == 500
+    assert response.text == "Internal Server Error"
 
 
 def test_enabled_optimizes_posted_graph_no_training():
