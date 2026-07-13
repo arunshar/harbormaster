@@ -153,10 +153,11 @@ suggestion.
 Do these in order; each is a normal PR to `master` with tests in the same change,
 CI green before merge, one concern per PR.
 
-Connector registration is complete locally, with its fix, regression tests, and
-evidence artifact in the same change. P39 composite-key hardening is also complete
-locally, with real PostgreSQL, production-image, and fresh kind CDC evidence. Its
-live migration and derived-store rebuild remain outside the autonomous boundary.
+Connector registration is complete locally, including the bounded retry for the
+post-PUT status-visibility race, with regression tests and fresh kind evidence.
+P39 composite-key hardening is also complete locally, with real PostgreSQL,
+production-image, and fresh kind CDC evidence. Its live migration and derived-store
+rebuild remain outside the autonomous boundary.
 Continue with:
 
 1. **Robustness items** (open item #3): flink `key_by` correctness, ingest

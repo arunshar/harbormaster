@@ -28,10 +28,11 @@ attempt 3: event applied under the tenant-qualified key in 0.55s [PASS, target <
 make cdc-down: kind cluster deleted
 ```
 
-The HTTP 404 is a registration-status race in the previously merged connector
-poller and is tracked as a separate follow-up. The 5.06-second attempt followed
-fresh topic-creation warnings. The warm-topic rerun is the post-fix P39 smoke;
-both earlier outcomes are retained here rather than discarded.
+The HTTP 404 exposed a registration-status race in the connector poller. It is
+fixed and regression-tested in
+`docs/drills/CDC_connector_status_poll_race_2026-07-12.md`. The 5.06-second
+attempt followed fresh topic-creation warnings. The warm-topic rerun is the P39
+smoke; both earlier outcomes are retained here rather than discarded.
 
 ## Final fresh-stack verification (2026-07-13)
 

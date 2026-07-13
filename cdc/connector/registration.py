@@ -10,8 +10,10 @@ from __future__ import annotations
 
 import base64
 import json
+import math
 import shlex
 import time
+import urllib.error
 import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -124,8 +126,14 @@ def register_and_wait(
     timeout_s: float = 30.0,
     poll_interval_s: float = 0.5,
     urlopen: UrlOpen = urllib.request.urlopen,
+    monotonic: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], None] = time.sleep,
 ) -> RegistrationResult:
     """PUT a connector config and wait for connector and task readiness."""
+    if not math.isfinite(timeout_s) or timeout_s <= 0:
+        raise ValueError("registration timeout must be finite and positive")
+    if not math.isfinite(poll_interval_s) or poll_interval_s <= 0:
+        raise ValueError("registration poll interval must be finite and positive")
     validate_connector_config(body)
     connector_name = str(body["name"])
     connector_url = f"{connect_url.rstrip('/')}/connectors/{connector_name}"
@@ -138,30 +146,52 @@ def register_and_wait(
     with urlopen(request, timeout=10) as response:
         http_status = int(response.status)
 
-    deadline = time.monotonic() + timeout_s
+    deadline = monotonic() + timeout_s
     latest_connector_state = "UNKNOWN"
     latest_task_states: tuple[str, ...] = ()
-    while time.monotonic() < deadline:
-        with urlopen(f"{connector_url}/status", timeout=10) as response:
-            status = json.loads(response.read())
-        latest_connector_state = str(status["connector"]["state"])
-        latest_task_states = tuple(str(task["state"]) for task in status.get("tasks", []))
-        if latest_connector_state == "FAILED" or "FAILED" in latest_task_states:
-            raise RuntimeError(
-                f"connector {connector_name} failed: connector={latest_connector_state}, "
-                f"tasks={latest_task_states}"
-            )
-        if (
-            latest_connector_state == "RUNNING"
-            and latest_task_states
-            and all(state == "RUNNING" for state in latest_task_states)
-        ):
-            return RegistrationResult(
-                http_status=http_status,
-                connector_state=latest_connector_state,
-                task_states=latest_task_states,
-            )
-        time.sleep(poll_interval_s)
+    while True:
+        remaining_s = deadline - monotonic()
+        if remaining_s <= 0:
+            break
+        try:
+            with urlopen(
+                f"{connector_url}/status",
+                timeout=max(min(10.0, remaining_s), 1e-6),
+            ) as response:
+                status = json.loads(response.read())
+        except urllib.error.HTTPError as exc:
+            # Distributed Connect can acknowledge the config PUT before the
+            # connector is visible through the status endpoint. Retry only
+            # that bounded 404 window; other HTTP failures remain actionable.
+            if exc.code != 404:
+                raise
+        except urllib.error.URLError:
+            # A worker rebalance can briefly reset the status connection after
+            # the accepted PUT. The outer deadline keeps this retry bounded.
+            pass
+        else:
+            latest_connector_state = str(status["connector"]["state"])
+            latest_task_states = tuple(str(task["state"]) for task in status.get("tasks", []))
+            if latest_connector_state == "FAILED" or "FAILED" in latest_task_states:
+                raise RuntimeError(
+                    f"connector {connector_name} failed: "
+                    f"connector={latest_connector_state}, tasks={latest_task_states}"
+                )
+            if (
+                latest_connector_state == "RUNNING"
+                and latest_task_states
+                and all(state == "RUNNING" for state in latest_task_states)
+            ):
+                return RegistrationResult(
+                    http_status=http_status,
+                    connector_state=latest_connector_state,
+                    task_states=latest_task_states,
+                )
+
+        remaining_s = deadline - monotonic()
+        if remaining_s <= 0:
+            break
+        sleep(min(poll_interval_s, remaining_s))
 
     raise TimeoutError(
         f"connector {connector_name} did not reach RUNNING within {timeout_s:g}s: "
