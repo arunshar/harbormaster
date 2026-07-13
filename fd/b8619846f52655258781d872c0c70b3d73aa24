@@ -10,6 +10,9 @@ pyproject.toml
   s_87fd0589dba2e0::t_7a4e97f1f35c0c 120-122,147-148
 docs/WAVE3_FINDINGS.md
   s_87fd0589dba2e0::t_adb96e8e50a1a9 44,46
+  s_87fd0589dba2e0::t_8b21683ca1d29d 25,43
+sessions/CODEX_HANDOFF_2026-07-12.md
+  s_87fd0589dba2e0::t_8b21683ca1d29d 142-144,171-172
 ---
 {
   "schema_version": "authorship/3.0.0",
