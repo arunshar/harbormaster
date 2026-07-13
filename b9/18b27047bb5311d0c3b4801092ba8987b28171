@@ -1,0 +1,24 @@
+mlops/tests/test_tenant_drift.py
+  s_87fd0589dba2e0::t_7a611bf820b72b 17,78-86,92-103
+docs/WAVE3_FINDINGS.md
+  s_87fd0589dba2e0::t_e729ece09fe3c3 29-30
+  s_87fd0589dba2e0::t_17ceab1985cad1 31
+sessions/CODEX_HANDOFF_2026-07-12.md
+  s_87fd0589dba2e0::t_e729ece09fe3c3 146-149
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "b918b27047bb5311d0c3b4801092ba8987b28171",
+  "prompts": {},
+  "sessions": {
+    "s_87fd0589dba2e0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5912-4f5a-7aa3-8604-0ccba141cb86",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
