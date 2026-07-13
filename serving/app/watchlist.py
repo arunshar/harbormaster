@@ -135,7 +135,11 @@ def parse_online_items(items: list[dict[str, Any]]) -> WatchlistStatus:
         if feature == FEATURE_WATCHLIST:
             watchlisted = True
             reason = str(_attr(item, "reason", "") or "")
-            severity = float(_attr(item, "severity", 0.9) or 0.9)
+            severity_attr = item.get("severity")
+            if isinstance(severity_attr, dict) and "N" in severity_attr:
+                severity = float(severity_attr["N"])
+            else:
+                severity = float(_attr(item, "severity", 0.9) or 0.9)
         elif feature == FEATURE_VESSEL_META:
             vessel = {
                 k: _attr(item, k, "")

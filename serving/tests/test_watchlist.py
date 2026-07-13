@@ -110,6 +110,23 @@ def test_parse_online_items_watchlist_and_sanctions_and_meta():
     assert status.vessel["name"] == "EVER GIVEN"
 
 
+def test_parse_online_items_preserves_explicit_zero_severity():
+    status = parse_online_items([_item(FEATURE_WATCHLIST, severity=0.0)])
+    assert status.severity == 0.0
+
+
+def test_parse_online_items_defaults_missing_severity():
+    status = parse_online_items([_item(FEATURE_WATCHLIST)])
+    assert status.severity == 0.9
+
+
+@pytest.mark.parametrize("raw_severity", [{"BOOL": False}, {"S": ""}])
+def test_parse_online_items_keeps_falsey_nonnumeric_fallback(raw_severity):
+    item = _item(FEATURE_WATCHLIST)
+    item["severity"] = raw_severity
+    assert parse_online_items([item]).severity == 0.9
+
+
 def test_parse_online_items_soft_delete_marker_reads_as_absent():
     status = parse_online_items(
         [_item(FEATURE_WATCHLIST, reason="stale", deleted=True, last_applied_lsn=42)]
