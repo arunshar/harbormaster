@@ -20,6 +20,8 @@ corrected command has not been retried on AWS, so no new live-AWS claim is made.
 P39 composite-key hardening is also implemented and verified locally against
 PostgreSQL 16, two local production-image containers, and a fresh kind CDC stack.
 Its live Postgres migration and tenant-qualified DynamoDB/Redis rebuild have not run.
+The Flink malformed-key defect and the `PutRecords` finding-21 test-strength gap
+are also fixed and verified locally; neither establishes new live AWS behavior.
 
 ## Repo facts
 
@@ -128,13 +130,18 @@ This closes the safe-autonomous code item only. No live AWS database was migrate
 and no live DynamoDB or Redis state was rebuilt. That cutover remains human-run if
 the live co-tenant deployment is scheduled.
 
-### 3. Deferred robustness items (from Wave 3, `docs/WAVE3_FINDINGS.md`)
+### 3. Remaining robustness items (from Wave 3, `docs/WAVE3_FINDINGS.md`)
 
-Pre-existing hardening work from the pressure test: flink `key_by` correctness,
-an ingest `PutRecords` multi-round regression plus finding-ledger correction,
-prism ellipse center, and the remaining test-strength mutants. The `PutRecords`
-production mapping was later confirmed correct; finding 21 was a false positive.
-None are live-cost items.
+The Flink `key_by` defect from finding 4 and the `PutRecords` test-strength
+correction from finding 21 are locally complete. Records rejected by the Flink
+JSON and MMSI parser now use sentinel key `-1` and return through `_quarantine`
+before keyed-state access.
+The focused source test run passed 93 tests at 99.64% line and branch coverage,
+and isolated checks passed against the packaged Flink ZIP. No Managed Flink job
+was run. The sentinel removes the pre-quarantine exception but can still become
+a hot key group during sustained malformed traffic. Remaining code work is the
+prism ellipse center and the surviving test-strength mutants. See
+`docs/drills/FLINK_MMSI_KEY_LOCAL_2026-07-13.md`.
 
 ### 4. Structural / low-priority
 
@@ -160,12 +167,9 @@ production-image, and fresh kind CDC evidence. Its live migration and derived-st
 rebuild remain outside the autonomous boundary.
 Continue with:
 
-1. **Robustness items** (open item #3): flink `key_by` correctness, ingest
-   `PutRecords` multi-round test strength plus the finding-21 ledger correction,
-   prism ellipse center, and remaining test-strength mutants. Finding 21's
-   production mapping is already correct; its regression must fail the
-   original-batch mutation. Each real code defect needs a test that fails before
-   and passes after.
+1. **Robustness items** (open item #3): prism ellipse center, then the remaining
+   test-strength mutants. Each real code defect needs a test that fails before
+   and passes after; each concern remains a separate PR.
 2. **War stories P41-P46** to `arunshar/debug-war-stories` (the six W3 fixes; content
    is in this file + the PR #6 commit + the runbook, so it is a copy-and-format job).
 

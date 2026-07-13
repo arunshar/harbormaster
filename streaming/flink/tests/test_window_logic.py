@@ -26,6 +26,7 @@ from flink.window_logic import (
     feature_item,
     gap_since_last_s,
     haversine_m,
+    open_no_redirect,
     passes_gate,
     post_scorer_with_retry,
     quarantine_envelope,
@@ -286,6 +287,35 @@ def test_execute_api_url_validation_accepts_the_exact_scoring_route():
     assert validate_execute_api_url(url, "us-east-1") == url
 
 
+def test_execute_api_url_validation_accepts_china_partition_suffix():
+    url = "https://abc.execute-api.cn-north-1.amazonaws.com.cn/v1/score-ais"
+    assert validate_execute_api_url(url, "cn-north-1") == url
+
+
+@pytest.mark.parametrize("timeout_seconds", (0, -1, float("inf"), float("nan")))
+def test_open_no_redirect_rejects_unbounded_timeout(timeout_seconds):
+    request = urllib.request.Request("https://example.com")
+    with pytest.raises(ValueError, match="finite and > 0"):
+        open_no_redirect(request, timeout_seconds)
+
+
+def test_open_no_redirect_uses_redirect_rejecting_opener(monkeypatch):
+    calls = []
+    response = object()
+
+    class Opener:
+        @staticmethod
+        def open(request, *, timeout):
+            calls.append((request, timeout))
+            return response
+
+    monkeypatch.setattr(urllib.request, "build_opener", lambda handler: Opener())
+    request = urllib.request.Request("https://example.com")
+
+    assert open_no_redirect(request, 1.5) is response
+    assert calls == [(request, 1.5)]
+
+
 def test_signed_request_redirects_are_rejected_without_forwarding_headers():
     request = urllib.request.Request(
         "https://abc.execute-api.us-east-1.amazonaws.com/v1/score-ais",
@@ -331,6 +361,55 @@ def test_ais_score_response_requires_http_200_and_matching_schema():
     malformed["reasons"] = ["not-a-score-reason"]
     with pytest.raises(ValueError, match="reason must be an object"):
         validate_ais_score_response(200, json.dumps(malformed).encode(), 367000001)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    (
+        ("score", 2, "score must be finite"),
+        ("confidence", True, "confidence must be finite"),
+        ("latency_ms", -1, "latency_ms must be finite"),
+        ("n_history", -1, "n_history must be an integer"),
+        ("reasons", "not-a-list", "reasons must be a list"),
+        ("hitl_required", "false", "hitl_required must be a boolean"),
+        ("trace_id", " ", "trace_id must be a non-empty string"),
+    ),
+)
+def test_ais_score_response_rejects_invalid_top_level_fields(field, value, message):
+    payload = json.loads(_valid_score_response())
+    payload[field] = value
+
+    with pytest.raises(ValueError, match=message):
+        validate_ais_score_response(200, json.dumps(payload).encode(), 367000001)
+
+
+def test_ais_score_response_requires_an_object():
+    with pytest.raises(ValueError, match="must be a JSON object"):
+        validate_ais_score_response(200, b"[]", 367000001)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    (
+        ("code", "", "code must be a non-empty string"),
+        ("severity", 2, "severity must be within"),
+        ("detail", None, "detail must be a string"),
+        ("evidence", None, "evidence must be an object"),
+    ),
+)
+def test_ais_score_response_rejects_invalid_reason_fields(field, value, message):
+    payload = json.loads(_valid_score_response())
+    reason = {
+        "code": "OFF_CORRIDOR",
+        "severity": 0.5,
+        "detail": "outside corridor",
+        "evidence": {},
+    }
+    reason[field] = value
+    payload["reasons"] = [reason]
+
+    with pytest.raises(ValueError, match=message):
+        validate_ais_score_response(200, json.dumps(payload).encode(), 367000001)
 
 
 def test_job_signs_inside_the_retried_send_callback():

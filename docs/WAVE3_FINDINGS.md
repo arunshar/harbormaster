@@ -21,16 +21,25 @@ Disposition key: **Fixed** (with a regression test) / **Deferred** (real but low
 | 1 | high | `cdc/schema/tenancy.py`, `serving/app/registry.py`, `serving/app/hitl.py`, `scripts/migrate_p39.py` | Under the co-tenancy model, single-column business primary keys made a same-key tenant-B upsert conflict with tenant A's RLS-invisible row. | Added composite `(tenant_id, business_key)` primary keys and conflict targets plus an explicit, transactional migration. A real local PostgreSQL 16 run verified two tenants can hold the same MMSI while RLS keeps their rows isolated. |
 | 5 | high | `serving/app/watchlist.py`, `cdc/consumer/envelope.py`, `cdc/sinks/dynamo.py`, `cdc/sinks/redis_cache.py` | The CDC-maintained DynamoDB and Redis read side used tenant-oblivious MMSI keys, so same-MMSI rows could overwrite or read across tenants. | Carried `tenant_id` through Debezium envelopes, feature entity IDs, DynamoDB partitions, Redis keys, and `WatchlistLookup`. A fresh local kind stack passed the CDC smoke in 4.28 seconds and all five Phase 2 e2e criteria; a local production-image run verified same-MMSI isolation across both API containers. |
 | 3 | med | `cdc/schema/tenancy.py`, `scripts/migrate_p39.py` | Backend-connect DDL could backfill pre-existing rows from the session tenant instead of the zero sentinel. | Replaced implicit migration with an explicit sentinel backfill and row-preserving census. The migration shares an advisory lock with runtime schema bootstrap, rejects active CDC, and requires an all-tenant `BYPASSRLS` or superuser view when RLS is already enabled. |
+| 4 | n/a | `streaming/flink/job.py`, `streaming/flink/transforms.py`, `streaming/flink/window_logic.py` | The production `key_by` selector parsed JSON inline, so malformed input could fail the partitioning operator before the process function reached its quarantine path. | Replaced the throwing selector with strict `mmsi_partition_key` copies in source and packaged runtime code. Invalid inputs use sentinel key `-1`; `FeatureProcess` calls `_quarantine` and returns before keyed-state access. Local tests cover valid, malformed, out-of-range, and deeply nested JSON. |
 
-The fix and evidence above are local only. The live AWS Postgres migration and
+The fixes and evidence for findings 1, 3, and 5 are local only. The live AWS Postgres migration and
 tenant-qualified DynamoDB/Redis rebuild remain a human-run maintenance window;
 neither was executed during this hardening change. See
 `docs/drills/P39_test_suite.md`, `docs/drills/P39_local_cdc_smoke.md`, and
 `docs/runbooks/P39_COMPOSITE_KEY_MIGRATION.md`.
 
+Finding 4 was verified only through local source tests and the packaged Flink
+artifact. No AWS command or Managed Service for Apache Flink job was run, so
+this does not establish live throughput, backpressure, or quarantine behavior.
+Malformed records do not read or update keyed state, but they share sentinel
+key `-1`. A sustained malformed-input burst can therefore concentrate work in
+one key group and create a hot partition. See
+`docs/drills/FLINK_MMSI_KEY_LOCAL_2026-07-13.md`.
+
 ## Deferred to the Codex production-hardening plan (real, lower-priority)
 
-Pre-existing robustness (not Phase 5): **4** (`streaming/flink/job.py` `key_by` `json.loads` crashes the partitioning operator on a non-JSON record); **20** (`space_time_prism.py` `ellipse_polygon` center ignores the passed ellipse's own foci); **11** (`watchlist.py` `... or 0.9` is a redundant no-op after `_attr`'s default); **12** (the stretch service trains inline in an `async def` handler, blocking the loop; acceptable for a demo stretch, noted).
+Pre-existing robustness (not Phase 5): **20** (`space_time_prism.py` `ellipse_polygon` center ignores the passed ellipse's own foci); **11** (`watchlist.py` `... or 0.9` is a redundant no-op after `_attr`'s default); **12** (the stretch service trains inline in an `async def` handler, blocking the loop; acceptable for a demo stretch, noted).
 
 ## Refuted during production hardening
 

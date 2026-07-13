@@ -70,6 +70,7 @@ from flink.window_logic import (
     Fix,
     WindowFeatures,
     feature_item,
+    mmsi_partition_key,
     open_no_redirect,
     parse_ais_json,
     passes_gate,
@@ -213,8 +214,8 @@ class FeatureProcess(KeyedProcessFunction):
         try:
             mmsi, fix = parse_ais_json(raw)
         except ValueError as exc:
-            # Malformed / unparseable AIS: dead-letter it instead of the old silent
-            # drop, so bad upstream data is counted and recoverable, not invisible.
+            # Parser-rejected AIS: dead-letter it instead of the old silent drop,
+            # so bad upstream data is counted and recoverable, not invisible.
             self._quarantine(raw, f"parse_error: {exc}")
             return
 
@@ -306,7 +307,7 @@ def main() -> None:
     )
     (
         env.add_source(consumer)
-        .key_by(lambda raw: json.loads(raw)["mmsi"], key_type=Types.LONG())
+        .key_by(mmsi_partition_key, key_type=Types.LONG())
         .process(
             FeatureProcess(table, region, scorer_url, quarantine_bucket),
             output_type=Types.STRING(),
