@@ -52,6 +52,28 @@ RETRIABLE_ERROR_CODES = frozenset(
 KinesisEntry = dict
 
 
+class PutRecordsExhaustedError(RuntimeError):
+    """A bounded PutRecords retry ended with unresolved records."""
+
+    def __init__(
+        self,
+        *,
+        failed_count: int,
+        attempts: int,
+        error_codes: dict[str, int],
+    ) -> None:
+        self.failed_count = failed_count
+        self.attempts = attempts
+        self.error_codes = dict(error_codes)
+        errors = ", ".join(
+            f"{code}={count}" for code, count in sorted(self.error_codes.items())
+        )
+        super().__init__(
+            f"Kinesis PutRecords exhausted after {attempts} attempt(s); "
+            f"{failed_count} record(s) still failed ({errors})"
+        )
+
+
 def sorted_by_time(records: Sequence[AisRecord]) -> list[AisRecord]:
     """Replay order: ascending timestamp, MMSI as a stable tiebreak."""
     return sorted(records, key=lambda r: (r.t, r.mmsi))
@@ -269,9 +291,8 @@ def _kinesis_putter(
     normal-at-load partial failure (per-record ErrorCode in the response), where
     only the still-failing records are resubmitted. Between attempts it sleeps a
     full-jitter delay. The success path (no failures) is unchanged. When retries
-    are exhausted the last error path is preserved: a whole-call ClientError
-    re-raises, and unresolved partial failures leave the loop with those records
-    dropped (as before, but now after a bounded number of attempts, not one).
+    are exhausted, both whole-call errors and unresolved partial failures raise;
+    the caller must never count a partially delivered batch as sent.
     sleep/rng are injected so tests run with no real waiting and deterministic jitter.
     """
 
@@ -290,15 +311,22 @@ def _kinesis_putter(
                 sleep(jittered_backoff(attempt, base=base_delay, cap=delay_cap, rng=rng))
                 continue
 
+            responses = resp.get("Records", [])
+            failed_responses = [rec for rec in responses if rec.get("ErrorCode")]
             failed = [
                 entry
-                for entry, rec in zip(pending, resp.get("Records", []), strict=True)
+                for entry, rec in zip(pending, responses, strict=True)
                 if rec.get("ErrorCode")
             ]
             if not failed:
                 return
             if attempt >= max_retries:
-                return  # give up: drop the still-failing records (prior behavior)
+                error_counts = Counter(str(rec["ErrorCode"]) for rec in failed_responses)
+                raise PutRecordsExhaustedError(
+                    failed_count=len(failed),
+                    attempts=attempt + 1,
+                    error_codes=dict(error_counts),
+                )
             pending = failed
             sleep(jittered_backoff(attempt, base=base_delay, cap=delay_cap, rng=rng))
 

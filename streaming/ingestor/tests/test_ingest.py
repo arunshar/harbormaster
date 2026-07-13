@@ -12,6 +12,7 @@ from ingestor.ingest import (
     MAX_BYTES_PER_CALL,
     PUT_BASE_DELAY,
     PUT_DELAY_CAP,
+    PutRecordsExhaustedError,
     _kinesis_putter,
     backoff_schedule,
     batch_entries,
@@ -262,8 +263,8 @@ def test_kinesis_putter_gives_up_after_max_retries_and_surfaces_error():
 
 
 def test_kinesis_putter_gives_up_partial_failures_after_max_retries():
-    # Persistent partial failure: bounded attempts, then drop the stuck records
-    # (prior behavior) rather than loop forever. No exception on this path.
+    # Persistent partial failure: bounded attempts, then surface the stuck records
+    # rather than silently dropping them and letting replay count the batch as sent.
     client = Mock()
     client.put_records.side_effect = lambda **_kw: _partial_failure_response(2, {0, 1})
     slept: list[float] = []
@@ -271,10 +272,61 @@ def test_kinesis_putter_gives_up_partial_failures_after_max_retries():
         client, "ais-raw", max_retries=2, sleep=slept.append, rng=random.Random(0)
     )
 
-    put(_entries(2))  # returns without raising
+    with pytest.raises(PutRecordsExhaustedError) as raised:
+        put(_entries(2))
 
+    assert raised.value.failed_count == 2
+    assert raised.value.attempts == 3
+    assert raised.value.error_codes == {"ProvisionedThroughputExceededException": 2}
     assert client.put_records.call_count == 3  # 1 + 2 retries
     assert len(slept) == 2
+
+
+def test_kinesis_putter_exhaustion_reports_only_the_remaining_failed_subset():
+    client = Mock()
+    client.put_records.side_effect = [
+        _partial_failure_response(4, {1, 3}),
+        _partial_failure_response(2, {1}),
+        _partial_failure_response(1, {0}),
+    ]
+    put = _kinesis_putter(
+        client, "ais-raw", max_retries=2, sleep=lambda _delay: None, rng=random.Random(0)
+    )
+
+    with pytest.raises(PutRecordsExhaustedError) as raised:
+        put(_entries(4))
+
+    assert raised.value.failed_count == 1
+    assert raised.value.attempts == 3
+    assert raised.value.error_codes == {"ProvisionedThroughputExceededException": 1}
+    submitted = [
+        [record["PartitionKey"] for record in call.kwargs["Records"]]
+        for call in client.put_records.call_args_list
+    ]
+    assert submitted == [["0", "1", "2", "3"], ["1", "3"], ["3"]]
+
+
+def test_kinesis_putter_zero_retries_surfaces_partial_failure_without_sleep():
+    client = Mock()
+    client.put_records.return_value = _partial_failure_response(1, {0})
+    slept: list[float] = []
+    put = _kinesis_putter(client, "ais-raw", max_retries=0, sleep=slept.append)
+
+    with pytest.raises(PutRecordsExhaustedError) as raised:
+        put(_entries(1))
+
+    assert raised.value.attempts == 1
+    assert client.put_records.call_count == 1
+    assert slept == []
+
+
+def test_replay_propagates_partial_failure_instead_of_returning_false_sent_count():
+    client = Mock()
+    client.put_records.return_value = _partial_failure_response(1, {0})
+    put = _kinesis_putter(client, "ais-raw", max_retries=0)
+
+    with pytest.raises(PutRecordsExhaustedError):
+        replay([_rec(1, 0)], put=put, speedup=0)
 
 
 def test_kinesis_putter_success_path_unchanged_no_sleep():
