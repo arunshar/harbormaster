@@ -8,14 +8,13 @@
 # from the replication slot, which is exactly acceptance test 2.9(c).
 #
 # The Postgres password reaches the worker as an ECS-injected secret (from the
-# RDS-managed Secrets Manager secret) and the connector config references it
-# via the EnvVarConfigProvider (${env:HM_PG_PASSWORD}), so no credential ever
-# lands in the Connect REST config history or this repo.
+# RDS-managed Secrets Manager secret). The entrypoint copies it to tmpfs and the
+# connector config references it through DirectoryConfigProvider, so no
+# credential lands in the Connect REST config history or this repo.
 #
 # Registering the connector at demo time (the REST port is in-VPC only):
 #   aws ecs execute-command into the task, or a one-off curl task in the VPC,
-#   POSTing the body from cdc/connector/config.py build_connector_config(
-#   db_password="$${env:HM_PG_PASSWORD}").
+#   POSTing the body from cdc/connector/config.py build_connector_config().
 
 variable "project" {
   type    = string
@@ -276,21 +275,17 @@ resource "aws_ecs_task_definition" "connect" {
       # Secret-to-file bridge (Wave 4 live window, 2026-07-12). The database
       # password must reach the connector config WITHOUT landing in the repo or
       # the Connect config-storage topic (only the ${dir:...} placeholder does).
-      # The originally-authored code used a ${file:...} provider against a
-      # mounted secrets dir; Fargate has no native Secrets-Manager file volume,
-      # so the runbook first tried the EnvVarConfigProvider (${env:HM_PG_PASSWORD}).
-      # That FAILED live: in this Debezium 2.7 / Kafka Connect 3.7 image the env
-      # provider resolves connector-config references to an EMPTY string (proven
-      # against a plain non-secret env var too), so Debezium's validate hit
-      # "the password is an empty string" and the connector could never register.
-      # The robust, image-version-independent fix: a shell entrypoint wrapper
-      # (this IS PID1 at container start, where the ECS-injected secret is
-      # provably present) writes the raw secret to a tmpfs file BEFORE the JVM
-      # launches, then hands off to the stock Debezium entrypoint. The connector
+      # Fargate has no native Secrets Manager file volume, so a shell entrypoint
+      # wrapper writes the ECS-injected secret to tmpfs before the JVM launches,
+      # then hands off to the stock Debezium entrypoint. The connector
       # references it via DirectoryConfigProvider (${dir:/dev/shm/secrets:password}),
       # which returns the whole file's bytes verbatim (no properties/escaping
       # pitfalls). printf '%s' writes no trailing newline, so the value is exact.
       # /dev/shm is tmpfs (in-memory, never on disk).
+      #
+      # The W3 registration failure was transport-side: the runbook's unquoted
+      # heredoc expanded the ${dir:...} placeholder in Bash before Connect saw
+      # it. cdc.connector.registration now emits a base64 transport command.
       entryPoint = ["/bin/sh", "-c"]
       command = [
         "umask 077; mkdir -p /dev/shm/secrets; printf '%s' \"$HM_PG_PASSWORD\" > /dev/shm/secrets/password; exec /docker-entrypoint.sh start"

@@ -19,18 +19,17 @@ Exit 0 on pass, 1 on failure/timeout.
 from __future__ import annotations
 
 import asyncio
-import json
 import os
 import sys
 import threading
 import time
-import urllib.error
 import urllib.request
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO_ROOT)
 
-from cdc.connector.config import CONNECTOR_NAME, build_connector_config  # noqa: E402
+from cdc.connector.config import build_connector_config  # noqa: E402
+from cdc.connector.registration import register_and_wait  # noqa: E402
 from cdc.consumer.service import (  # noqa: E402
     ConsumerConfig,
     ConsumerLoop,
@@ -128,16 +127,17 @@ def register_connector() -> None:
     body = build_connector_config(
         db_host=PG_IN_CLUSTER_HOST,
         db_port=5432,
-        db_password="hm_local_pw",  # local-only throwaway (see 10-postgres.yaml)
     )
-    req = urllib.request.Request(
-        f"{CONNECT_URL}/connectors/{CONNECTOR_NAME}/config",
-        data=json.dumps(body["config"]).encode(),
-        headers={"Content-Type": "application/json"},
-        method="PUT",
+    result = register_and_wait(
+        CONNECT_URL,
+        body,
+        timeout_s=TIMEOUT_S,
     )
-    with urllib.request.urlopen(req, timeout=10) as r:
-        print(f"  [ok] connector registered (HTTP {r.status})")
+    tasks = ",".join(result.task_states)
+    print(
+        f"  [ok] connector registered (HTTP {result.http_status}; "
+        f"connector={result.connector_state}; tasks={tasks})"
+    )
 
 
 def poll_online(cfg: ConsumerConfig, deadline_s: float) -> float:

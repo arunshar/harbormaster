@@ -27,20 +27,24 @@ enabled. The six fixes:
    SASL auth) and `ssmmessages:*` (ECS Exec); applied live as policy version v2.
 5. `modules/ecs_connect` + `cdc/connector/config.py`: secret-to-file bridge
    (entrypoint wrapper writes the ECS-injected secret to `/dev/shm/secrets/password`,
-   referenced via `DirectoryConfigProvider`), replacing the non-working
-   `${env:...}` the runbook first tried.
+   referenced via `DirectoryConfigProvider`). The later offline RCA showed that
+   the runbook transport, not the provider, erased the placeholder.
 6. Operational: always re-fetch the RUNNING task ARN after an apply (ECS runs
    old+new tasks during a rolling deploy).
 
-OPEN / deferred: connector registration is still blocked. Even against the
-confirmed-new task with the `dir`-provider file verified present (28 bytes),
-Kafka Connect's config-transformer resolves `${dir:...}` (and `${env:...}`) to
-an EMPTY string at connector-config VALIDATE time in this Debezium 2.7 / Connect
-3.7 image. This is a validate-time config-provider-resolution behavior that
-needs free, fast offline iteration on the local `kind` CDC stack to nail
-(`make cdc-up`), not more paid live cycles. Phase 2 was torn down at window end
-to stop MSK billing. The MSK/CDC leg is OPTIONAL (not a Phase 5 gate criterion);
-the gate-closing legs are all in the W4 window below.
+RESOLVED OFFLINE 2026-07-12: connector registration was blocked by the ECS
+Exec request transport, not by Kafka Connect. The runbook used an unquoted
+remote heredoc, so Bash expanded both `${dir:...}` and `${env:...}` to empty
+before curl sent the JSON. Kafka Connect 3.7 transforms provider references
+before connector validation, and there is no validate/runtime bypass. The
+registration helper now base64-encodes the JSON, the local kind deployment
+mirrors the DirectoryConfigProvider bridge, and a fresh local Debezium 2.7 /
+Connect 3.7 run reached connector `RUNNING` and task `RUNNING`; all five Phase 2
+e2e checks also passed. Evidence: `docs/drills/CDC_connector_registration_local_2026-07-12.md`.
+The corrected command has not been retried on AWS, so no live-AWS completion is
+claimed. Phase 2 was torn down at W3 window end to stop MSK billing. The MSK/CDC
+leg remains OPTIONAL (not a Phase 5 gate criterion); the gate-closing legs are
+all in the W4 window below.
 
 ## Read this first: current live state (checked 2026-07-12)
 

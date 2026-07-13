@@ -41,6 +41,7 @@ from cdc.connector.config import (  # noqa: E402
     build_connector_config,
     heartbeat_topic,
 )
+from cdc.connector.registration import register_and_wait  # noqa: E402
 from cdc.consumer.applier import Applier  # noqa: E402
 from cdc.consumer.envelope import ChangeEvent, Skip, Tombstone, parse_envelope  # noqa: E402
 from cdc.fixtures.loader import (  # noqa: E402
@@ -75,16 +76,13 @@ def register_connector() -> None:
     body = build_connector_config(
         db_host=PG_IN_CLUSTER_HOST,
         db_port=5432,
-        db_password="hm_local_pw",  # local-only throwaway (see 10-postgres.yaml)
     )
-    req = urllib.request.Request(
-        f"{CONNECT_URL}/connectors/{CONNECTOR_NAME}/config",
-        data=json.dumps(body["config"]).encode(),
-        headers={"Content-Type": "application/json"},
-        method="PUT",
+    result = register_and_wait(CONNECT_URL, body, timeout_s=TIMEOUT_S)
+    tasks = ",".join(result.task_states)
+    print(
+        f"  [ok] connector registered (HTTP {result.http_status}; "
+        f"connector={result.connector_state}; tasks={tasks})"
     )
-    with urllib.request.urlopen(req, timeout=10) as r:
-        print(f"  [ok] connector registered (HTTP {r.status})")
 
 
 async def seed_snapshot_rows() -> None:

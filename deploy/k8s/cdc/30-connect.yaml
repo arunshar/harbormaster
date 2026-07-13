@@ -25,6 +25,16 @@ spec:
       containers:
         - name: connect
           image: quay.io/debezium/connect:2.7
+          # Mirror the ECS secret-to-file bridge so the free local smoke tests
+          # the same DirectoryConfigProvider path as the AWS task. The value is
+          # the throwaway password already committed in 10-postgres.yaml.
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              umask 077
+              mkdir -p /dev/shm/secrets
+              printf '%s' "$HM_PG_PASSWORD" > /dev/shm/secrets/password
+              exec /docker-entrypoint.sh start
           env:
             - name: BOOTSTRAP_SERVERS
               value: hm-kafka-bootstrap.hm-cdc.svc:9092
@@ -36,6 +46,12 @@ spec:
               value: hm-connect-offsets
             - name: STATUS_STORAGE_TOPIC
               value: hm-connect-status
+            - name: HM_PG_PASSWORD
+              value: hm_local_pw
+            - name: CONNECT_CONFIG_PROVIDERS
+              value: dir
+            - name: CONNECT_CONFIG_PROVIDERS_DIR_CLASS
+              value: org.apache.kafka.common.config.provider.DirectoryConfigProvider
             - name: CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE
               value: "false"
             - name: CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE
