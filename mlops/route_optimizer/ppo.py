@@ -28,9 +28,9 @@ MDP rather than LM fine-tuning:
   ``total_steps`` 200 (source 5000). pi-grpo's 1e-6 LM-fine-tuning rate would
   barely move a lookup table over a 200-step smoke; only the field set and the
   clip/vf/ent/target-KL coefficients are the source's.
-None of this changes the update MATH this gate is checked on (the numerical
-gradient check in the tests verifies it); all of it is disclosed so the "ported
-shape" claim stays honest.
+None of this changes the update math this gate is checked on. Hand-computed
+clipped-surrogate cases and trainer behavior tests pin the ported composition;
+all departures are disclosed so the "ported shape" claim stays honest.
 """
 
 from __future__ import annotations

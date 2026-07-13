@@ -87,6 +87,42 @@ def test_step_update_returns_finite_metrics():
     assert trainer.step == 1
 
 
+@pytest.mark.parametrize(
+    ("ratio", "advantage", "expected_pg_loss"),
+    [
+        (1.5, 2.0, -2.4),  # positive A, above upper clip: min(3.0, 2.4)
+        (0.5, 2.0, -1.0),  # positive A, below lower clip: min(1.0, 1.6)
+        (1.5, -2.0, 3.0),  # negative A, above upper clip: min(-3.0, -2.4)
+        (0.5, -2.0, 1.6),  # negative A, below lower clip: min(-1.0, -1.6)
+    ],
+)
+def test_clipped_surrogate_matches_hand_computed_sign_cases(ratio, advantage, expected_pg_loss):
+    policy = TabularPolicy(1, 2)
+    states = np.array([0])
+    actions = np.array([0])
+    masks = np.array([[True, True]])
+    new_logp, _, _ = policy.forward(states, actions, masks)
+    batch = RouteBatch(
+        states=states,
+        actions=actions,
+        masks=masks,
+        action_logp=new_logp - np.log(ratio),
+        returns=np.array([0.0]),
+        advantages=np.array([advantage]),
+        ref_logp=new_logp.copy(),
+    )
+    trainer = PpoTrainer(
+        policy=policy,
+        ref_policy=policy.copy(),
+        value_head=ValueTable(1),
+        cfg=PpoConfig(warmup_steps=0, vf_coef=0.0, ent_coef=0.0),
+    )
+
+    metrics = trainer.step_update(batch)
+
+    assert metrics["pg_loss"] == pytest.approx(expected_pg_loss)
+
+
 def test_warmup_step_zero_has_zero_lr():
     # the ported cosine schedule warms up from 0; at step 0 with warmup>0 nothing moves
     pol = TabularPolicy(2, 2)
