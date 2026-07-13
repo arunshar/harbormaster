@@ -7,7 +7,7 @@
       "Action": "iam:CreateRole",
       "Resource": "arn:aws:iam::*:role/harbormaster-*",
       "Condition": {
-        "StringEquals": {
+        "ArnLike": {
           "iam:PermissionsBoundary": "arn:aws:iam::*:policy/harbormaster-permissions-boundary"
         }
       }
@@ -23,7 +23,7 @@
       ],
       "Resource": "arn:aws:iam::*:role/harbormaster-*",
       "Condition": {
-        "StringEquals": {
+        "ArnLike": {
           "iam:PermissionsBoundary": "arn:aws:iam::*:policy/harbormaster-permissions-boundary"
         }
       }
@@ -56,6 +56,8 @@
             "ecs.amazonaws.com",
             "firehose.amazonaws.com",
             "kinesisanalytics.amazonaws.com",
+            "eks.amazonaws.com",
+            "ec2.amazonaws.com",
             "elasticmapreduce.amazonaws.com",
             "sagemaker.amazonaws.com",
             "scheduler.amazonaws.com",
@@ -65,6 +67,28 @@
           ]
         }
       }
+    },
+    {
+      "Sid": "ManageHarbormasterEksOidcProvider",
+      "Effect": "Allow",
+      "Action": [
+        "iam:CreateOpenIDConnectProvider",
+        "iam:DeleteOpenIDConnectProvider",
+        "iam:GetOpenIDConnectProvider",
+        "iam:UpdateOpenIDConnectProviderThumbprint",
+        "iam:AddClientIDToOpenIDConnectProvider",
+        "iam:RemoveClientIDFromOpenIDConnectProvider",
+        "iam:TagOpenIDConnectProvider",
+        "iam:UntagOpenIDConnectProvider",
+        "iam:ListOpenIDConnectProviderTags"
+      ],
+      "Resource": "arn:aws:iam::*:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/*"
+    },
+    {
+      "Sid": "ListHarbormasterEksOidcProviders",
+      "Effect": "Allow",
+      "Action": "iam:ListOpenIDConnectProviders",
+      "Resource": "*"
     },
     {
       "Sid": "ManageHarbormasterCustomerManagedPolicies",
@@ -109,6 +133,10 @@
             "ecs.amazonaws.com",
             "elasticloadbalancing.amazonaws.com",
             "application-autoscaling.amazonaws.com",
+            "autoscaling.amazonaws.com",
+            "eks.amazonaws.com",
+            "eks-nodegroup.amazonaws.com",
+            "spot.amazonaws.com",
             "kinesisanalytics.amazonaws.com",
             "sagemaker.amazonaws.com"
           ]
@@ -144,7 +172,7 @@
       ],
       "Resource": "*",
       "Condition": {
-        "StringNotEquals": {
+        "ArnNotLike": {
           "iam:PermissionsBoundary": "arn:aws:iam::*:policy/harbormaster-permissions-boundary"
         }
       }

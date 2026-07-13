@@ -37,12 +37,17 @@ variable "cluster_name" {
 variable "eks_version" {
   description = "EKS Kubernetes version, pinned per the war-story P8 policy (an unpinned version would let AWS's default roll the control plane under us between applies)."
   type        = string
-  default     = "1.31"
+  default     = "1.34"
 }
 
 variable "private_subnet_ids" {
   description = "Phase 1 VPC private subnets for the control-plane ENIs (the gate 5.1 spec: private API endpoint in the Phase 1 VPC)."
   type        = list(string)
+}
+
+variable "vpc_id" {
+  description = "Phase 1 VPC for the Terraform-owned EKS control-plane bridge security group."
+  type        = string
 }
 
 variable "endpoint_public_access" {
@@ -55,12 +60,30 @@ variable "endpoint_public_access" {
   EOT
   type        = bool
   default     = false
+
+  validation {
+    condition = (
+      var.endpoint_public_access
+      ? length(var.public_access_cidrs) > 0
+      : length(var.public_access_cidrs) == 0
+    )
+    error_message = "endpoint_public_access requires at least one public_access_cidrs host CIDR when true and an empty list when false."
+  }
 }
 
 variable "public_access_cidrs" {
-  description = "CIDR allowlist for the public endpoint, only consulted when endpoint_public_access = true. Empty means no CIDRs, which AWS rejects at apply, so a demo override must set both together (deliberate friction: no accidental 0.0.0.0/0)."
+  description = "Operator host CIDRs for the IPv4 public endpoint. W4 accepts only IPv4 /32 entries and rejects world-open ranges."
   type        = list(string)
   default     = []
+
+  validation {
+    condition = alltrue([
+      for cidr in var.public_access_cidrs :
+      can(cidrhost(cidr, 0)) &&
+      can(regex("^([0-9]{1,3}\\.){3}[0-9]{1,3}/32$", cidr))
+    ])
+    error_message = "public_access_cidrs entries must be valid IPv4 operator host CIDRs (/32), never world-open ranges."
+  }
 }
 
 variable "keep_alive_until" {
@@ -97,15 +120,21 @@ variable "install_keda" {
 }
 
 variable "keda_chart_version" {
-  description = "KEDA Helm chart version, pinned per the war-story P8 policy."
+  description = "KEDA Helm chart version, pinned to a release tested with the EKS Kubernetes version."
   type        = string
-  default     = "2.15.2"
+  default     = "2.20.0"
 }
 
 variable "keda_namespace" {
   description = "Namespace the KEDA chart installs into."
   type        = string
   default     = "keda"
+}
+
+variable "keda_service_account_name" {
+  description = "KEDA operator service account bound to the module's IRSA role."
+  type        = string
+  default     = "keda-operator"
 }
 
 variable "log_retention_days" {

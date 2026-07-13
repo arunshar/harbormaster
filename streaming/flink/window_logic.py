@@ -22,10 +22,15 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
+from functools import lru_cache
 
 # --- inlined from streaming/features/features.py (kept byte-identical; see the
 # module docstring above for why this is a duplicate, not an import) ---
@@ -220,6 +225,152 @@ def score_request(mmsi: int, fix: Fix, history: list[Fix] | None = None) -> dict
 SCORER_MAX_RETRIES = 2
 SCORER_BASE_DELAY_S = 0.2
 SCORER_DELAY_CAP_S = 2.0
+
+
+@lru_cache(maxsize=1)
+def _runtime_botocore_session():
+    """Reuse credential-provider state while retaining refreshable credentials."""
+    from botocore.session import get_session
+
+    return get_session()
+
+
+def validate_execute_api_url(url: str, region: str) -> str:
+    """Require the exact regional API Gateway HTTPS scoring route."""
+    parsed = urllib.parse.urlsplit(url)
+    host = parsed.hostname or ""
+    dns_suffix = "amazonaws.com.cn" if region.startswith("cn-") else "amazonaws.com"
+    expected_host = re.compile(
+        rf"^[a-z0-9]+\.execute-api\.{re.escape(region)}\.{re.escape(dns_suffix)}$"
+    )
+    if (
+        parsed.scheme != "https"
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.port is not None
+        or not expected_host.fullmatch(host)
+        or parsed.path != "/v1/score-ais"
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise ValueError(
+            "scorer URL must be the exact regional HTTPS execute-api /v1/score-ais route"
+        )
+    return url
+
+
+class _RejectRedirects(urllib.request.HTTPRedirectHandler):
+    """Never forward SigV4 headers to a redirect destination."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise urllib.error.HTTPError(
+            req.full_url,
+            code,
+            "redirect refused for signed request",
+            headers,
+            fp,
+        )
+
+
+def open_no_redirect(request: urllib.request.Request, timeout_seconds: float = 5):
+    """Open one signed request while refusing every HTTP redirect."""
+    if not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
+        raise ValueError("timeout_seconds must be finite and > 0")
+    opener = urllib.request.build_opener(_RejectRedirects())
+    return opener.open(request, timeout=timeout_seconds)  # nosec B310
+
+
+def validate_ais_score_response(
+    status_code: int,
+    body: bytes,
+    expected_mmsi: int,
+) -> dict:
+    """Validate the response contract before a scorer call counts as success."""
+    if status_code != 200:
+        raise ValueError(f"expected scorer HTTP 200, got {status_code}")
+    try:
+        payload = json.loads(body)
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ValueError("scorer response is not valid JSON") from error
+    if not isinstance(payload, dict):
+        raise ValueError("scorer response must be a JSON object")
+
+    mmsi = payload.get("mmsi")
+    if isinstance(mmsi, bool) or not isinstance(mmsi, int) or mmsi != expected_mmsi:
+        raise ValueError(f"scorer response mmsi must equal {expected_mmsi}")
+
+    for name in ("score", "confidence"):
+        value = payload.get(name)
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(value)
+            or not 0 <= value <= 1
+        ):
+            raise ValueError(f"scorer response {name} must be finite and within [0, 1]")
+
+    latency_ms = payload.get("latency_ms")
+    if (
+        isinstance(latency_ms, bool)
+        or not isinstance(latency_ms, (int, float))
+        or not math.isfinite(latency_ms)
+        or latency_ms < 0
+    ):
+        raise ValueError("scorer response latency_ms must be finite and >= 0")
+    n_history = payload.get("n_history")
+    if isinstance(n_history, bool) or not isinstance(n_history, int) or n_history < 0:
+        raise ValueError("scorer response n_history must be an integer >= 0")
+    reasons = payload.get("reasons")
+    if not isinstance(reasons, list):
+        raise ValueError("scorer response reasons must be a list")
+    for reason in reasons:
+        if not isinstance(reason, dict):
+            raise ValueError("each scorer response reason must be an object")
+        if not isinstance(reason.get("code"), str) or not reason["code"]:
+            raise ValueError("scorer response reason code must be a non-empty string")
+        severity = reason.get("severity")
+        if (
+            isinstance(severity, bool)
+            or not isinstance(severity, (int, float))
+            or not math.isfinite(severity)
+            or not 0 <= severity <= 1
+        ):
+            raise ValueError("scorer response reason severity must be within [0, 1]")
+        if not isinstance(reason.get("detail"), str):
+            raise ValueError("scorer response reason detail must be a string")
+        if not isinstance(reason.get("evidence"), dict):
+            raise ValueError("scorer response reason evidence must be an object")
+    if not isinstance(payload.get("hitl_required"), bool):
+        raise ValueError("scorer response hitl_required must be a boolean")
+    trace_id = payload.get("trace_id")
+    if not isinstance(trace_id, str) or not trace_id.strip():
+        raise ValueError("scorer response trace_id must be a non-empty string")
+    return payload
+
+
+def sigv4_headers(url: str, body: bytes, region: str) -> dict[str, str]:
+    """Create fresh API Gateway SigV4 headers from the runtime role.
+
+    The provider session is cached, but get_credentials and
+    get_frozen_credentials run for every request so refreshable Managed Flink
+    credentials and retry timestamps never go stale. boto3 ships botocore into
+    the UDF worker through requirements.txt.
+    """
+    from botocore.auth import SigV4Auth
+    from botocore.awsrequest import AWSRequest
+
+    validate_execute_api_url(url, region)
+    credentials = _runtime_botocore_session().get_credentials()
+    if credentials is None:
+        raise RuntimeError("no AWS credentials available for the signed serving request")
+    request = AWSRequest(
+        method="POST",
+        url=url,
+        data=body,
+        headers={"Content-Type": "application/json"},
+    )
+    SigV4Auth(credentials.get_frozen_credentials(), "execute-api", region).add_auth(request)
+    return {str(key): str(value) for key, value in request.headers.items()}
 
 
 def quarantine_envelope(raw: str | bytes, reason: str, now: datetime) -> dict:

@@ -9,7 +9,11 @@ runtime or AWS. Tests are hermetic (no network, no clock, seeded, deterministic)
 
 from __future__ import annotations
 
+import json
+import urllib.error
+import urllib.request
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 
@@ -18,13 +22,17 @@ from flink.window_logic import (
     VESSEL_V_MAX_MPS,
     Fix,
     WindowFeatures,
+    _RejectRedirects,
     feature_item,
     gap_since_last_s,
     haversine_m,
     passes_gate,
     post_scorer_with_retry,
     quarantine_envelope,
+    sigv4_headers,
     v_required_mps,
+    validate_ais_score_response,
+    validate_execute_api_url,
     window_features,
 )
 
@@ -153,6 +161,183 @@ def test_quarantine_envelope_handles_undecodable_bytes():
     env = quarantine_envelope(b"\xff\xfe not utf8", "parse_error: bad bytes", T0)
     assert isinstance(env["raw"], str)
     assert "not utf8" in env["raw"]
+
+
+def test_sigv4_headers_sign_execute_api_with_runtime_credentials(monkeypatch):
+    import botocore.session
+    from botocore.credentials import Credentials
+
+    from flink import window_logic
+
+    class Session:
+        @staticmethod
+        def get_credentials():
+            return Credentials("AKIDEXAMPLE", "secret", "session-token")
+
+    monkeypatch.setattr(botocore.session, "get_session", Session)
+    window_logic._runtime_botocore_session.cache_clear()
+    headers = sigv4_headers(
+        "https://example.execute-api.us-east-1.amazonaws.com/v1/score-ais",
+        b'{"mmsi":367000001}',
+        "us-east-1",
+    )
+    assert headers["Authorization"].startswith("AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/")
+    assert "/us-east-1/execute-api/aws4_request" in headers["Authorization"]
+    assert headers["X-Amz-Security-Token"] == "session-token"
+    assert headers["X-Amz-Date"]
+
+
+def test_sigv4_headers_fail_closed_without_runtime_credentials(monkeypatch):
+    import botocore.session
+
+    from flink import window_logic
+
+    class Session:
+        @staticmethod
+        def get_credentials():
+            return None
+
+    monkeypatch.setattr(botocore.session, "get_session", Session)
+    window_logic._runtime_botocore_session.cache_clear()
+    with pytest.raises(RuntimeError, match="no AWS credentials"):
+        sigv4_headers(
+            "https://example.execute-api.us-east-1.amazonaws.com/v1/score-ais",
+            b"{}",
+            "us-east-1",
+        )
+
+
+def test_sigv4_rejects_an_unsafe_url_before_reading_credentials(monkeypatch):
+    import botocore.session
+
+    from flink import window_logic
+
+    calls = []
+
+    class Session:
+        @staticmethod
+        def get_credentials():
+            calls.append("credentials")
+            raise AssertionError("credential provider must not run for an unsafe URL")
+
+    monkeypatch.setattr(botocore.session, "get_session", Session)
+    window_logic._runtime_botocore_session.cache_clear()
+    with pytest.raises(ValueError, match="exact regional HTTPS"):
+        sigv4_headers("https://attacker.example/v1/score-ais", b"{}", "us-east-1")
+    assert calls == []
+
+
+def test_sigv4_headers_refresh_rotated_credentials_from_the_cached_session(monkeypatch):
+    import botocore.session
+    from botocore.credentials import Credentials
+
+    from flink import window_logic
+
+    credentials = iter(
+        [
+            Credentials("AKIDFIRST", "secret-1", "token-1"),
+            Credentials("AKIDSECOND", "secret-2", "token-2"),
+        ]
+    )
+    calls = {"sessions": 0, "credentials": 0}
+
+    class Session:
+        @staticmethod
+        def get_credentials():
+            calls["credentials"] += 1
+            return next(credentials)
+
+    def get_session():
+        calls["sessions"] += 1
+        return Session()
+
+    monkeypatch.setattr(botocore.session, "get_session", get_session)
+    window_logic._runtime_botocore_session.cache_clear()
+    url = "https://example.execute-api.us-east-1.amazonaws.com/v1/score-ais"
+    first = sigv4_headers(url, b"{}", "us-east-1")
+    second = sigv4_headers(url, b"{}", "us-east-1")
+
+    assert "Credential=AKIDFIRST/" in first["Authorization"]
+    assert first["X-Amz-Security-Token"] == "token-1"
+    assert "Credential=AKIDSECOND/" in second["Authorization"]
+    assert second["X-Amz-Security-Token"] == "token-2"
+    assert calls == {"sessions": 1, "credentials": 2}
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://abc.execute-api.us-east-1.amazonaws.com/v1/score-ais",
+        "https://abc.execute-api.us-west-2.amazonaws.com/v1/score-ais",
+        "https://abc.execute-api.us-east-1.amazonaws.com/healthz",
+        "https://abc.execute-api.us-east-1.amazonaws.com/v1/score-ais?debug=1",
+        "https://abc.execute-api.us-east-1.amazonaws.com/v1/score-ais#fragment",
+        "https://abc.execute-api.us-east-1.amazonaws.com:443/v1/score-ais",
+        "https://user@abc.execute-api.us-east-1.amazonaws.com/v1/score-ais",
+    ],
+)
+def test_execute_api_url_validation_rejects_every_non_exact_destination(url):
+    with pytest.raises(ValueError, match="exact regional HTTPS"):
+        validate_execute_api_url(url, "us-east-1")
+
+
+def test_execute_api_url_validation_accepts_the_exact_scoring_route():
+    url = "https://abc.execute-api.us-east-1.amazonaws.com/v1/score-ais"
+    assert validate_execute_api_url(url, "us-east-1") == url
+
+
+def test_signed_request_redirects_are_rejected_without_forwarding_headers():
+    request = urllib.request.Request(
+        "https://abc.execute-api.us-east-1.amazonaws.com/v1/score-ais",
+        headers={"Authorization": "secret-signature"},
+        method="POST",
+    )
+    with pytest.raises(urllib.error.HTTPError, match="redirect refused"):
+        _RejectRedirects().redirect_request(
+            request,
+            None,
+            302,
+            "Found",
+            {},
+            "https://attacker.example/steal",
+        )
+
+
+def _valid_score_response(mmsi: int = 367000001) -> bytes:
+    return json.dumps(
+        {
+            "mmsi": mmsi,
+            "score": 0.2,
+            "confidence": 0.9,
+            "reasons": [],
+            "hitl_required": False,
+            "trace_id": "trace-1",
+            "latency_ms": 1.5,
+            "n_history": 1,
+        }
+    ).encode()
+
+
+def test_ais_score_response_requires_http_200_and_matching_schema():
+    payload = validate_ais_score_response(200, _valid_score_response(), 367000001)
+    assert payload["trace_id"] == "trace-1"
+    with pytest.raises(ValueError, match="HTTP 200"):
+        validate_ais_score_response(204, b"", 367000001)
+    with pytest.raises(ValueError, match="valid JSON"):
+        validate_ais_score_response(200, b"not-json", 367000001)
+    with pytest.raises(ValueError, match="must equal"):
+        validate_ais_score_response(200, _valid_score_response(367000002), 367000001)
+    malformed = json.loads(_valid_score_response())
+    malformed["reasons"] = ["not-a-score-reason"]
+    with pytest.raises(ValueError, match="reason must be an object"):
+        validate_ais_score_response(200, json.dumps(malformed).encode(), 367000001)
+
+
+def test_job_signs_inside_the_retried_send_callback():
+    source = (Path(__file__).parents[1] / "job.py").read_text()
+    send_block = source.split("def _send() -> None:", 1)[1].split("# Scoring is best-effort", 1)[0]
+    assert send_block.index("sigv4_headers(") < send_block.index("open_no_redirect(")
+    assert send_block.index("open_no_redirect(") < send_block.index("validate_ais_score_response(")
 
 
 # --- Streaming robustness: bounded, non-blocking scorer retry ---------------

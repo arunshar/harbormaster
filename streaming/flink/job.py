@@ -70,11 +70,14 @@ from flink.window_logic import (
     Fix,
     WindowFeatures,
     feature_item,
+    open_no_redirect,
     parse_ais_json,
     passes_gate,
     post_scorer_with_retry,
     quarantine_envelope,
     score_request,
+    sigv4_headers,
+    validate_ais_score_response,
     window_features,
 )
 
@@ -113,14 +116,24 @@ HISTORY_WINDOW = 5
 
 
 def _fix_to_dict(f: Fix) -> dict:
-    return {"lat": f.lat, "lon": f.lon, "t": f.t.isoformat(), "sog": f.sog, "cog": f.cog,
-            "heading": f.heading}
+    return {
+        "lat": f.lat,
+        "lon": f.lon,
+        "t": f.t.isoformat(),
+        "sog": f.sog,
+        "cog": f.cog,
+        "heading": f.heading,
+    }
 
 
 def _fix_from_dict(d: dict) -> Fix:
     return Fix(
-        lat=d["lat"], lon=d["lon"], t=datetime.fromisoformat(d["t"]),
-        sog=d["sog"], cog=d["cog"], heading=d["heading"],
+        lat=d["lat"],
+        lon=d["lon"],
+        t=datetime.fromisoformat(d["t"]),
+        sog=d["sog"],
+        cog=d["cog"],
+        heading=d["heading"],
     )
 
 
@@ -232,15 +245,20 @@ class FeatureProcess(KeyedProcessFunction):
         # the round-trip-through-JSON conversion is local to this DynamoDB write.
         self._dynamo().put_item(Item=json.loads(json.dumps(item), parse_float=Decimal))
         body = json.dumps(request).encode()
-        req = urllib.request.Request(
-            f"{self._url.rstrip('/')}/v1/score-ais",
-            data=body,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
+        scorer_url = f"{self._url.rstrip('/')}/v1/score-ais"
 
         def _send() -> None:
-            urllib.request.urlopen(req, timeout=5).read()  # nosec B310  # fixed http(s) scoring endpoint from config, no user-supplied scheme
+            # Sign each attempt afresh. Managed Flink credentials rotate, and
+            # API Gateway's AWS_IAM route rejects the old unsigned urllib POST.
+            req = urllib.request.Request(
+                scorer_url,
+                data=body,
+                headers=sigv4_headers(scorer_url, body, self._region),
+                method="POST",
+            )
+            with open_no_redirect(req, timeout_seconds=5) as response:
+                response_body = response.read()
+                validate_ais_score_response(response.status, response_body, mmsi)
 
         # Scoring is best-effort from the stream, but the old bare `except: pass`
         # swallowed every failure with no signal and no second try. Replace it with a

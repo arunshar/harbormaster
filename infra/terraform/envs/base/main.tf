@@ -32,30 +32,34 @@ terraform {
       source  = "hashicorp/helm"
       version = "~> 2.13"
     }
+    tls = {
+      source  = "hashicorp/tls"
+      version = "~> 4.0"
+    }
   }
 }
 
 # -----------------------------------------------------------------------------
 # Helm provider (Phase 5, gate 5.1), configured COUNT-SAFELY. A provider
 # block cannot be count-gated, so the credentials come from data sources
-# that only exist while enable_phase5_keda = true (which per its validation
-# also requires enable_phase5). With the flag off, both data sources have
+# that only exist while enable_phase5_kubernetes_access = true (which per its
+# validation also requires enable_phase5). With the flag off, both data sources have
 # count 0, every try() below collapses to an inert empty value, and the
 # provider is never dereferenced because the only helm_release
 # (modules/eks_cluster's keda, gated on install_keda = enable_phase5_keda)
-# has count 0 too: a default plan and make validate need no cluster and no
-# AWS credentials. With the flag on, the data sources read the LIVE cluster
+# has count 0 too: a default plan reads no live cluster credentials, and make
+# validate needs no AWS credentials. With the flag on, the data sources read the LIVE cluster
 # at plan time, which is why flipping it is a documented SECOND apply after
 # the cluster exists (see the enable_phase5_keda variable description).
 # -----------------------------------------------------------------------------
 
 data "aws_eks_cluster" "phase5" {
-  count = var.enable_phase5_keda ? 1 : 0
+  count = var.enable_phase5_kubernetes_access ? 1 : 0
   name  = local.phase5_cluster_name
 }
 
 data "aws_eks_cluster_auth" "phase5" {
-  count = var.enable_phase5_keda ? 1 : 0
+  count = var.enable_phase5_kubernetes_access ? 1 : 0
   name  = local.phase5_cluster_name
 }
 
@@ -287,6 +291,17 @@ module "apigw" {
 
   cloudmap_service_arn = module.ecs_serving[0].cloudmap_service_arn
 
+  # Phase 5 keeps the ECS integration as rollback while adding a second
+  # integration backed by the Terraform-owned internal NLB. At the default
+  # target and with Phase 5 disabled, these values preserve the ECS route.
+  serving_target = var.serving_target
+  eks_integration_uri = (
+    var.enable_phase5 ? module.eks_frontdoor[0].listener_arn : ""
+  )
+  eks_nlb_security_group_id = (
+    var.enable_phase5 ? module.eks_frontdoor[0].security_group_id : ""
+  )
+
   kms_key_arn = local.kms_key_arn
 
   tags = local.common_tags
@@ -319,11 +334,12 @@ module "kda_flink" {
   environment = var.environment
   aws_region  = var.aws_region
 
-  kinesis_stream_arn  = module.kinesis[0].stream_arn
-  kinesis_stream_name = module.kinesis[0].stream_name
-  feast_table_name    = module.state_stores.feast_online_table_name
-  lake_bucket_arn     = "arn:aws:s3:::${module.state_stores.lake_bucket_name}"
-  serving_endpoint    = module.apigw[0].api_endpoint
+  kinesis_stream_arn        = module.kinesis[0].stream_arn
+  kinesis_stream_name       = module.kinesis[0].stream_name
+  feast_table_name          = module.state_stores.feast_online_table_name
+  lake_bucket_arn           = "arn:aws:s3:::${module.state_stores.lake_bucket_name}"
+  serving_endpoint          = module.apigw[0].api_endpoint
+  serving_api_execution_arn = module.apigw[0].api_execution_arn
 
   # flink_code_s3_key stays empty until gate 1.5 uploads the job artifact, so the
   # Flink application (and its KPU cost) is not created by a 1.3 demo apply.
@@ -584,9 +600,10 @@ module "eks_teardown_guard" {
   environment = var.environment
   aws_region  = var.aws_region
 
-  cluster_name  = local.phase5_cluster_name
-  max_age_hours = var.phase5_teardown_max_age_hours
-  guard_dry_run = var.phase5_guard_dry_run
+  cluster_name        = local.phase5_cluster_name
+  max_age_hours       = var.phase5_teardown_max_age_hours
+  guard_dry_run       = var.phase5_guard_dry_run
+  schedule_expression = var.phase5_teardown_schedule_expression
 
   sns_topic_arn = module.finops.sns_topic_arn
 
@@ -602,7 +619,8 @@ module "eks_teardown_guard" {
 # Whole-module gates behind enable_phase5 (validated to require
 # enable_phase1: the cluster sits in the Phase 1 VPC's private subnets).
 # Zero-diff argument, from construction: both calls collapse at the default,
-# the helm provider's data sources collapse behind enable_phase5_keda, and
+# the helm provider's data sources collapse behind
+# enable_phase5_kubernetes_access, and
 # no pre-existing resource or module input changed, so the toggles-off plan
 # stays byte-identical. COST WATCH: the control plane bills ~$0.10/hour from
 # creation regardless of nodes/pods; the gate 5.0 guard above force-destroys
@@ -624,16 +642,27 @@ module "eks_cluster" {
   aws_region  = var.aws_region
 
   cluster_name       = local.phase5_cluster_name
+  vpc_id             = module.network.vpc_id
   private_subnet_ids = module.network.private_subnet_ids
+
+  endpoint_public_access = var.phase5_endpoint_public_access
+  public_access_cidrs    = var.phase5_public_access_cidrs
 
   keep_alive_until = var.phase5_keep_alive_until
 
   # The two-step KEDA install (see enable_phase5_keda's description): the
-  # helm_release inside the module is gated on this, and the helm provider's
-  # credentials data sources are gated on the same flag above.
+  # helm_release inside the module is gated on this. The helm provider's
+  # credential data sources use the separate Kubernetes-access flag above so
+  # KEDA can be removed cleanly before cluster teardown.
   install_keda = var.enable_phase5_keda
 
   tags = local.common_tags
+
+  # Both guards must be wet before the first billable control-plane minute.
+  # The dedicated EKS guard is created first, and the FinOps dependency makes
+  # any nightly teardown Lambda or IAM update finish before EKS creation.
+  # These dependencies reverse safely on teardown: EKS is removed first.
+  depends_on = [module.eks_teardown_guard, module.finops]
 }
 
 module "eks_node_group" {
@@ -649,7 +678,31 @@ module "eks_node_group" {
   cluster_name  = module.eks_cluster[0].cluster_name
   node_role_arn = module.eks_cluster[0].node_role_arn
 
+  private_subnet_ids              = module.network.private_subnet_ids
+  vpc_id                          = module.network.vpc_id
+  vpc_cidr                        = module.network.vpc_cidr
+  control_plane_security_group_id = module.eks_cluster[0].control_plane_security_group_id
+
+  desired_size = var.phase5_node_desired_size
+
+  tags = local.common_tags
+}
+
+# Terraform-owned internal NLB for the EKS NodePort Service. Its listener ARN
+# feeds the existing API Gateway VPC link directly, so W4 has no out-of-band
+# load-balancer controller, ARN discovery, or untracked billable resource.
+module "eks_frontdoor" {
+  count  = var.enable_phase5 ? 1 : 0
+  source = "../../modules/eks_frontdoor"
+
+  project     = var.project
+  environment = var.environment
+
+  vpc_id             = module.network.vpc_id
   private_subnet_ids = module.network.private_subnet_ids
+
+  node_security_group_id      = module.eks_node_group[0].node_security_group_id
+  node_autoscaling_group_name = module.eks_node_group[0].autoscaling_group_name
 
   tags = local.common_tags
 }

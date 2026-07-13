@@ -143,6 +143,12 @@ variable "eks_integration_uri" {
   default     = ""
 }
 
+variable "eks_nlb_security_group_id" {
+  description = "Security group on the Phase 5 internal NLB. Empty with Phase 5 disabled."
+  type        = string
+  default     = ""
+}
+
 # --- WAF ---------------------------------------------------------------------
 # WAF has a standing per-web-ACL and per-rule cost, so it is authored but off by
 # default. Flip enable_waf to true (and apply) to attach a managed-rule web ACL

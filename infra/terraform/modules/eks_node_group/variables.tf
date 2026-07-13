@@ -31,10 +31,31 @@ variable "private_subnet_ids" {
   type        = list(string)
 }
 
+variable "vpc_id" {
+  description = "Phase 1 VPC that contains the worker nodes."
+  type        = string
+}
+
+variable "vpc_cidr" {
+  description = "Phase 1 VPC CIDR used for DNS and optional private data-service egress."
+  type        = string
+}
+
+variable "control_plane_security_group_id" {
+  description = "Terraform-owned bridge security group attached to EKS control-plane ENIs."
+  type        = string
+}
+
 variable "instance_types" {
   description = "Spot instance-type candidates. Two families so a single spot pool interruption cannot starve the group."
   type        = list(string)
   default     = ["t3.medium", "t3a.medium"]
+}
+
+variable "ami_type" {
+  description = "EKS-optimized Amazon Linux 2023 AMI family. Kubernetes 1.34 and later do not publish new Amazon Linux 2 EKS AMIs."
+  type        = string
+  default     = "AL2023_x86_64_STANDARD"
 }
 
 variable "disk_size" {
@@ -55,15 +76,25 @@ variable "min_size" {
 }
 
 variable "max_size" {
-  description = "Node ceiling, bounding the worst-case spot spend of a runaway scale-out."
+  description = "Node ceiling. W4 is deliberately single-node because no node autoscaler or untrusted in-cluster workload exists in this bounded demo."
   type        = number
-  default     = 3
+  default     = 1
+
+  validation {
+    condition     = var.max_size >= var.min_size
+    error_message = "max_size must be >= min_size."
+  }
 }
 
 variable "desired_size" {
-  description = "Initial desired capacity. 0 so an apply creates no instance; the demo runbook (or an autoscaler) bumps it, and lifecycle ignores the drift thereafter."
+  description = "Terraform-managed desired capacity. The module default is 0; envs/base sets 1 during W4 because no node autoscaler is installed."
   type        = number
   default     = 0
+
+  validation {
+    condition     = var.desired_size >= var.min_size && var.desired_size <= var.max_size
+    error_message = "desired_size must be between min_size and max_size."
+  }
 }
 
 variable "tags" {

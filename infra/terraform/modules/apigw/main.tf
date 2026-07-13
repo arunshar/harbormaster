@@ -84,6 +84,22 @@ resource "aws_apigatewayv2_integration" "serving_eks" {
   connection_id      = aws_apigatewayv2_vpc_link.this.id
 }
 
+# Complete the private trust chain without opening the NLB to the full VPC.
+# The frontdoor module owns the NLB SG; this module owns the source VPC-link SG.
+resource "aws_vpc_security_group_ingress_rule" "eks_nlb_from_vpc_link" {
+  # checkov:skip=CKV_AWS_260:The rule uses only the VPC-link security group as its source; it has no IPv4 CIDR ingress.
+  count = var.eks_nlb_security_group_id != "" ? 1 : 0
+
+  security_group_id            = var.eks_nlb_security_group_id
+  description                  = "API Gateway VPC link to the Phase 5 internal NLB"
+  referenced_security_group_id = aws_security_group.vpc_link.id
+  from_port                    = 80
+  to_port                      = 80
+  ip_protocol                  = "tcp"
+
+  tags = local.tags
+}
+
 # JWT authorizer, only when authorization_mode = JWT. Free for HTTP APIs (no
 # Lambda invoke). Requires jwt_issuer and jwt_audience from the caller.
 resource "aws_apigatewayv2_authorizer" "jwt" {

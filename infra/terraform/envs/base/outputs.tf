@@ -121,6 +121,11 @@ output "flink_role_arn" {
   value       = one(module.kda_flink[*].role_arn)
 }
 
+output "flink_application_name" {
+  description = "Managed Flink application name, or null until flink_code_s3_key creates it (Phase 1)."
+  value       = one(module.kda_flink[*].application_name)
+}
+
 output "phase1_dashboard_name" {
   description = "CloudWatch dashboard for the Phase 1 slice (Phase 1)."
   value       = one(module.observability[*].dashboard_name)
@@ -166,4 +171,42 @@ output "emr_backfill_execution_role_arn" {
 output "pidpm_endpoint_name" {
   description = "SageMaker async endpoint name for the Pi-DPM head (Phase 3, gate 3.6). Feed this to HM_PIDPM_ENDPOINT."
   value       = one(module.sagemaker_pidpm[*].endpoint_name)
+}
+
+
+# ---- Phase 5 (null when enable_phase5 = false) ------------------------------
+
+output "phase5_cluster_name" {
+  description = "EKS cluster name watched by the teardown guard."
+  value       = one(module.eks_cluster[*].cluster_name)
+}
+
+output "phase5_node_group_name" {
+  description = "Managed EKS serving node-group name."
+  value       = one(module.eks_node_group[*].node_group_name)
+}
+
+output "phase5_keda_operator_role_arn" {
+  description = "KEDA operator IRSA role ARN."
+  value       = one(module.eks_cluster[*].keda_operator_role_arn)
+}
+
+output "phase5_teardown_guard_function_name" {
+  description = "EKS teardown-guard Lambda function name."
+  value       = one(module.eks_teardown_guard[*].function_name)
+}
+
+output "phase5_teardown_guard_schedule_name" {
+  description = "EventBridge Scheduler schedule that invokes the EKS teardown guard."
+  value       = one(module.eks_teardown_guard[*].schedule_name)
+}
+
+output "phase5_nlb_listener_arn" {
+  description = "Internal NLB listener ARN wired into the API Gateway EKS integration."
+  value       = one(module.eks_frontdoor[*].listener_arn)
+}
+
+output "phase5_nlb_dns_name" {
+  description = "Internal NLB DNS name for diagnostic reads from inside the VPC."
+  value       = one(module.eks_frontdoor[*].load_balancer_dns_name)
 }

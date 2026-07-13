@@ -4,6 +4,11 @@ variable "project" {
   description = "Project name, used in tags and resource names."
   type        = string
   default     = "harbormaster"
+
+  validation {
+    condition     = var.project == "harbormaster"
+    error_message = "project must be harbormaster because the permissions boundary scopes FinOps actions to Harbormaster names."
+  }
 }
 
 variable "environment" {
@@ -40,6 +45,11 @@ variable "platform_role_name" {
     until you intervene.
   EOT
   type        = string
+
+  validation {
+    condition     = var.platform_role_name == "harbormaster-platform"
+    error_message = "platform_role_name must be harbormaster-platform because the permissions boundary grants the budget action only on that role."
+  }
 }
 
 variable "soft_budget_amount" {

@@ -46,8 +46,8 @@ variable "max_age_hours" {
   default     = 4
 
   validation {
-    condition     = var.max_age_hours >= 0
-    error_message = "max_age_hours must be >= 0."
+    condition     = var.max_age_hours >= 0 && var.max_age_hours <= 8
+    error_message = "max_age_hours must be between 0 for the scheduled proof and 8 for a bounded window."
   }
 }
 
@@ -66,6 +66,11 @@ variable "schedule_expression" {
   EOT
   type        = string
   default     = "rate(30 minutes)"
+
+  validation {
+    condition     = contains(["rate(5 minutes)", "rate(30 minutes)"], var.schedule_expression)
+    error_message = "schedule_expression must be rate(5 minutes) for the proof or rate(30 minutes) normally."
+  }
 }
 
 variable "guard_dry_run" {

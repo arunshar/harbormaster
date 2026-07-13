@@ -196,6 +196,23 @@ resource "aws_cloudwatch_log_group" "cluster" {
 }
 
 # -----------------------------------------------------------------------------
+# Terraform-owned control-plane bridge security group. Nodes use a separate
+# launch-template security group and reference this bridge in both directions.
+# No rule references the EKS-managed cluster security group, so the scheduled
+# guard can still delete the cluster without an external SG dependency.
+# -----------------------------------------------------------------------------
+
+resource "aws_security_group" "control_plane" {
+  name        = "${local.name_prefix}-eks-control-plane"
+  description = "Restricted EKS control-plane bridge for Phase 5 worker traffic"
+  vpc_id      = var.vpc_id
+
+  tags = merge(local.tags, {
+    Name = "${local.name_prefix}-eks-control-plane"
+  })
+}
+
+# -----------------------------------------------------------------------------
 # The control plane.
 # -----------------------------------------------------------------------------
 
@@ -204,8 +221,16 @@ resource "aws_eks_cluster" "this" {
   role_arn = aws_iam_role.cluster.arn
   version  = var.eks_version
 
+  # Extended support is materially more expensive. STANDARD lets AWS advance
+  # the cluster at end of standard support instead of charging that rate. W4
+  # destroys the cluster within hours either way.
+  upgrade_policy {
+    support_type = "STANDARD"
+  }
+
   vpc_config {
     subnet_ids              = var.private_subnet_ids
+    security_group_ids      = [aws_security_group.control_plane.id]
     endpoint_private_access = true
     endpoint_public_access  = var.endpoint_public_access
     public_access_cidrs     = var.endpoint_public_access ? var.public_access_cidrs : null
@@ -241,12 +266,79 @@ resource "aws_eks_cluster" "this" {
 }
 
 # -----------------------------------------------------------------------------
+# KEDA operator IRSA. The CloudWatch scaler runs in the operator, so the trust
+# is restricted to one service-account subject and one STS audience. No static
+# AWS credentials enter Kubernetes.
+# -----------------------------------------------------------------------------
+
+data "tls_certificate" "eks_oidc" {
+  url = aws_eks_cluster.this.identity[0].oidc[0].issuer
+}
+
+resource "aws_iam_openid_connect_provider" "eks" {
+  url             = aws_eks_cluster.this.identity[0].oidc[0].issuer
+  client_id_list  = ["sts.amazonaws.com"]
+  thumbprint_list = [data.tls_certificate.eks_oidc.certificates[0].sha1_fingerprint]
+
+  tags = local.tags
+}
+
+data "aws_iam_policy_document" "keda_operator_assume" {
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+
+    principals {
+      type        = "Federated"
+      identifiers = [aws_iam_openid_connect_provider.eks.arn]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "${replace(aws_iam_openid_connect_provider.eks.url, "https://", "")}:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "${replace(aws_iam_openid_connect_provider.eks.url, "https://", "")}:sub"
+      values   = ["system:serviceaccount:${var.keda_namespace}:${var.keda_service_account_name}"]
+    }
+  }
+}
+
+resource "aws_iam_role" "keda_operator" {
+  name                 = "${local.name_prefix}-keda-operator"
+  permissions_boundary = var.permissions_boundary_arn != "" ? var.permissions_boundary_arn : null
+  assume_role_policy   = data.aws_iam_policy_document.keda_operator_assume.json
+
+  tags = local.tags
+}
+
+data "aws_iam_policy_document" "keda_cloudwatch" {
+  statement {
+    sid    = "ReadCloudWatchScalerMetric"
+    effect = "Allow"
+
+    # GetMetricData does not support resource-level IAM scoping. This is the
+    # only AWS API used by the pinned KEDA CloudWatch scaler.
+    actions   = ["cloudwatch:GetMetricData"]
+    resources = ["*"]
+  }
+}
+
+# checkov:skip=CKV_AWS_355:cloudwatch:GetMetricData has no resource-level permission model; the policy grants only that read action to the single KEDA operator role.
+resource "aws_iam_role_policy" "keda_cloudwatch" {
+  name   = "${local.name_prefix}-keda-cloudwatch"
+  role   = aws_iam_role.keda_operator.id
+  policy = data.aws_iam_policy_document.keda_cloudwatch.json
+}
+
+# -----------------------------------------------------------------------------
 # KEDA, via the official Helm chart. Count-gated on install_keda (default
-# false): the two-step provider story documented in the module header. wait
-# is off because the node group starts at desired_size = 0 (scale-to-zero
-# floor); with no schedulable node yet, a waiting helm_release would block
-# the apply on pods that cannot start. The demo runbook bumps the node group
-# to 1 and verifies the KEDA rollout before applying ScaledObjects.
+# false): the two-step provider story documented in the module header. W4
+# creates one schedulable node first, then enables this waiting, atomic release
+# in a second apply so installation either becomes ready or rolls back.
 # -----------------------------------------------------------------------------
 
 resource "helm_release" "keda" {
@@ -259,8 +351,32 @@ resource "helm_release" "keda" {
   namespace        = var.keda_namespace
   create_namespace = true
 
-  wait    = false
+  wait    = true
+  atomic  = true
   timeout = 600
 
-  depends_on = [aws_eks_cluster.this]
+  set {
+    name  = "serviceAccount.operator.name"
+    value = var.keda_service_account_name
+  }
+
+  set {
+    name  = "podIdentity.aws.irsa.enabled"
+    value = "true"
+  }
+
+  set {
+    name  = "podIdentity.aws.irsa.roleArn"
+    value = aws_iam_role.keda_operator.arn
+  }
+
+  set {
+    name  = "podIdentity.aws.irsa.stsRegionalEndpoints"
+    value = "true"
+  }
+
+  depends_on = [
+    aws_eks_cluster.this,
+    aws_iam_role_policy.keda_cloudwatch,
+  ]
 }
