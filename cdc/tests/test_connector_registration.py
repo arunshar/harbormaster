@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import base64
 import json
+import math
 import subprocess
 import threading
+import urllib.error
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
@@ -40,13 +42,27 @@ class FakeResponse:
 
 
 class FakeUrlOpen:
-    def __init__(self, responses: list[FakeResponse]):
+    def __init__(self, responses: list[FakeResponse | Exception]):
         self.responses = iter(responses)
         self.calls = []
 
     def __call__(self, target, *, timeout: float):
         self.calls.append((target, timeout))
-        return next(self.responses)
+        response = next(self.responses)
+        if isinstance(response, Exception):
+            raise response
+        return response
+
+
+class FakeClock:
+    def __init__(self):
+        self.now = 0.0
+
+    def monotonic(self) -> float:
+        return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.now += seconds
 
 
 def _build() -> dict:
@@ -61,18 +77,116 @@ def test_registration_preserves_placeholder_and_waits_for_tasks():
             FakeResponse({"connector": {"state": "RUNNING"}, "tasks": [{"state": "RUNNING"}]}),
         ]
     )
+    clock = FakeClock()
 
     result = register_and_wait(
         "http://connect:8083",
         _build(),
-        poll_interval_s=0,
+        poll_interval_s=0.25,
         urlopen=urlopen,
+        monotonic=clock.monotonic,
+        sleep=clock.sleep,
     )
 
     assert result == RegistrationResult(201, "RUNNING", ("RUNNING",))
     request = urlopen.calls[0][0]
     sent = json.loads(request.data)
     assert sent["database.password"] == DATABASE_PASSWORD_REFERENCE
+
+
+def test_registration_retries_transient_status_404_after_put():
+    status_url = "http://connect:8083/connectors/harbormaster-postgres/status"
+    urlopen = FakeUrlOpen(
+        [
+            FakeResponse(status=201),
+            urllib.error.HTTPError(status_url, 404, "Not Found", hdrs=None, fp=None),
+            FakeResponse({"connector": {"state": "RUNNING"}, "tasks": [{"state": "RUNNING"}]}),
+        ]
+    )
+    clock = FakeClock()
+
+    result = register_and_wait(
+        "http://connect:8083",
+        _build(),
+        poll_interval_s=0.25,
+        urlopen=urlopen,
+        monotonic=clock.monotonic,
+        sleep=clock.sleep,
+    )
+
+    assert result == RegistrationResult(201, "RUNNING", ("RUNNING",))
+    assert len(urlopen.calls) == 3
+
+
+def test_registration_does_not_retry_non_404_status_error():
+    status_url = "http://connect:8083/connectors/harbormaster-postgres/status"
+    urlopen = FakeUrlOpen(
+        [
+            FakeResponse(status=200),
+            urllib.error.HTTPError(status_url, 500, "Internal Server Error", hdrs=None, fp=None),
+        ]
+    )
+
+    with pytest.raises(urllib.error.HTTPError) as exc_info:
+        register_and_wait(
+            "http://connect:8083",
+            _build(),
+            urlopen=urlopen,
+        )
+
+    assert exc_info.value.code == 500
+    assert len(urlopen.calls) == 2
+
+
+def test_registration_persistent_status_404_stops_at_deadline():
+    status_url = "http://connect:8083/connectors/harbormaster-postgres/status"
+    urlopen = FakeUrlOpen(
+        [
+            FakeResponse(status=200),
+            urllib.error.HTTPError(status_url, 404, "Not Found", hdrs=None, fp=None),
+            urllib.error.HTTPError(status_url, 404, "Not Found", hdrs=None, fp=None),
+        ]
+    )
+    clock = FakeClock()
+
+    with pytest.raises(TimeoutError, match=r"connector=UNKNOWN, tasks=\(\)"):
+        register_and_wait(
+            "http://connect:8083",
+            _build(),
+            timeout_s=1,
+            poll_interval_s=0.5,
+            urlopen=urlopen,
+            monotonic=clock.monotonic,
+            sleep=clock.sleep,
+        )
+
+    assert clock.now == 1
+    assert [timeout for _, timeout in urlopen.calls] == [10, 1, 0.5]
+
+
+def test_registration_retries_transient_connection_error():
+    urlopen = FakeUrlOpen(
+        [
+            FakeResponse(status=200),
+            urllib.error.URLError("connection reset"),
+            FakeResponse({"connector": {"state": "RUNNING"}, "tasks": [{"state": "RUNNING"}]}),
+        ]
+    )
+    clock = FakeClock()
+
+    result = register_and_wait(
+        "http://connect:8083",
+        _build(),
+        timeout_s=1,
+        poll_interval_s=0.25,
+        urlopen=urlopen,
+        monotonic=clock.monotonic,
+        sleep=clock.sleep,
+    )
+
+    assert result == RegistrationResult(200, "RUNNING", ("RUNNING",))
+    assert clock.now == 0.25
+    assert [timeout for _, timeout in urlopen.calls] == [10, 1, 0.75]
 
 
 @pytest.mark.parametrize(
@@ -90,10 +204,47 @@ def test_registration_fails_fast_on_failed_state(status):
 
 
 def test_registration_timeout_reports_last_observed_state():
-    urlopen = FakeUrlOpen([FakeResponse(status=200)])
+    urlopen = FakeUrlOpen(
+        [
+            FakeResponse(status=200),
+            FakeResponse({"connector": {"state": "STARTING"}, "tasks": []}),
+        ]
+    )
+    clock = FakeClock()
 
-    with pytest.raises(TimeoutError, match=r"connector=UNKNOWN, tasks=\(\)"):
-        register_and_wait("http://connect:8083", _build(), timeout_s=0, urlopen=urlopen)
+    with pytest.raises(TimeoutError, match=r"connector=STARTING, tasks=\(\)"):
+        register_and_wait(
+            "http://connect:8083",
+            _build(),
+            timeout_s=1,
+            poll_interval_s=1,
+            urlopen=urlopen,
+            monotonic=clock.monotonic,
+            sleep=clock.sleep,
+        )
+
+
+@pytest.mark.parametrize(
+    ("timeout_s", "poll_interval_s"),
+    [
+        (0, 0.5),
+        (-1, 0.5),
+        (math.inf, 0.5),
+        (math.nan, 0.5),
+        (1, 0),
+        (1, -1),
+        (1, math.inf),
+        (1, math.nan),
+    ],
+)
+def test_registration_rejects_unbounded_timing(timeout_s, poll_interval_s):
+    with pytest.raises(ValueError, match="registration (timeout|poll interval)"):
+        register_and_wait(
+            "http://connect:8083",
+            _build(),
+            timeout_s=timeout_s,
+            poll_interval_s=poll_interval_s,
+        )
 
 
 def test_ecs_exec_command_base64_transport_preserves_placeholder():
