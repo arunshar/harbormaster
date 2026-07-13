@@ -390,7 +390,7 @@ An entry graduates from ANTICIPATED to grounded only when it is backed by a real
 
 **Tags:** [PLATFORM / personal-build] CONCURRENCY CORRECTNESS
 
-**Status: GROUNDED**; 2026-07-06, branch feat/ab-masterclass-audit (commit 5cb5a01, `streaming/window_logic.py`).
+**Status: GROUNDED**; 2026-07-06, branch feat/ab-masterclass-audit (commit 5cb5a01, `streaming/flink/window_logic.py`).
 
 - **Symptom:** pulling the inlined streaming window functions out into a testable `window_logic.py` module is a pure test-importability refactor with no behavior change on its face, but a naive extraction would have quietly altered how those functions ship to Flink workers.
 - **Root cause:** cloudpickle serializes a function defined in `__main__` (an inlined UDF) BY VALUE, shipping its actual bytecode; a function imported from a real package ships BY REFERENCE, a 53-byte pointer the worker must re-import on its own sys.path. Moving the functions to a module flips them from by-value to by-reference, exactly the P13 failure mode from the other direction: the worker would need `window_logic` importable on its own path, which the extraction does not guarantee.
