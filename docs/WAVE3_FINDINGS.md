@@ -44,7 +44,9 @@ one key group and create a hot partition. See
 
 ## Deferred to the Codex production-hardening plan (real, lower-priority)
 
-Pre-existing robustness (not Phase 5): **11** (`watchlist.py` `... or 0.9` is a redundant no-op after `_attr`'s default); **12** (the stretch service trains inline in an `async def` handler, blocking the loop; acceptable for a demo stretch, noted).
+Pre-existing robustness (not Phase 5): **12** (the stretch service trains inline in an `async def` handler, blocking the loop; acceptable for a demo stretch, noted).
+
+Finding **11** was a real explicit-zero corruption, not a redundant expression. A valid DynamoDB severity of `0` was unwrapped to `0.0`, then Python truthiness replaced it with `0.9`. The parser now preserves `0.0` while retaining `_attr`'s `0.9` default for a missing field, with a focused regression.
 
 Pre-existing projection debt: the local equirectangular prism kernel does not
 split antimeridian-crossing geometry and is unstable near the poles. Finding 20
