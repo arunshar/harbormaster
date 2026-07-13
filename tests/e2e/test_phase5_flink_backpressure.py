@@ -778,6 +778,11 @@ def cli_args(tmp_path, **overrides):
 
 
 def test_execute_persists_completed_atomic_evidence(monkeypatch, tmp_path):
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return START.astimezone(tz) if tz is not None else START.replace(tzinfo=None)
+
     args = cli_args(tmp_path)
     run = load_run(Path(args.load_artifact))
     samples = [
@@ -792,6 +797,7 @@ def test_execute_persists_completed_atomic_evidence(monkeypatch, tmp_path):
     summary = summarize_samples(samples, run)
     client = RouteClient({})
     client.origin = "https://dashboard.example"
+    monkeypatch.setattr(mod, "datetime", FrozenDateTime)
     monkeypatch.setattr(mod.DashboardSession, "authorize", lambda *_: client)
     monkeypatch.setattr(mod, "wait_for_fresh_load", lambda *a, **k: run)
     monkeypatch.setattr(
