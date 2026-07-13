@@ -31,7 +31,7 @@ See `docs/ARCHITECTURE.md` for the full diagram and the opinionated tradeoffs.
 | `docs/HONESTY.md` | The locked honesty framing, real-vs-simulated labeling rules, gap talk-track. |
 | `docs/ARCHITECTURE.md` | Hybrid architecture diagram and the key tradeoffs. |
 | `docs/SYSTEM_DESIGN_DECISIONS.md` (+ `docs/system-design-decisions.html`) | Staff-level decision records: each component mapped to its canonical pattern and source (Fowler/Joshi, Kleppmann DDIA, Newman, Richardson, Nygard, Google SRE, HelloInterview), a SAGA deep-dive, AIS capacity sizing, and a 45-minute interview walkthrough. The HTML is an interactive learning companion. |
-| `PLATFORM_WAR_STORIES.md` | Debugging war stories (P1-P37), most grounded in live runs or drills; a handful still anticipated. |
+| `PLATFORM_WAR_STORIES.md` | Debugging war stories (P1-P46) with explicit live, local, test, design-time, and anticipated evidence labels. |
 | `docs/PLATFORM_BOOK.md` | Consolidated build record, reviews, and operations: one entry point across all five phase docs, the external audit, the runbooks, and the war-stories catalog. |
 | `Makefile` | `fmt`, `validate`, `plan`, `apply`, `destroy` over `infra/terraform/envs/base`. |
 | `.gitignore` | Terraform, Python, env, and OS ignores. |

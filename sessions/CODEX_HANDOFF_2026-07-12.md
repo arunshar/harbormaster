@@ -35,9 +35,9 @@ are also fixed and verified locally; neither establishes new live AWS behavior.
   `make test` target; do not invent one. cdc tests: `.venv/bin/python -m pytest cdc/tests -q`.
   Lint: `make serve-lint`. Terraform: `make validate` / `make plan` / `make apply`
   (against `infra/terraform/envs/base`; `terraform.tfvars` is gitignored).
-- War stories: numbered P1-P40 in `PLATFORM_WAR_STORIES.md` on master; the six from
-  the W3 window (below) are captured in the PR #6 commit message + the runbook but
-  are NOT yet ported to `arunshar/debug-war-stories` (a follow-up).
+- War stories: numbered P1-P46 in `PLATFORM_WAR_STORIES.md` on master. P41-P46
+  preserve the six W3 findings below with their live-versus-local evidence boundaries.
+  All 46 platform stories have been ported to `arunshar/debug-war-stories`.
 - Live AWS: account 645322802947, us-east-1. After the W3 window, the stack is at
   **Phase 0/1-only standing** (serving on ECS Fargate + RDS + Kinesis + DynamoDB;
   no MSK, no CDC, no Redis; nothing billing beyond the small Phase 1 baseline). The
@@ -173,12 +173,14 @@ production-image, and fresh kind CDC evidence. Its live migration and derived-st
 rebuild remain outside the autonomous boundary.
 
 All ranked Section A work is complete. The final port found that the target mirror
-stopped at P28, so P29-P46 were copied from the corrected Harbormaster source and
-merged as `arunshar/debug-war-stories` PR #1 on 2026-07-13. Before the copy,
-Harbormaster PR #22 corrected P31's source-path provenance. The mirror now contains
-106 journal stories plus 46 platform stories, 152 total. Editorial curation of the
-50 raw-mirrored entries remains separate low-priority archive work, not a Phase 5
-implementation gate.
+stopped at P28, so P29-P46 were merged as `arunshar/debug-war-stories` PR #1 on
+2026-07-13. P29-P40 came from canonical master after Harbormaster PR #22 corrected
+P31's source-path provenance. P41-P46 came from Arun-authored archival commit
+`e2f0f62`, which Harbormaster PR #27 made canonical and remotely reachable before
+this provenance correction. The mirror contains 106 journal stories plus 46
+platform stories, 152 source entries. Canonical-to-mirror text synchronization and
+editorial curation are maintained as separate archive changes; neither is a Phase 5
+implementation gate or evidence for this provenance correction.
 
 ### B. Human-run live-AWS windows (Codex PREPARES and DRIVES WITH the human, never autonomous)
 
