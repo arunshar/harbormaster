@@ -1,0 +1,31 @@
+serving/tests/test_space_time_prism.py
+  s_87fd0589dba2e0::t_91d547fd7ec681 9,23,25,27,53-74
+  s_87fd0589dba2e0::t_6d9f6eb48966ee 1-8,10-22,24,26,28-52
+serving/app/components/space_time_prism.py
+  s_87fd0589dba2e0::t_7a4e97f1f35c0c 3-4,6,81-84,231
+  s_87fd0589dba2e0::t_91d547fd7ec681 5,87-93,230,232,237,242-243,248
+  s_87fd0589dba2e0::t_adb96e8e50a1a9 32,252-254
+  s_87fd0589dba2e0::t_a22770be8e8bed 85-86
+pyproject.toml
+  s_87fd0589dba2e0::t_7a4e97f1f35c0c 111-113,138-139
+sessions/CODEX_HANDOFF_2026-07-12.md
+  s_87fd0589dba2e0::t_adb96e8e50a1a9 117-119,146-148
+docs/WAVE3_FINDINGS.md
+  s_87fd0589dba2e0::t_adb96e8e50a1a9 27-31
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "0e335b0ab58d772b373a629d024389110701d2de",
+  "prompts": {},
+  "sessions": {
+    "s_87fd0589dba2e0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5912-4f5a-7aa3-8604-0ccba141cb86",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
