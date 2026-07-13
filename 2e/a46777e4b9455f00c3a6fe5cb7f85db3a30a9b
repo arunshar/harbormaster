@@ -1,0 +1,32 @@
+streaming/flink/transforms.py
+  s_87fd0589dba2e0::t_a26ebd767ac6d9 26-32,43
+  s_87fd0589dba2e0::t_4b15e790d5f7af 33-35
+  s_87fd0589dba2e0::t_d4870f63aa32f3 47-63
+streaming/flink/tests/test_job_wiring.py
+  s_87fd0589dba2e0::t_2a1db84b424142 6,12,95-103,120-158
+  s_87fd0589dba2e0::t_a26ebd767ac6d9 64-88
+  s_87fd0589dba2e0::t_4b15e790d5f7af 48-63
+  s_87fd0589dba2e0::t_a07d9c36a5e89d 1-5,7-11,13-47,89-94,104-119
+streaming/flink/job.py
+  s_87fd0589dba2e0::t_d4870f63aa32f3 79,298
+streaming/flink/window_logic.py
+  s_87fd0589dba2e0::t_4b15e790d5f7af 155-157
+  s_87fd0589dba2e0::t_d4870f63aa32f3 169-185
+  s_87fd0589dba2e0::t_a26ebd767ac6d9 148-154,165
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "2ea46777e4b9455f00c3a6fe5cb7f85db3a30a9b",
+  "prompts": {},
+  "sessions": {
+    "s_87fd0589dba2e0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5912-4f5a-7aa3-8604-0ccba141cb86",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
