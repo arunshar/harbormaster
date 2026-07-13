@@ -1,0 +1,50 @@
+docs/drills/P39_local_cdc_smoke.md
+  s_87fd0589dba2e0::t_8897b0605b09d8 31-35
+cdc/connector/registration.py
+  s_87fd0589dba2e0::t_11c7f9b7fec58a 13,133-134
+  s_87fd0589dba2e0::t_d7477d9711d597 129-130,149,152-155,157-160,171-173,175-194
+  s_87fd0589dba2e0::t_9ecba235821316 135-136,174
+  s_87fd0589dba2e0::t_ed5c611c3338f2 16,156,161-170
+sessions/CODEX_HANDOFF_2026-07-12.md
+  s_87fd0589dba2e0::t_8897b0605b09d8 156-160
+docs/drills/CDC_connector_status_poll_race_2026-07-12.md
+  s_87fd0589dba2e0::t_cd876ce97fcd9b 2-26,30-35,37-44,46,51-53,55-61
+  s_87fd0589dba2e0::t_3ff148c5c6e841 36
+  s_87fd0589dba2e0::t_c6c4034e153640 84,90,93
+  s_87fd0589dba2e0::t_8fffc53c2e8eb1 88-89,91-92,94,96-101
+  s_87fd0589dba2e0::t_8897b0605b09d8 1,45,47-50,54,62-74,82-83,85-87
+  s_87fd0589dba2e0::t_c78073652a5292 75-79,81,95
+  s_87fd0589dba2e0::t_690707957ca4e3 80
+  s_87fd0589dba2e0::t_11c7f9b7fec58a 27-29
+cdc/tests/test_connector_registration.py
+  s_87fd0589dba2e0::t_4542caccdc0ce9 121-125,127-138,190-191
+  s_c339ca357cc531::t_d2fa308ff7dd4f 55-56,119-120
+  s_87fd0589dba2e0::t_995c11e40e990a 10,45,51-54,97-105,107-110,112,115-118
+  s_87fd0589dba2e0::t_11c7f9b7fec58a 7,207-213,215-233,235-247
+  s_87fd0589dba2e0::t_d7477d9711d597 57-65,139-189
+  s_87fd0589dba2e0::t_9ecba235821316 80,85,87-88,106,111,113-114,126,234
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "081d6973ae06f9eca7c60978c718fc87cb135cd2",
+  "prompts": {},
+  "sessions": {
+    "s_87fd0589dba2e0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5912-4f5a-7aa3-8604-0ccba141cb86",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    },
+    "s_c339ca357cc531": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5234-51ff-7f23-a378-2834cc7022f3",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
