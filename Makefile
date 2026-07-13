@@ -82,7 +82,7 @@ PY := $(VENV)/bin/python
 serve-install:        ## create .venv and install the same full-suite extras as CI
 	python3 -m venv $(VENV)
 	$(PY) -m pip install --upgrade pip
-	$(PY) -m pip install -e ".[dev,ingestor,lake,mlops,pidpm-demo]"
+	$(PY) -m pip install -e ".[dev,serving-runtime,ingestor,lake,mlops,pidpm-demo]"
 
 serve-lint:           ## ruff lint serving + streaming + cdc + lake + tests
 	$(PY) -m ruff check serving streaming cdc lake tests

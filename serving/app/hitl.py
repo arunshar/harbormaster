@@ -131,8 +131,7 @@ class PostgresHitlBackend:
         )
         async with pool.acquire() as conn:
             await conn.execute(_DDL)
-            # Lazy cdc import on the Postgres-only path, mirroring registry.py:
-            # the serving wheel runs without the cdc package unless PG is used.
+            # Lazy cdc import on the Postgres-only path, mirroring registry.py.
             from cdc.schema import tenancy
 
             for stmt in tenancy.statements_for("hitl_queue"):
@@ -191,7 +190,11 @@ class HitlQueue:
                 )
                 log.info("hitl_backend", kind="postgres")
                 return cls(backend)
-            except Exception as exc:  # asyncpg missing or DB unreachable -> degrade to memory
+            except ModuleNotFoundError:
+                # Missing packaged runtime code is a broken image, not a
+                # recoverable dependency outage.
+                raise
+            except Exception as exc:  # DB unreachable -> development fallback
                 log.warning("hitl_postgres_unavailable_fallback_memory", err=str(exc))
         return cls(MemoryHitlBackend())
 

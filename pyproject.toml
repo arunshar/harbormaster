@@ -25,6 +25,15 @@ dev = ["pytest>=8", "pytest-asyncio>=0.23", "httpx>=0.27", "ruff>=0.5", "pytest-
 postgres = ["asyncpg>=0.29"]
 ingestor = ["boto3>=1.34", "websocket-client>=1.7"]
 console = ["streamlit>=1.30", "pandas>=2.0"]
+# Dependencies used by the deployed FastAPI image when Postgres registry/HITL
+# or the CDC-fed DynamoDB and Redis lookup paths are configured. Keep this
+# smaller than the full CDC consumer extra, which also installs Kafka,
+# PyIceberg, and PyArrow for a different process.
+serving-runtime = [
+  "asyncpg>=0.29",
+  "boto3>=1.34",
+  "redis>=5",
+]
 # The CDC consumer service (cdc/consumer, cdc/sinks). Unit tests need none of
 # these (all I/O is injected); the real service and the local kind stack do.
 cdc = [
@@ -84,11 +93,11 @@ pidpm-demo = [
   "gunicorn>=22.0",
 ]
 
-# Map the in-repo source dirs onto importable top-level packages so the
-# vendored GeoTrace modules keep their `from app.* import ...` paths unchanged
-# and the Flink feature funcs import as `features`.
+# Map the in-repo source dirs onto importable top-level packages. The serving
+# runtime imports cdc.schema for registry and HITL DDL, so the wheel must carry
+# that package even when the CDC consumer extra is not installed.
 [tool.hatch.build.targets.wheel]
-packages = ["serving/app", "streaming/features"]
+packages = ["serving/app", "streaming/features", "cdc"]
 # don't ship test code into site-packages
 exclude = ["**/tests", "**/tests/**", "**/test_*.py"]
 

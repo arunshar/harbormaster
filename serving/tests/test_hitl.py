@@ -10,8 +10,9 @@ from datetime import UTC, datetime
 
 import pytest
 
+from app.config import Settings
 from app.errors import HitlTraceNotFound
-from app.hitl import MemoryHitlBackend, PostgresHitlBackend
+from app.hitl import HitlQueue, MemoryHitlBackend, PostgresHitlBackend
 from app.models import AisScoreOut, FeedbackIn, ReasonCode, ScoreReason
 
 TS = datetime(2024, 6, 1, 3, 20, tzinfo=UTC)
@@ -70,6 +71,15 @@ async def test_label_unknown_trace_raises():
     await backend.enqueue("trace-1", _out("trace-1"), TS)
     with pytest.raises(HitlTraceNotFound):
         await backend.label(FeedbackIn(trace_id="ghost", label="correct", reviewer="arun"))
+
+
+async def test_configured_hitl_propagates_missing_runtime_dependency(monkeypatch):
+    async def missing_dependency(*_args, **_kwargs):
+        raise ModuleNotFoundError("No module named 'asyncpg'", name="asyncpg")
+
+    monkeypatch.setattr(PostgresHitlBackend, "connect", missing_dependency)
+    with pytest.raises(ModuleNotFoundError, match="asyncpg"):
+        await HitlQueue.connect(Settings(pg_dsn="postgresql://configured"))
 
 
 @pytest.mark.postgres

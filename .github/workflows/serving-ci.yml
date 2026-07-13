@@ -62,7 +62,7 @@ jobs:
       - name: Install
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev,ingestor,lake,mlops,pidpm-demo]"
+          pip install -e ".[dev,serving-runtime,ingestor,lake,mlops,pidpm-demo]"
       # infra/lambda is first-party handler code (cdc_slot_lag, drift_watch,
       # teardown); ruff's default excludes skip the vendored infra/lambda/*/build
       # dependency trees, so only the handlers and their tests are linted.
@@ -90,6 +90,10 @@ jobs:
       - uses: actions/checkout@v5
       - name: Build serving image (no push)
         run: docker build -f serving/Dockerfile -t harbormaster-serving:ci .
+      - name: Verify serving runtime imports
+        run: |
+          docker run --rm --workdir /tmp --entrypoint python harbormaster-serving:ci -c \
+            "import asyncpg, boto3, redis; from cdc.schema import ddl, tenancy; assert ddl.CDC_TABLES and tenancy.TENANT_TABLES"
       - name: Smoke the image
         run: |
           docker run -d --name hm -p 8000:8000 harbormaster-serving:ci

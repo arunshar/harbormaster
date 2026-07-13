@@ -37,9 +37,9 @@ from app.metrics import WATCHLIST_LOOKUP_ERRORS
 
 log = structlog.get_logger(__name__)
 
-# Key vocabulary shared with the CDC consumer's sinks. cdc/sinks defines its own
-# copies (the serving wheel must not be a cdc dependency); a unit test at gate
-# C5 asserts they are identical, so they cannot drift silently.
+# Key vocabulary shared with the CDC consumer's sinks. The serving path keeps
+# local copies so it does not import consumer-only sink modules; a unit test at
+# gate C5 asserts they are identical, so they cannot drift silently.
 FEATURE_VESSEL_META = "vessel_meta"
 FEATURE_WATCHLIST = "watchlist"
 FEATURE_SANCTIONS_PREFIX = "sanctions:"
@@ -197,7 +197,7 @@ class WatchlistLookup:
         redis_client = None
         if settings.online_table:
             try:
-                import boto3  # lazy optional dep (the [ingestor] extra)
+                import boto3  # lazy optional dep (the [serving-runtime] extra)
                 from botocore.config import Config as BotoConfig
 
                 kwargs: dict[str, Any] = {
@@ -219,7 +219,7 @@ class WatchlistLookup:
                 log.warning("watchlist_ddb_unavailable_lookup_disabled", err=str(exc))
         if settings.redis_url:
             try:
-                import redis  # lazy optional dep (the [cdc] extra)
+                import redis  # lazy optional dep (the [serving-runtime] extra)
 
                 redis_client = redis.Redis.from_url(
                     settings.redis_url, socket_connect_timeout=0.5, socket_timeout=0.5
