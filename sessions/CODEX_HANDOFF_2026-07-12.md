@@ -143,7 +143,10 @@ a hot key group during sustained malformed traffic. The prism ellipse-center
 defect is also locally complete with direct and dynamic-merge regressions.
 Its pre-existing antimeridian and near-pole projection limits remain documented
 outside finding 20. Remaining ordered code work is the surviving test-strength
-mutants. See `docs/drills/FLINK_MMSI_KEY_LOCAL_2026-07-13.md`.
+mutants. Bedrock forbidden-vocabulary and inclusive-score boundaries are now
+pinned; disagreement percentile boundaries, tenant-drift ordering, and PPO's
+clipped surrogate remain. See
+`docs/drills/FLINK_MMSI_KEY_LOCAL_2026-07-13.md`.
 
 ### 4. Structural / low-priority
 
@@ -169,8 +172,9 @@ production-image, and fresh kind CDC evidence. Its live migration and derived-st
 rebuild remain outside the autonomous boundary.
 Continue with:
 
-1. **Robustness items** (open item #3): the remaining test-strength mutants.
-   Each concern remains a separate PR with a focused mutation check and full CI.
+1. **Robustness items** (open item #3): disagreement percentile boundaries,
+   tenant-drift ordering, and PPO's clipped surrogate. Each concern remains a
+   separate PR with a focused mutation check and full CI.
 2. **War stories P41-P46** to `arunshar/debug-war-stories` (the six W3 fixes; content
    is in this file + the PR #6 commit + the runbook, so it is a copy-and-format job).
 
