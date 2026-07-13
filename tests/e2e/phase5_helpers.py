@@ -114,14 +114,15 @@ def keda_release_is_gated_on_install_keda(eks_cluster_main_tf_text: str) -> bool
     return pattern.search(eks_cluster_main_tf_text) is not None
 
 
-def helm_data_sources_gated_on_keda_flag(env_main_tf_text: str) -> bool:
+def helm_data_sources_gated_on_access_flag(env_main_tf_text: str) -> bool:
     """True if BOTH cluster-credential data sources feeding the helm provider
-    are count-gated on enable_phase5_keda, the count-safe provider property
-    that lets a default plan run with no cluster and no AWS credentials."""
+    are count-gated on enable_phase5_kubernetes_access. Keeping provider access
+    separate from the release flag permits a clean Helm uninstall before the
+    teardown guard removes the cluster."""
     for data_type in ("aws_eks_cluster", "aws_eks_cluster_auth"):
         pattern = re.compile(
             rf'data\s+"{data_type}"\s+"phase5"\s*\{{[^{{}}]*'
-            r"count\s*=\s*var\.enable_phase5_keda\s*\?\s*1\s*:\s*0\b"
+            r"count\s*=\s*var\.enable_phase5_kubernetes_access\s*\?\s*1\s*:\s*0\b"
         )
         if not pattern.search(env_main_tf_text):
             return False

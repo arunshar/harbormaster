@@ -2,9 +2,10 @@
 # as the ECS Fargate service (serving/Dockerfile, unmodified, per the locked
 # decision in docs/phases/PHASE_5.md: only the orchestration substrate
 # changes); env mirrors modules/ecs_serving's task definition. The image name
-# below is the kustomization's substitution point: the demo window rewrites
-# it to the real ECR URI via `images:` (see kustomization.yaml), so no
-# account id is ever committed.
+# below is a reserved-domain, zero-digest sentinel. The W4 renderer requires
+# an immutable ECR repository@sha256 reference and replaces this sentinel in
+# the complete Kustomize output. Applying the base directly cannot pull a real
+# image.
 #
 # No `replicas:` field on purpose: the KEDA ScaledObject
 # (scaledobject-kinesis.yaml) owns replica count, including the
@@ -28,7 +29,7 @@ spec:
     spec:
       containers:
         - name: serving
-          image: harbormaster-serving:latest
+          image: harbormaster.invalid/serving@sha256:0000000000000000000000000000000000000000000000000000000000000000
           ports:
             - containerPort: 8000
               protocol: TCP

@@ -25,12 +25,35 @@ output "cluster_security_group_id" {
   value       = aws_eks_cluster.this.vpc_config[0].cluster_security_group_id
 }
 
+output "control_plane_security_group_id" {
+  description = "Terraform-owned bridge security group attached to EKS control-plane ENIs."
+  value       = aws_security_group.control_plane.id
+}
+
 output "node_role_arn" {
   description = "IAM role ARN for worker nodes, consumed by modules/eks_node_group."
   value       = aws_iam_role.node.arn
+
+  # CreateNodegroup must not race the eventual consistency of its three
+  # required managed-policy attachments.
+  depends_on = [
+    aws_iam_role_policy_attachment.node_worker,
+    aws_iam_role_policy_attachment.node_cni,
+    aws_iam_role_policy_attachment.node_ecr_read,
+  ]
 }
 
 output "kms_key_arn" {
   description = "Module-local CMK encrypting EKS secrets and the control-plane log group."
   value       = aws_kms_key.eks.arn
+}
+
+output "keda_operator_role_arn" {
+  description = "IRSA role used by the KEDA operator to read its CloudWatch scaling metric."
+  value       = aws_iam_role.keda_operator.arn
+}
+
+output "oidc_provider_arn" {
+  description = "IAM OIDC provider backing KEDA IRSA."
+  value       = aws_iam_openid_connect_provider.eks.arn
 }

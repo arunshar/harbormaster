@@ -15,7 +15,8 @@ month-to-date spend to SNS.
 ## What it does
 
 For every resource tagged `Project=<PROJECT_TAG>` (default `harbormaster`), the
-handler, defensively and one service at a time:
+handler works defensively and one service at a time. W4 network mutations also
+require the exact `Environment=<ENVIRONMENT>` and owner `Module` tags.
 
 1. Stops any RUNNING Amazon Managed Service for Apache Flink
    (`kinesisanalyticsv2`) applications.
@@ -25,8 +26,13 @@ handler, defensively and one service at a time:
    bills while it exists, so teardown is a delete).
 4. Sets any tagged Auto Scaling Group's desired capacity (and min size) to 0,
    draining instances while keeping the ASG definition for the next bring-up.
-5. Queries Cost Explorer for unblended month-to-date spend.
-6. Publishes a single human-readable summary to the SNS topic in
+5. Requests deletion of scoped Network Load Balancers owned by the
+   `eks_frontdoor` module.
+6. Requests deletion of scoped NAT gateways and release of scoped Elastic IPs
+   once they are unattached. A NAT gateway deletion is asynchronous, so its
+   Elastic IP can be released by the next nightly run.
+7. Queries Cost Explorer for unblended month-to-date spend.
+8. Publishes a single human-readable summary to the SNS topic in
    `ALERT_TOPIC_ARN`.
 
 Each service runs inside its own `try/except`, so a failure in one service
@@ -34,10 +40,10 @@ Each service runs inside its own `try/except`, so a failure in one service
 run. Per-service errors are logged as structured records and surfaced in the SNS
 summary.
 
-This is intentionally narrow. It tears down compute and streaming; it does not
-delete state stores (S3, DynamoDB), the network, or the FinOps stack itself.
-Those are managed by Terraform under `infra/terraform/` and are not in scope for
-a nightly cost sweep.
+This is intentionally narrow. It tears down compute, streaming, and the
+project-tagged W4 network resources that incur hourly charges. It does not
+delete state stores (S3, DynamoDB), VPCs, subnets, route tables, or the FinOps
+stack itself. Those remain managed by Terraform under `infra/terraform/`.
 
 ## Environment variables
 
@@ -46,6 +52,7 @@ a nightly cost sweep.
 | `DRY_RUN`         | `true`          | When true (or unset), logs intended actions and changes nothing. Set to `false` to act. Any value other than `false`/`0`/`no`/`off` is treated as true so a typo stays safe. |
 | `ALERT_TOPIC_ARN` | (unset)         | SNS topic ARN that receives the spend and teardown summary. If unset, the summary is logged only. |
 | `PROJECT_TAG`     | `harbormaster`  | Tag value that scopes every action. Only resources tagged `Project=<this>` are touched. |
+| `ENVIRONMENT`     | `base`          | Environment tag required for W4 network cleanup. Terraform passes the active environment. |
 | `AWS_REGION`      | (runtime)       | Supplied by the Lambda runtime and used implicitly by boto3. Cost Explorer is always queried in `us-east-1`. |
 
 ## How it is invoked
@@ -73,6 +80,11 @@ Read plus the specific teardown verbs, scoped as tightly as your account allows:
 - `kafka:ListClustersV2`, `kafka:ListTagsForResource`, `kafka:DeleteCluster`
 - `autoscaling:DescribeAutoScalingGroups`,
   `autoscaling:UpdateAutoScalingGroup`
+- `elasticloadbalancing:DescribeLoadBalancers`,
+  `elasticloadbalancing:DescribeTags`,
+  `elasticloadbalancing:DeleteLoadBalancer`
+- `ec2:DescribeNatGateways`, `ec2:DeleteNatGateway`,
+  `ec2:DescribeAddresses`, `ec2:ReleaseAddress`
 - `ce:GetCostAndUsage`
 - `sns:Publish` on the alert topic
 - the standard CloudWatch Logs write permissions
@@ -118,6 +130,6 @@ DRY_RUN=true python handler.py
 ```
 
 The tests cover: the DRY_RUN path makes zero mutating calls; only
-`Project=harbormaster` resources are selected; a simulated single-service outage
-does not abort the run; and the wet-run path performs the actions and publishes
-to SNS.
+`Project=harbormaster` resources are selected; only the `eks_frontdoor` NLB is
+selected; a simulated single-service outage does not abort the run; and the
+wet-run path performs the actions and publishes to SNS.

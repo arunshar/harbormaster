@@ -8,22 +8,49 @@ work (drill M3), and no measurement is claimed from this module until then.
 
 from __future__ import annotations
 
+import json
 import math
+from datetime import UTC, datetime
 
 import pytest
 
 from scripts.loadtest_kinesis_backpressure import (
     BurstProfile,
+    claim_artifact,
     cumulative_records,
     profile_from_env,
     rate_at,
     records_due,
     run_loadtest,
+    validate_live_duration,
+    validate_run_id,
+    wait_for_observer_ready,
 )
 
 # steady 20 rps, burst 400 rps over [60, 180) with 15 s linear ramps.
 PROFILE = BurstProfile(steady_rps=20, burst_rps=400, burst_start_s=60, burst_end_s=180, ramp_s=15)
 STEP = BurstProfile(steady_rps=20, burst_rps=400, burst_start_s=60, burst_end_s=180, ramp_s=0)
+RUN_ID = "12345678-1234-4234-9234-123456789abc"
+
+
+def ready_observer_payload(load_artifact, *, ready_at=None, run_id=RUN_ID):
+    ready_at = ready_at or datetime.now(UTC)
+    baseline = {
+        "status": "ready_for_load",
+        "captured_at": ready_at.isoformat().replace("+00:00", "Z"),
+        "desired_replicas": 0,
+        "available_replicas": 0,
+        "inference_http_status": 503,
+        "inference_error": "no healthy target",
+    }
+    return {
+        "schema_version": 1,
+        "status": "ready_for_load",
+        "run_id": run_id,
+        "ready_at": ready_at.isoformat().replace("+00:00", "Z"),
+        "load_artifact": str(load_artifact.resolve()),
+        "baseline": baseline,
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -52,6 +79,17 @@ def test_negative_burst_start_rejected():
 def test_negative_ramp_rejected():
     with pytest.raises(ValueError, match="ramp_s"):
         BurstProfile(steady_rps=1, burst_rps=10, burst_start_s=0, burst_end_s=10, ramp_s=-1)
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+def test_non_finite_profile_values_rejected(value):
+    with pytest.raises(ValueError, match="must be finite"):
+        BurstProfile(
+            steady_rps=1,
+            burst_rps=10,
+            burst_start_s=0,
+            burst_end_s=value,
+        )
 
 
 def test_negative_time_rejected():
@@ -179,6 +217,14 @@ def test_profile_from_env_rejects_inverted_burst():
         profile_from_env({"STEADY_RPS": "100", "BURST_RPS": "50"})
 
 
+def test_live_duration_must_cover_the_full_burst_and_down_ramp():
+    assert validate_live_duration(PROFILE, 195) == 195
+    with pytest.raises(ValueError, match=r"burst_end_s \+ ramp_s"):
+        validate_live_duration(PROFILE, 194.9)
+    with pytest.raises(ValueError, match="finite and > 0"):
+        validate_live_duration(PROFILE, float("nan"))
+
+
 # --------------------------------------------------------------------------- #
 # run_loadtest: the loop with a fake clock, no AWS, no real delay
 # --------------------------------------------------------------------------- #
@@ -248,7 +294,7 @@ def test_run_loadtest_default_batching_is_the_ingestor_path():
     assert total == sum(len(b) for b in batches) > 0
 
 
-def test_main_wires_the_fixture_through_run_loadtest(monkeypatch):
+def test_main_wires_the_fixture_through_run_loadtest(monkeypatch, tmp_path):
     import scripts.loadtest_kinesis_backpressure as mod
 
     calls = {}
@@ -257,22 +303,163 @@ def test_main_wires_the_fixture_through_run_loadtest(monkeypatch):
         calls["profile"] = profile
         calls["duration_s"] = duration_s
         calls["n_entries"] = len(entries)
-        return 0
+        return 1
 
     monkeypatch.setattr(mod, "run_loadtest", fake_run)
     monkeypatch.setenv("KINESIS_STREAM_NAME", "harbormaster-base-ais-raw")
-    monkeypatch.setenv("DURATION_S", "1")
+    monkeypatch.setenv("DURATION_S", "195")
+    artifact = tmp_path / "load.json"
+    observer = tmp_path / "scale.json"
+    observer.write_text(json.dumps(ready_observer_payload(artifact)))
+    monkeypatch.setenv("W4_ARTIFACT_PATH", str(artifact))
+    monkeypatch.setenv("W4_OBSERVER_READY_PATH", str(observer))
+    monkeypatch.setenv("W4_RUN_ID", RUN_ID)
     assert mod.main() == 0
     assert calls["profile"] == profile_from_env(dict(__import__("os").environ))
-    assert calls["duration_s"] == 1.0
+    assert calls["duration_s"] == 195.0
     assert calls["n_entries"] > 0  # the real Phase 1 fixture, cycled
+    payload = __import__("json").loads(artifact.read_text())
+    assert payload["status"] == "completed"
+    assert payload["stream_name"] == "harbormaster-base-ais-raw"
+    assert payload["profile"] == {
+        "steady_rps": 20.0,
+        "burst_rps": 400.0,
+        "burst_start_s": 60.0,
+        "burst_end_s": 180.0,
+        "ramp_s": 15.0,
+    }
+    assert payload["records_sent"] == 1
+    assert payload["started_at"].endswith("Z")
+    assert payload["ended_at"].endswith("Z")
 
 
-def test_main_returns_1_on_an_empty_fixture(monkeypatch):
+def test_main_returns_1_on_an_empty_fixture(monkeypatch, tmp_path):
     import replay.loader as loader
     import scripts.loadtest_kinesis_backpressure as mod
 
     monkeypatch.setattr(loader, "load_fixture", lambda *a, **k: [])
     monkeypatch.setenv("KINESIS_STREAM_NAME", "harbormaster-base-ais-raw")
-    monkeypatch.setenv("DURATION_S", "1")
+    monkeypatch.setenv("DURATION_S", "195")
+    artifact = tmp_path / "load.json"
+    observer = tmp_path / "scale.json"
+    observer.write_text(json.dumps(ready_observer_payload(artifact)))
+    monkeypatch.setenv("W4_OBSERVER_READY_PATH", str(observer))
+    monkeypatch.setenv("W4_ARTIFACT_PATH", str(artifact))
+    monkeypatch.setenv("W4_RUN_ID", RUN_ID)
     assert mod.main() == 1
+    payload = json.loads(artifact.read_text())
+    assert payload["status"] == "failed"
+    assert payload["records_sent"] is None
+
+
+def test_main_refuses_a_live_run_without_an_artifact_path(monkeypatch):
+    import scripts.loadtest_kinesis_backpressure as mod
+
+    monkeypatch.setenv("KINESIS_STREAM_NAME", "harbormaster-base-ais-raw")
+    monkeypatch.delenv("W4_ARTIFACT_PATH", raising=False)
+    assert mod.main() == 2
+
+
+def test_main_refuses_a_live_run_without_an_observer_baseline(monkeypatch, tmp_path):
+    import scripts.loadtest_kinesis_backpressure as mod
+
+    monkeypatch.setenv("W4_ARTIFACT_PATH", str(tmp_path / "load.json"))
+    monkeypatch.delenv("W4_OBSERVER_READY_PATH", raising=False)
+    assert mod.main() == 2
+
+
+def test_main_refuses_to_overwrite_an_existing_artifact(monkeypatch, tmp_path):
+    import scripts.loadtest_kinesis_backpressure as mod
+
+    artifact = tmp_path / "load.json"
+    artifact.write_text("existing evidence")
+    monkeypatch.setenv("W4_ARTIFACT_PATH", str(artifact))
+    monkeypatch.setenv("W4_OBSERVER_READY_PATH", str(tmp_path / "scale.json"))
+    monkeypatch.setenv("W4_RUN_ID", RUN_ID)
+    assert mod.main() == 2
+    assert artifact.read_text() == "existing evidence"
+
+
+def test_wait_for_observer_ready_reads_the_preload_marker(tmp_path):
+    artifact = tmp_path / "scale.json"
+    load_artifact = tmp_path / "load.json"
+    now = datetime(2026, 7, 13, tzinfo=UTC)
+    expected = ready_observer_payload(load_artifact, ready_at=now)
+    artifact.write_text(json.dumps(expected))
+    assert (
+        wait_for_observer_ready(
+            artifact,
+            expected_run_id=RUN_ID,
+            expected_load_artifact=load_artifact,
+            utc_now=lambda: now,
+        )
+        == expected
+    )
+
+
+@pytest.mark.parametrize(
+    ("mutate", "message"),
+    [
+        (
+            lambda payload, _path: payload.update(run_id="22345678-1234-4234-9234-123456789abc"),
+            "run_id",
+        ),
+        (
+            lambda payload, path: payload.update(
+                load_artifact=str((path / "other.json").resolve())
+            ),
+            "different load artifact",
+        ),
+        (
+            lambda payload, _path: payload["baseline"].update(desired_replicas=1),
+            "zero desired",
+        ),
+        (
+            lambda payload, _path: payload.update(ready_at="2026-07-13T03:00:00Z"),
+            "not fresh",
+        ),
+    ],
+)
+def test_wait_for_observer_ready_rejects_unbound_stale_or_nonzero_evidence(
+    tmp_path, mutate, message
+):
+    observer = tmp_path / "scale.json"
+    load_artifact = tmp_path / "load.json"
+    now = datetime(2026, 7, 13, 4, 0, tzinfo=UTC)
+    payload = ready_observer_payload(load_artifact, ready_at=now)
+    mutate(payload, tmp_path)
+    observer.write_text(json.dumps(payload))
+    with pytest.raises(ValueError, match=message):
+        wait_for_observer_ready(
+            observer,
+            expected_run_id=RUN_ID,
+            expected_load_artifact=load_artifact,
+            utc_now=lambda: now,
+        )
+
+
+def test_claim_artifact_is_one_use_and_never_overwrites(tmp_path):
+    artifact = tmp_path / "load.json"
+    claim_artifact(artifact, {"status": "preparing", "run_id": RUN_ID})
+    with pytest.raises(FileExistsError):
+        claim_artifact(artifact, {"status": "preparing", "run_id": RUN_ID})
+    assert json.loads(artifact.read_text()) == {"status": "preparing", "run_id": RUN_ID}
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["", "not-a-uuid", "12345678-1234-1234-9234-123456789abc", RUN_ID.upper()],
+)
+def test_validate_run_id_requires_a_canonical_uuid4(value):
+    with pytest.raises(ValueError, match="canonical UUID4"):
+        validate_run_id(value)
+
+
+def test_main_refuses_a_live_run_without_a_run_id(monkeypatch, tmp_path):
+    import scripts.loadtest_kinesis_backpressure as mod
+
+    monkeypatch.setenv("W4_ARTIFACT_PATH", str(tmp_path / "load.json"))
+    monkeypatch.setenv("W4_OBSERVER_READY_PATH", str(tmp_path / "scale.json"))
+    monkeypatch.delenv("W4_RUN_ID", raising=False)
+    assert mod.main() == 2
+    assert not (tmp_path / "load.json").exists()

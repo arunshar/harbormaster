@@ -1,7 +1,7 @@
 # modules/finops/main.tf
 #
 # FinOps cost guardrails for Harbormaster. Built BEFORE any spend so the
-# platform can never quietly run up a bill:
+# platform has layered controls against accidental W4 spend:
 #
 #   1. SNS topic + email subscription for all cost alerts.
 #   2. $30 SOFT budget: SNS alerts at $5/$15/$25 ACTUAL and $30 FORECASTED.
@@ -131,15 +131,37 @@ data "aws_iam_policy_document" "spend_freeze" {
 
     actions = [
       "ec2:RunInstances",
-      "eks:*",
+      "ec2:CreateFleet",
+      "ec2:RequestSpotFleet",
+      "ec2:RequestSpotInstances",
+      "ec2:CreateCapacityReservation",
+      "ec2:CreateCapacityReservationFleet",
+      "ec2:AllocateHosts",
+      "ec2:PurchaseHostReservation",
+      "ec2:PurchaseReservedInstancesOffering",
+      "ec2:AllocateAddress",
+      "ec2:CreateNatGateway",
+      "ec2:CreateVpcEndpoint",
+      "eks:CreateCluster",
+      "eks:CreateFargateProfile",
+      "eks:CreateNodegroup",
+      "eks:UpdateNodegroupConfig",
       "sagemaker:Create*",
       "kinesis:Create*",
-      "kinesisanalyticsv2:Create*",
-      "emr-serverless:*",
+      "kinesisanalytics:CreateApplication",
+      "kinesisanalytics:StartApplication",
+      "kinesisanalytics:UpdateApplication",
+      "emr-serverless:CreateApplication",
+      "emr-serverless:StartApplication",
+      "emr-serverless:StartJobRun",
       "elasticmapreduce:RunJobFlow",
       "kafka:Create*",
       "rds:Create*",
       "redshift:Create*",
+      "elasticloadbalancing:CreateLoadBalancer",
+      "autoscaling:CreateAutoScalingGroup",
+      "autoscaling:SetDesiredCapacity",
+      "autoscaling:UpdateAutoScalingGroup",
     ]
 
     resources = ["*"]
@@ -163,6 +185,20 @@ data "aws_iam_policy_document" "budget_action_assume" {
     principals {
       type        = "Service"
       identifiers = ["budgets.amazonaws.com"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [data.aws_caller_identity.current.account_id]
+    }
+
+    condition {
+      test     = "ArnLike"
+      variable = "aws:SourceArn"
+      values = [
+        "arn:${data.aws_partition.current.partition}:budgets::${data.aws_caller_identity.current.account_id}:budget/${local.name_prefix}-hard-75",
+      ]
     }
   }
 }
@@ -374,6 +410,7 @@ data "aws_iam_policy_document" "teardown" {
 
     actions = [
       "kinesisanalytics:ListApplications",
+      "kinesisanalytics:ListTagsForResource",
       "kinesisanalytics:DescribeApplication",
       "kinesisanalytics:StopApplication",
     ]
@@ -422,6 +459,7 @@ data "aws_iam_policy_document" "teardown" {
       "kafka:ListClustersV2",
       "kafka:DescribeCluster",
       "kafka:DescribeClusterV2",
+      "kafka:ListTagsForResource",
       "kafka:DeleteCluster",
     ]
 
@@ -441,6 +479,109 @@ data "aws_iam_policy_document" "teardown" {
     ]
 
     resources = ["*"]
+  }
+
+  statement {
+    sid    = "NetworkLoadBalancerDescribe"
+    effect = "Allow"
+
+    actions = [
+      "elasticloadbalancing:DescribeLoadBalancers",
+      "elasticloadbalancing:DescribeTags",
+    ]
+
+    resources = ["*"]
+  }
+
+  statement {
+    sid    = "DeleteTaggedEksFrontdoorNetworkLoadBalancer"
+    effect = "Allow"
+
+    actions = ["elasticloadbalancing:DeleteLoadBalancer"]
+
+    resources = [
+      "arn:${data.aws_partition.current.partition}:elasticloadbalancing:${var.aws_region}:${data.aws_caller_identity.current.account_id}:loadbalancer/net/${local.name_prefix}-eks/*",
+    ]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:ResourceTag/Project"
+      values   = [var.project]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:ResourceTag/Environment"
+      values   = [var.environment]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:ResourceTag/Module"
+      values   = ["eks_frontdoor"]
+    }
+  }
+
+  statement {
+    sid    = "NatGatewayAndElasticIpDescribe"
+    effect = "Allow"
+
+    actions = [
+      "ec2:DescribeAddresses",
+      "ec2:DescribeNatGateways",
+    ]
+
+    resources = ["*"]
+  }
+
+  statement {
+    sid       = "DeleteTaggedNetworkNatGateway"
+    effect    = "Allow"
+    actions   = ["ec2:DeleteNatGateway"]
+    resources = ["arn:${data.aws_partition.current.partition}:ec2:${var.aws_region}:${data.aws_caller_identity.current.account_id}:natgateway/*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "ec2:ResourceTag/Project"
+      values   = [var.project]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "ec2:ResourceTag/Environment"
+      values   = [var.environment]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "ec2:ResourceTag/Module"
+      values   = ["network"]
+    }
+  }
+
+  statement {
+    sid       = "ReleaseTaggedNetworkElasticIp"
+    effect    = "Allow"
+    actions   = ["ec2:ReleaseAddress"]
+    resources = ["arn:${data.aws_partition.current.partition}:ec2:${var.aws_region}:${data.aws_caller_identity.current.account_id}:elastic-ip/*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "ec2:ResourceTag/Project"
+      values   = [var.project]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "ec2:ResourceTag/Environment"
+      values   = [var.environment]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "ec2:ResourceTag/Module"
+      values   = ["network"]
+    }
   }
 
   statement {
@@ -469,9 +610,8 @@ resource "aws_lambda_function" "teardown" {
   source_code_hash = data.archive_file.teardown.output_base64sha256
 
   # Env-var names match the handler's contract exactly: handler.py reads
-  # DRY_RUN, PROJECT_TAG (the tag value that scopes every teardown action), and
-  # ALERT_TOPIC_ARN (where it publishes its summary). ENVIRONMENT is passed for
-  # log traceability only; the handler ignores it.
+  # DRY_RUN, PROJECT_TAG and ENVIRONMENT (the tag values that scope teardown
+  # actions), and ALERT_TOPIC_ARN (where it publishes its summary).
   environment {
     variables = {
       DRY_RUN         = tostring(var.teardown_dry_run)

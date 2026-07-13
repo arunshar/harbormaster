@@ -44,10 +44,11 @@ spec:
         metricStat: Maximum
         metricCollectionTime: "300"
         metricStatPeriod: "60"
-        # Scale out when the oldest unread record is > 30s behind; activate
-        # from zero on any positive lag.
+        # Scale out when the oldest unread record is > 30s behind. Keep the
+        # activation threshold above normal sub-5s iterator jitter so a
+        # healthy running Flink consumer does not defeat the zero baseline.
         targetMetricValue: "30000"
-        activationTargetMetricValue: "0"
+        activationTargetMetricValue: "5000"
         minMetricValue: "0"
         awsRegion: us-east-1
         # The KEDA operator's IAM identity (IRSA at demo time) calls

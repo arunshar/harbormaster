@@ -13,17 +13,22 @@ plan proposed at a point in time, captured before the corresponding apply.
 
 ## How artifacts are produced
 
-```
-scripts/plan_artifact.sh <label>      # e.g. scripts/plan_artifact.sh phase4-flywheel
+```bash
+scripts/plan_artifact.sh <label> [local-plan-file]
+# Example:
+scripts/plan_artifact.sh phase4-flywheel artifacts/phase4.tfplan
 ```
 
-The script runs `terraform plan -out=<tmp>` against envs/base, converts the
-plan with `terraform show -json`, and writes a summary here:
+The script runs `terraform plan -out=<local-plan-file>` against envs/base,
+converts the plan with `terraform show -json`, and writes a summary here. If no
+local plan path is supplied, the binary remains temporary for compatibility
+with older plan-only workflows.
 
 ```json
 {
   "generated_utc": "...",
   "label": "...",
+  "plan_sha256": "...",
   "add": 0,
   "change": 0,
   "destroy": 0,
@@ -34,8 +39,9 @@ plan with `terraform show -json`, and writes a summary here:
 A replace counts as both an add and a destroy, matching Terraform's own plan
 summary line. The binary plan file and the raw `show -json` output are
 deliberately NOT committed: both can embed resolved values (connection
-strings, account-specific ARNs), while address+actions is safe and is what a
-reviewer needs.
+strings, account-specific ARNs). The committed SHA-256 binds the safe
+address-and-actions summary to the local binary that `make apply-plan PLAN=...`
+applies after a second human confirmation.
 
 ## When artifacts are captured
 

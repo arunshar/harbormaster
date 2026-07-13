@@ -8,6 +8,11 @@ variable "project" {
   description = "Project name, propagated to every module and the common tags."
   type        = string
   default     = "harbormaster"
+
+  validation {
+    condition     = var.project == "harbormaster"
+    error_message = "project must be harbormaster because the IAM boundary and FinOps guardrails use that fixed namespace."
+  }
 }
 
 variable "environment" {
@@ -35,11 +40,15 @@ variable "alert_email" {
 variable "platform_role_name" {
   description = <<-EOT
     Name of the IAM role the $75 hard-budget action attaches the deny policy to
-    on breach. Must be an existing role used by your platform/CI to create
-    spend-incurring resources. Phase 0 does not create this role for you; pass
-    the name of a role you control.
+    on breach. The permissions boundary grants this action only on the existing
+    harbormaster-platform role.
   EOT
   type        = string
+
+  validation {
+    condition     = var.platform_role_name == "harbormaster-platform"
+    error_message = "platform_role_name must be harbormaster-platform because the permissions boundary grants the budget action only on that role."
+  }
 }
 
 variable "enable_nat" {
@@ -172,6 +181,11 @@ variable "phase5_teardown_max_age_hours" {
   EOT
   type        = number
   default     = 4
+
+  validation {
+    condition     = var.phase5_teardown_max_age_hours >= 0 && var.phase5_teardown_max_age_hours <= 8
+    error_message = "phase5_teardown_max_age_hours must be between 0 for the scheduled proof and 8 for a bounded window."
+  }
 }
 
 variable "phase5_keep_alive_until" {
@@ -188,6 +202,78 @@ variable "phase5_keep_alive_until" {
   default     = ""
 }
 
+variable "phase5_endpoint_public_access" {
+  description = <<-EOT
+    Temporarily expose the EKS API endpoint for a laptop-driven W4 window.
+    Default false preserves the private-only posture. When true, the endpoint
+    remains privately reachable too and phase5_public_access_cidrs must contain
+    one or more operator host CIDRs.
+  EOT
+  type        = bool
+  default     = false
+
+  validation {
+    condition     = !var.phase5_endpoint_public_access || var.enable_phase5
+    error_message = "phase5_endpoint_public_access requires enable_phase5 = true."
+  }
+
+  validation {
+    condition = (
+      var.phase5_endpoint_public_access
+      ? length(var.phase5_public_access_cidrs) > 0
+      : length(var.phase5_public_access_cidrs) == 0
+    )
+    error_message = "phase5_endpoint_public_access requires at least one operator host CIDR when true and an empty list when false."
+  }
+}
+
+variable "phase5_public_access_cidrs" {
+  description = "Operator IPv4 host CIDRs for temporary W4 EKS API access. Only /32 entries are accepted."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition = alltrue([
+      for cidr in var.phase5_public_access_cidrs :
+      can(cidrhost(cidr, 0)) &&
+      can(regex("^([0-9]{1,3}\\.){3}[0-9]{1,3}/32$", cidr))
+    ])
+    error_message = "phase5_public_access_cidrs entries must be valid IPv4 /32 host CIDRs, never world-open ranges."
+  }
+}
+
+variable "phase5_node_desired_size" {
+  description = "Terraform-managed EKS worker count. Set to 1 for W4 because KEDA scales serving pods, not nodes."
+  type        = number
+  default     = 0
+
+  validation {
+    condition     = var.phase5_node_desired_size >= 0 && var.phase5_node_desired_size <= 1
+    error_message = "phase5_node_desired_size must be 0 or 1 for the bounded single-worker W4 design."
+  }
+
+  validation {
+    condition     = var.phase5_node_desired_size == 0 || var.enable_nat
+    error_message = "phase5_node_desired_size above 0 requires enable_nat = true until the private subnets have all required interface endpoints."
+  }
+}
+
+variable "enable_phase5_kubernetes_access" {
+  description = <<-EOT
+    Allow Terraform's Helm provider to read live EKS credentials. This is
+    separate from the KEDA release flag so cleanup can uninstall KEDA while
+    the provider still reaches the cluster, then disable access before the
+    teardown guard removes the API server.
+  EOT
+  type        = bool
+  default     = false
+
+  validation {
+    condition     = !var.enable_phase5_kubernetes_access || var.enable_phase5
+    error_message = "enable_phase5_kubernetes_access requires enable_phase5 = true."
+  }
+}
+
 variable "enable_phase5_keda" {
   description = <<-EOT
     Gate for the KEDA helm_release AND the helm provider's cluster
@@ -196,7 +282,8 @@ variable "enable_phase5_keda" {
     from aws_eks_cluster/aws_eks_cluster_auth DATA sources that read live
     cluster credentials at plan time. Gating those data sources (and the
     helm_release) on this flag means every enable_phase5_keda = false plan,
-    including make validate and CI, needs no cluster and no AWS credentials.
+    including make validate and CI, reads no live cluster credentials. The
+    root's normal plan still performs its standing AWS account and AZ reads.
     The documented two-step: apply #1 with enable_phase5 = true creates the
     cluster; apply #2 adds enable_phase5_keda = true to install KEDA. Default
     false. Requires enable_phase5 (and an EXISTING cluster, which Terraform
@@ -208,6 +295,21 @@ variable "enable_phase5_keda" {
   validation {
     condition     = !var.enable_phase5_keda || var.enable_phase5
     error_message = "enable_phase5_keda requires enable_phase5 = true (KEDA installs into the Phase 5 EKS cluster)."
+  }
+
+  validation {
+    condition     = !var.enable_phase5_keda || var.enable_phase5_kubernetes_access
+    error_message = "enable_phase5_keda requires enable_phase5_kubernetes_access = true so Terraform can reach the cluster."
+  }
+
+  validation {
+    condition     = !var.enable_phase5_keda || var.phase5_node_desired_size >= 1
+    error_message = "enable_phase5_keda requires phase5_node_desired_size >= 1 because no node autoscaler is installed."
+  }
+
+  validation {
+    condition     = !var.enable_phase5_keda || var.enable_nat
+    error_message = "enable_phase5_keda requires enable_nat = true until the private subnets have all required interface endpoints."
   }
 }
 
@@ -222,6 +324,36 @@ variable "phase5_guard_dry_run" {
   EOT
   type        = bool
   default     = false
+}
+
+variable "phase5_teardown_schedule_expression" {
+  description = "EventBridge Scheduler rate for the EKS guard. Keep rate(30 minutes) normally; W4 may temporarily use rate(5 minutes) for the scheduled force-delete proof."
+  type        = string
+  default     = "rate(30 minutes)"
+
+  validation {
+    condition = contains(
+      ["rate(5 minutes)", "rate(30 minutes)"],
+      var.phase5_teardown_schedule_expression,
+    )
+    error_message = "phase5_teardown_schedule_expression must be rate(5 minutes) for the proof or rate(30 minutes) normally."
+  }
+}
+
+variable "serving_target" {
+  description = "API Gateway serving backend: ecs (default and rollback) or eks (W4 only, requires enable_phase5)."
+  type        = string
+  default     = "ecs"
+
+  validation {
+    condition     = contains(["ecs", "eks"], var.serving_target)
+    error_message = "serving_target must be one of: ecs, eks."
+  }
+
+  validation {
+    condition     = var.serving_target != "eks" || var.enable_phase5
+    error_message = "serving_target = eks requires enable_phase5 = true."
+  }
 }
 
 variable "enable_cmk" {

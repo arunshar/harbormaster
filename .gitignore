@@ -69,6 +69,9 @@ docs/internship/
 
 # local CDC drill/smoke artifacts (Phase 2)
 .cdc-warehouse/
+
+# live W4 evidence stays local; reviewed drill documents cite its paths
+artifacts/w4/
 # slot-lag Lambda build dir (make cdc-lambda-package)
 infra/lambda/cdc_slot_lag/build/
 infra/terraform/modules/cdc_monitoring/.build/

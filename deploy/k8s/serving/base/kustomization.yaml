@@ -3,10 +3,10 @@
 # v5); the committed golden output lives in ../golden/base.yaml and is
 # checksummed by tests/e2e/test_phase5_k8s_manifests.py.
 #
-# The `images:` transform is the ONLY place the demo window sets the real
-# image: override newName/newTag to the ECR URI pushed by the runbook, e.g.
-#   kustomize edit set image harbormaster-serving=<acct>.dkr.ecr.us-east-1.amazonaws.com/harbormaster-base-serving:latest
-# so no account id is ever committed.
+# scripts/render_phase5_serving.py builds this base and replaces the one
+# reserved-domain zero-digest sentinel with a validated immutable ECR digest.
+# The tracked base therefore never contains an account id, mutable tag, or
+# runnable image.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
@@ -15,8 +15,3 @@ resources:
   - deployment.yaml
   - service.yaml
   - scaledobject-kinesis.yaml
-
-images:
-  - name: harbormaster-serving
-    newName: harbormaster-serving
-    newTag: latest

@@ -22,6 +22,7 @@ exists (the documented rollback path).
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -35,7 +36,13 @@ BASE_DIR = SERVING_DIR / "base"
 WITH_CDC_DIR = SERVING_DIR / "with-cdc"
 GOLDEN_DIR = SERVING_DIR / "golden"
 APIGW_MODULE = REPO_ROOT / "infra" / "terraform" / "modules" / "apigw"
+ENV_MAIN = REPO_ROOT / "infra" / "terraform" / "envs" / "base" / "main.tf"
+EKS_FRONTDOOR = REPO_ROOT / "infra" / "terraform" / "modules" / "eks_frontdoor"
+KDA_FLINK_MAIN = REPO_ROOT / "infra" / "terraform" / "modules" / "kda_flink" / "main.tf"
+BOUNDARY = REPO_ROOT / "infra" / "aws" / "harbormaster-permissions-boundary.json"
 ECS_SERVING_MAIN = REPO_ROOT / "infra" / "terraform" / "modules" / "ecs_serving" / "main.tf"
+W4_RUNBOOK = REPO_ROOT / "docs" / "runbooks" / "WAVE4_LIVE_WINDOWS.md"
+IMAGE_SENTINEL = "harbormaster.invalid/serving@sha256:" + "0" * 64
 
 
 def _load_all(path: Path) -> list[dict]:
@@ -56,8 +63,9 @@ def test_deployment_is_the_unmodified_serving_image_shape():
     assert doc["kind"] == "Deployment"
     assert doc["metadata"]["namespace"] == "hm-serving"
     container = doc["spec"]["template"]["spec"]["containers"][0]
-    # The substitution point the kustomization images: transform rewrites.
-    assert container["image"] == "harbormaster-serving:latest"
+    # Non-runnable sentinel replaced only by the digest-validating W4 renderer.
+    assert container["image"] == IMAGE_SENTINEL
+    assert ":latest" not in container["image"]
     assert container["ports"][0]["containerPort"] == 8000
     assert container["readinessProbe"]["httpGet"]["path"] == "/healthz"
     assert container["livenessProbe"]["httpGet"]["path"] == "/healthz"
@@ -68,10 +76,11 @@ def test_deployment_is_the_unmodified_serving_image_shape():
 def test_service_fronts_port_8000():
     doc = _load_one(BASE_DIR / "service.yaml")
     assert doc["kind"] == "Service"
-    assert doc["spec"]["type"] == "ClusterIP"
+    assert doc["spec"]["type"] == "NodePort"
     port = doc["spec"]["ports"][0]
     assert port["port"] == 80
     assert port["targetPort"] == 8000
+    assert port["nodePort"] == 30080
     assert doc["spec"]["selector"] == {"app": "serving"}
 
 
@@ -103,6 +112,60 @@ def test_kinesis_lag_trigger_is_the_iterator_age_metric():
     # The Phase 1 stream name modules/kinesis builds.
     assert md["dimensionValue"] == "harbormaster-base-ais-raw"
     assert md["identityOwner"] == "operator"
+    activation = int(md["activationTargetMetricValue"])
+    target = int(md["targetMetricValue"])
+    assert 0 < activation < target
+
+
+def test_runbook_stabilizes_keda_after_flink_before_retargeting():
+    runbook = W4_RUNBOOK.read_text()
+    flink_running = runbook.index("FLINK_RUNNING_EPOCH=$(date +%s)")
+    stabilization = runbook.index("KEDA_STABLE_SAMPLES=0")
+    retarget = runbook.index("PLAN_LABEL=wave4-w4-retarget-eks")
+    observer = runbook.index("scripts/observe_phase5_scale.py")
+    assert flink_running < stabilization < retarget < observer
+    assert 'test "$KEDA_STABLE_SAMPLES" -ge 2' in runbook
+
+
+def test_runbook_proves_nightly_teardown_is_wet_before_eks_plan():
+    runbook = W4_RUNBOOK.read_text()
+    preflight = runbook.index("nightly-teardown-lambda-preflight.json")
+    guard_only_plan = runbook.index("PLAN_LABEL=wave4-w4-nightly-guard")
+    wet_recheck = runbook.index("nightly-teardown-lambda-before-eks.json")
+    eks_plan = runbook.index("PLAN_LABEL=wave4-w4-eks")
+    assert preflight < guard_only_plan < wet_recheck < eks_plan
+    assert runbook.count('.Environment.Variables.DRY_RUN == "false"') >= 3
+    assert '(.address | startswith("module.finops."))' in runbook
+    assert '((.actions | index("delete")) == null)' in runbook
+
+
+def test_runbook_simulates_platform_boundary_intersection_before_assume_role():
+    runbook = W4_RUNBOOK.read_text()
+    simulator = runbook.index("simulate_platform bounded-role allowed")
+    self_deny = runbook.index("simulate_platform self-mutation explicitDeny")
+    boundary_deny = runbook.index("simulate_platform boundary-mutation explicitDeny")
+    assume_role = runbook.index("PLATFORM_SESSION=$(aws sts assume-role")
+    assert simulator < self_deny < boundary_deny < assume_role
+    assert "aws iam simulate-principal-policy" in runbook
+
+
+def test_observer_timeout_covers_load_and_scaler_recovery_budget():
+    runbook = W4_RUNBOOK.read_text()
+    timeout_match = re.search(r"--timeout-seconds (\d+) &", runbook)
+    duration_match = re.search(r"^DURATION_S=(\d+) \\$", runbook, re.MULTILINE)
+    assert timeout_match is not None
+    assert duration_match is not None
+
+    scaled_object = _load_one(BASE_DIR / "scaledobject-kinesis.yaml")
+    spec = scaled_object["spec"]
+    metric_window = int(spec["triggers"][0]["metadata"]["metricCollectionTime"])
+    required_budget = (
+        int(duration_match.group(1))
+        + metric_window
+        + int(spec["cooldownPeriod"])
+        + 2 * int(spec["pollingInterval"])
+    )
+    assert int(timeout_match.group(1)) >= required_budget
 
 
 def test_kafka_trigger_patch_targets_the_same_scaledobject():
@@ -139,7 +202,7 @@ def test_base_kustomization_lists_all_manifests():
         "service.yaml",
         "scaledobject-kinesis.yaml",
     ]
-    assert doc["images"][0]["name"] == "harbormaster-serving"
+    assert "images" not in doc
 
 
 # --------------------------------------------------------------------------- #
@@ -211,3 +274,48 @@ def test_ecs_serving_service_still_exists_as_the_rollback_path():
     # Gate 5.2's no-untested-cutover decision: the Fargate service resource
     # must survive this gate.
     assert 'resource "aws_ecs_service" "serving"' in ECS_SERVING_MAIN.read_text()
+
+
+def test_root_wires_the_terraform_owned_nlb_listener_into_apigw():
+    main = ENV_MAIN.read_text()
+    assert 'module "eks_frontdoor"' in main
+    assert 'source = "../../modules/eks_frontdoor"' in main
+    assert "module.eks_frontdoor[0].listener_arn" in main
+    assert "module.eks_frontdoor[0].security_group_id" in main
+    assert "serving_target = var.serving_target" in main
+
+
+def test_frontdoor_is_an_internal_nlb_attached_to_the_managed_node_group():
+    main = (EKS_FRONTDOOR / "main.tf").read_text()
+    assert 'resource "aws_lb" "serving"' in main
+    assert 'load_balancer_type               = "network"' in main
+    assert "internal                         = true" in main
+    assert 'target_type          = "instance"' in main
+    assert 'resource "aws_autoscaling_attachment" "serving"' in main
+    assert "autoscaling_group_name = var.node_autoscaling_group_name" in main
+    assert "port                 = var.node_port" in main
+    assert "security_groups                  = [aws_security_group.nlb.id]" in main
+
+
+def test_frontdoor_security_groups_prevent_vpc_nodeport_bypass():
+    frontdoor = (EKS_FRONTDOOR / "main.tf").read_text()
+    apigw = (APIGW_MODULE / "main.tf").read_text()
+    assert 'resource "aws_security_group" "nlb"' in frontdoor
+    assert "referenced_security_group_id = aws_security_group.nlb.id" in frontdoor
+    assert "cidr_ipv4" not in frontdoor
+    assert 'resource "aws_vpc_security_group_ingress_rule" "eks_nlb_from_vpc_link"' in apigw
+    assert "referenced_security_group_id = aws_security_group.vpc_link.id" in apigw
+
+
+def test_flink_role_and_boundary_allow_only_the_signed_api_invoke_path():
+    flink = KDA_FLINK_MAIN.read_text()
+    boundary = __import__("json").loads(BOUNDARY.read_text())
+    assert 'sid       = "InvokeServingApi"' in flink
+    assert 'actions   = ["execute-api:Invoke"]' in flink
+    assert 'resources = ["${var.serving_api_execution_arn}/$default/POST/v1/score-ais"]' in flink
+    ceiling = next(
+        statement
+        for statement in boundary["Statement"]
+        if statement["Sid"] == "AllowHarbormasterServiceCeiling"
+    )
+    assert "execute-api:Invoke" in ceiling["Action"]

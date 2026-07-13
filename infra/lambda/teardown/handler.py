@@ -5,13 +5,16 @@ anomaly-detection platform (a personal project by Arun Sharma). It runs on a
 nightly EventBridge schedule and tears down or quiesces the cost-heavy,
 tag-scoped resources that are easy to leave running by accident: Managed
 Service for Apache Flink applications, EMR clusters, MSK Serverless clusters,
-and Auto Scaling Groups. It then reports month-to-date spend to an SNS topic.
+Auto Scaling Groups, Harbormaster EKS Network Load Balancers, NAT gateways, and
+unattached Elastic IPs. It then reports month-to-date spend to an SNS topic.
 
 Design principles:
   - Defensive per service: a failure in one service must never abort the run.
     Every service block is wrapped in its own try/except, and exceptions are
     logged and accumulated, not raised.
-  - Tag-scoped: only resources tagged Project=<PROJECT_TAG> are touched.
+  - Tag-scoped: every resource must match Project=<PROJECT_TAG>. W4 network
+    resources must also match Environment=<ENVIRONMENT> and their owning
+    Module tag before a destructive API request is issued.
   - DRY_RUN by default: with DRY_RUN unset or "true", the function logs the
     actions it WOULD take and changes nothing. Set DRY_RUN=false to act.
   - No third-party dependencies: boto3 only, which is present in the Lambda
@@ -22,6 +25,8 @@ Environment variables:
   ALERT_TOPIC_ARN  SNS topic ARN that receives the spend summary. Optional; if
                    unset, the summary is logged only.
   PROJECT_TAG      Tag value that scopes every action. Default "harbormaster".
+  ENVIRONMENT      Environment tag required for W4 network cleanup. Default
+                   "base".
   AWS_REGION       Provided by the Lambda runtime; used implicitly by boto3.
 """
 
@@ -68,6 +73,7 @@ def _log(event_name, **fields):
 
 
 PROJECT_TAG_VALUE = os.environ.get("PROJECT_TAG", "harbormaster")
+ENVIRONMENT_VALUE = os.environ.get("ENVIRONMENT", "base")
 
 
 def _tag_matches(tags, key="Project", value=None):
@@ -90,6 +96,15 @@ def _tag_matches(tags, key="Project", value=None):
         if k == key and v == value:
             return True
     return False
+
+
+def _network_scope_matches(tags, module):
+    """Require the exact Terraform ownership tags for a W4 network resource."""
+    return (
+        _tag_matches(tags)
+        and _tag_matches(tags, key="Environment", value=ENVIRONMENT_VALUE)
+        and _tag_matches(tags, key="Module", value=module)
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -299,6 +314,160 @@ def zero_auto_scaling_groups(dry_run, results):
 
 
 # --------------------------------------------------------------------------- #
+# EKS front-door Network Load Balancers
+# --------------------------------------------------------------------------- #
+def delete_network_load_balancers(dry_run, results):
+    """Delete only project-tagged NLBs owned by the EKS front-door module."""
+    service = "network_load_balancers"
+    would_delete = []
+    delete_requested = []
+    try:
+        client = boto3.client("elbv2")
+        paginator = client.get_paginator("describe_load_balancers")
+        for page in paginator.paginate():
+            for load_balancer in page.get("LoadBalancers", []):
+                if load_balancer.get("Type") != "network":
+                    continue
+                arn = load_balancer.get("LoadBalancerArn")
+                name = load_balancer.get("LoadBalancerName")
+                try:
+                    descriptions = client.describe_tags(ResourceArns=[arn]).get(
+                        "TagDescriptions", []
+                    )
+                    tags = descriptions[0].get("Tags", []) if descriptions else []
+                except Exception as tag_err:  # noqa: BLE001
+                    _log("nlb_tag_lookup_failed", load_balancer=name, error=str(tag_err))
+                    continue
+                if not _network_scope_matches(tags, module="eks_frontdoor"):
+                    continue
+                if dry_run:
+                    _log("nlb_would_delete", load_balancer=name, arn=arn)
+                    would_delete.append(name)
+                    continue
+                client.delete_load_balancer(LoadBalancerArn=arn)
+                _log("nlb_delete_requested", load_balancer=name, arn=arn)
+                delete_requested.append(name)
+
+        results[service] = {
+            "would_delete": would_delete,
+            "delete_requested": delete_requested,
+            "error": None,
+        }
+    except Exception as err:  # noqa: BLE001
+        _log("nlb_block_failed", error=str(err))
+        results[service] = {
+            "would_delete": would_delete,
+            "delete_requested": delete_requested,
+            "error": str(err),
+        }
+    return results
+
+
+# --------------------------------------------------------------------------- #
+# NAT gateways
+# --------------------------------------------------------------------------- #
+def delete_nat_gateways(dry_run, results):
+    """Request deletion of active NAT gateways with exact ownership tags."""
+    service = "nat_gateways"
+    would_delete = []
+    delete_requested = []
+    try:
+        client = boto3.client("ec2")
+        gateways = []
+        token = None
+        while True:
+            kwargs = {"Filter": [{"Name": "tag:Project", "Values": [PROJECT_TAG_VALUE]}]}
+            if token:
+                kwargs["NextToken"] = token
+            response = client.describe_nat_gateways(**kwargs)
+            gateways.extend(response.get("NatGateways", []))
+            token = response.get("NextToken")
+            if not token:
+                break
+        for gateway in gateways:
+            gateway_id = gateway.get("NatGatewayId")
+            state = gateway.get("State")
+            if not _network_scope_matches(gateway.get("Tags", []), module="network"):
+                continue
+            if state not in {"available", "pending"}:
+                _log("nat_gateway_skip_state", nat_gateway_id=gateway_id, state=state)
+                continue
+            if dry_run:
+                _log("nat_gateway_would_delete", nat_gateway_id=gateway_id, state=state)
+                would_delete.append(gateway_id)
+                continue
+            client.delete_nat_gateway(NatGatewayId=gateway_id)
+            _log("nat_gateway_delete_requested", nat_gateway_id=gateway_id, prior_state=state)
+            delete_requested.append(gateway_id)
+
+        results[service] = {
+            "would_delete": would_delete,
+            "delete_requested": delete_requested,
+            "error": None,
+        }
+    except Exception as err:  # noqa: BLE001
+        _log("nat_gateway_block_failed", error=str(err))
+        results[service] = {
+            "would_delete": would_delete,
+            "delete_requested": delete_requested,
+            "error": str(err),
+        }
+    return results
+
+
+# --------------------------------------------------------------------------- #
+# Unattached Elastic IPs
+# --------------------------------------------------------------------------- #
+def release_unattached_elastic_ips(dry_run, results):
+    """Release project-tagged VPC Elastic IPs after they are unattached."""
+    service = "elastic_ips"
+    would_release = []
+    release_requested = []
+    try:
+        client = boto3.client("ec2")
+        response = client.describe_addresses(
+            Filters=[{"Name": "tag:Project", "Values": [PROJECT_TAG_VALUE]}]
+        )
+        addresses = response.get("Addresses", [])
+        for address in addresses:
+            allocation_id = address.get("AllocationId")
+            if not allocation_id or not _network_scope_matches(
+                address.get("Tags", []), module="network"
+            ):
+                continue
+            attachment_fields = (
+                "AssociationId",
+                "NetworkInterfaceId",
+                "InstanceId",
+                "PrivateIpAddress",
+            )
+            if any(address.get(field) for field in attachment_fields):
+                _log("elastic_ip_skip_attached", allocation_id=allocation_id)
+                continue
+            if dry_run:
+                _log("elastic_ip_would_release", allocation_id=allocation_id)
+                would_release.append(allocation_id)
+                continue
+            client.release_address(AllocationId=allocation_id)
+            _log("elastic_ip_release_requested", allocation_id=allocation_id)
+            release_requested.append(allocation_id)
+
+        results[service] = {
+            "would_release": would_release,
+            "release_requested": release_requested,
+            "error": None,
+        }
+    except Exception as err:  # noqa: BLE001
+        _log("elastic_ip_block_failed", error=str(err))
+        results[service] = {
+            "would_release": would_release,
+            "release_requested": release_requested,
+            "error": str(err),
+        }
+    return results
+
+
+# --------------------------------------------------------------------------- #
 # Cost Explorer month-to-date spend
 # --------------------------------------------------------------------------- #
 def get_month_to_date_spend(results):
@@ -355,10 +524,19 @@ def publish_summary(dry_run, results):
     emr = results.get("emr", {})
     msk = results.get("msk_serverless", {})
     asg = results.get("auto_scaling", {})
+    nlb = results.get("network_load_balancers", {})
+    nat = results.get("nat_gateways", {})
+    eip = results.get("elastic_ips", {})
     lines.append("Flink apps stopped: {}".format(flink.get("stopped", [])))
     lines.append("EMR clusters terminated: {}".format(emr.get("terminated", [])))
     lines.append("MSK serverless deleted: {}".format(msk.get("deleted", [])))
     lines.append("ASGs set to 0: {}".format(asg.get("zeroed", [])))
+    lines.append("EKS front-door NLB delete requests: {}".format(nlb.get("delete_requested", [])))
+    lines.append("EKS front-door NLB dry-run targets: {}".format(nlb.get("would_delete", [])))
+    lines.append("NAT gateway delete requests: {}".format(nat.get("delete_requested", [])))
+    lines.append("NAT gateway dry-run targets: {}".format(nat.get("would_delete", [])))
+    lines.append("Elastic IP release requests: {}".format(eip.get("release_requested", [])))
+    lines.append("Elastic IP dry-run targets: {}".format(eip.get("would_release", [])))
     if cost.get("amount") is not None:
         lines.append(
             "Month-to-date spend: {} {} (through {})".format(
@@ -416,6 +594,7 @@ def lambda_handler(event, context):
         "teardown_start",
         dry_run=dry_run,
         project_tag=PROJECT_TAG_VALUE,
+        environment=ENVIRONMENT_VALUE,
         event=event if isinstance(event, dict) else str(event),
     )
 
@@ -426,6 +605,9 @@ def lambda_handler(event, context):
     terminate_emr_clusters(dry_run, results)
     delete_msk_serverless_clusters(dry_run, results)
     zero_auto_scaling_groups(dry_run, results)
+    delete_network_load_balancers(dry_run, results)
+    delete_nat_gateways(dry_run, results)
+    release_unattached_elastic_ips(dry_run, results)
     get_month_to_date_spend(results)
     publish_summary(dry_run, results)
 
@@ -433,6 +615,7 @@ def lambda_handler(event, context):
     return {
         "dry_run": dry_run,
         "project_tag": PROJECT_TAG_VALUE,
+        "environment": ENVIRONMENT_VALUE,
         "results": results,
     }
 

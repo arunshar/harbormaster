@@ -30,8 +30,19 @@ if HERE not in sys.path:
 # --------------------------------------------------------------------------- #
 # Fake boto3 clients
 # --------------------------------------------------------------------------- #
-TAGGED = [{"Key": "Project", "Value": "harbormaster"}]
+TAGGED = [
+    {"Key": "Project", "Value": "harbormaster"},
+    {"Key": "Environment", "Value": "base"},
+]
 UNTAGGED = [{"Key": "Project", "Value": "something-else"}]
+FRONTDOOR_TAGGED = TAGGED + [{"Key": "Module", "Value": "eks_frontdoor"}]
+NETWORK_TAGGED = TAGGED + [{"Key": "Module", "Value": "network"}]
+WRONG_ENV_FRONTDOOR_TAGGED = [
+    {"Key": "Project", "Value": "harbormaster"},
+    {"Key": "Environment", "Value": "demo"},
+    {"Key": "Module", "Value": "eks_frontdoor"},
+]
+WRONG_MODULE_TAGGED = TAGGED + [{"Key": "Module", "Value": "not-the-owner"}]
 
 
 class _Recorder:
@@ -129,6 +140,156 @@ class _Paginator:
         yield from self._pages
 
 
+class FakeElbv2Client:
+    def __init__(self, recorder):
+        self._rec = recorder
+
+    def get_paginator(self, name):
+        assert name == "describe_load_balancers"
+        return _Paginator(
+            [
+                {
+                    "LoadBalancers": [
+                        {
+                            "LoadBalancerArn": "arn:aws:elasticloadbalancing:::loadbalancer/net/hb",
+                            "LoadBalancerName": "harbormaster-eks",
+                            "Type": "network",
+                        },
+                        {
+                            "LoadBalancerArn": (
+                                "arn:aws:elasticloadbalancing:::loadbalancer/net/other"
+                            ),
+                            "LoadBalancerName": "other-nlb",
+                            "Type": "network",
+                        },
+                        {
+                            "LoadBalancerArn": "arn:aws:elasticloadbalancing:::loadbalancer/app/hb",
+                            "LoadBalancerName": "harbormaster-alb",
+                            "Type": "application",
+                        },
+                    ]
+                },
+                {
+                    "LoadBalancers": [
+                        {
+                            "LoadBalancerArn": (
+                                "arn:aws:elasticloadbalancing:::loadbalancer/net/wrong-module"
+                            ),
+                            "LoadBalancerName": "harbormaster-wrong-module",
+                            "Type": "network",
+                        },
+                        {
+                            "LoadBalancerArn": (
+                                "arn:aws:elasticloadbalancing:::loadbalancer/net/wrong-env"
+                            ),
+                            "LoadBalancerName": "harbormaster-wrong-env",
+                            "Type": "network",
+                        },
+                    ]
+                },
+            ]
+        )
+
+    def describe_tags(self, ResourceArns):
+        arn = ResourceArns[0]
+        if arn.endswith("/hb"):
+            tags = FRONTDOOR_TAGGED
+        elif arn.endswith("/wrong-module"):
+            tags = WRONG_MODULE_TAGGED
+        elif arn.endswith("/wrong-env"):
+            tags = WRONG_ENV_FRONTDOOR_TAGGED
+        else:
+            tags = UNTAGGED
+        return {"TagDescriptions": [{"ResourceArn": arn, "Tags": tags}]}
+
+    def delete_load_balancer(self, **kwargs):
+        self._rec.note("elbv2.delete_load_balancer", **kwargs)
+
+
+class FakeEc2Client:
+    def __init__(self, recorder):
+        self._rec = recorder
+
+    def describe_nat_gateways(self, **kwargs):
+        assert kwargs["Filter"] == [{"Name": "tag:Project", "Values": ["harbormaster"]}]
+        if kwargs.get("NextToken") == "nat-page-2":
+            return {
+                "NatGateways": [
+                    {
+                        "NatGatewayId": "nat-wrong-module",
+                        "State": "available",
+                        "Tags": WRONG_MODULE_TAGGED,
+                    }
+                ]
+            }
+        assert "NextToken" not in kwargs
+        return {
+            "NatGateways": [
+                {
+                    "NatGatewayId": "nat-hb",
+                    "State": "available",
+                    "Tags": NETWORK_TAGGED,
+                },
+                {
+                    "NatGatewayId": "nat-wrong-env",
+                    "State": "available",
+                    "Tags": [
+                        {"Key": "Project", "Value": "harbormaster"},
+                        {"Key": "Environment", "Value": "demo"},
+                        {"Key": "Module", "Value": "network"},
+                    ],
+                },
+            ],
+            "NextToken": "nat-page-2",
+        }
+
+    def delete_nat_gateway(self, **kwargs):
+        self._rec.note("ec2.delete_nat_gateway", **kwargs)
+
+    def describe_addresses(self, **kwargs):
+        assert kwargs == {"Filters": [{"Name": "tag:Project", "Values": ["harbormaster"]}]}
+        return {
+            "Addresses": [
+                {"AllocationId": "eipalloc-hb", "Tags": NETWORK_TAGGED},
+                {
+                    "AllocationId": "eipalloc-association",
+                    "AssociationId": "eipassoc-hb",
+                    "Tags": NETWORK_TAGGED,
+                },
+                {
+                    "AllocationId": "eipalloc-eni",
+                    "NetworkInterfaceId": "eni-hb",
+                    "Tags": NETWORK_TAGGED,
+                },
+                {
+                    "AllocationId": "eipalloc-instance",
+                    "InstanceId": "i-hb",
+                    "Tags": NETWORK_TAGGED,
+                },
+                {
+                    "AllocationId": "eipalloc-private-ip",
+                    "PrivateIpAddress": "10.0.0.2",
+                    "Tags": NETWORK_TAGGED,
+                },
+                {
+                    "AllocationId": "eipalloc-wrong-env",
+                    "Tags": [
+                        {"Key": "Project", "Value": "harbormaster"},
+                        {"Key": "Environment", "Value": "demo"},
+                        {"Key": "Module", "Value": "network"},
+                    ],
+                },
+                {
+                    "AllocationId": "eipalloc-wrong-module",
+                    "Tags": WRONG_MODULE_TAGGED,
+                },
+            ]
+        }
+
+    def release_address(self, **kwargs):
+        self._rec.note("ec2.release_address", **kwargs)
+
+
 class FakeAsgClient:
     def __init__(self, recorder):
         self._rec = recorder
@@ -191,6 +352,10 @@ def make_fake_boto3_client(recorder, failing_service=None):
             return FakeMskClient(recorder)
         if service_name == "autoscaling":
             return FakeAsgClient(recorder)
+        if service_name == "elbv2":
+            return FakeElbv2Client(recorder)
+        if service_name == "ec2":
+            return FakeEc2Client(recorder)
         if service_name == "ce":
             return FakeCeClient(recorder)
         if service_name == "sns":
@@ -212,17 +377,17 @@ class _Boto3Stub:
 
 def _load_handler(monkeyenv):
     """Import (or reimport) the handler module with the given environment so the
-    module-level PROJECT_TAG_VALUE picks up overrides. If real boto3 is absent
-    (handler.boto3 is None), substitute a stub object whose .client the test
-    then replaces."""
+    module-level PROJECT_TAG_VALUE picks up overrides. Substitute a private
+    stub object whose .client the test replaces, leaving global boto3 intact."""
     for k, v in monkeyenv.items():
         os.environ[k] = v
     if "handler" in sys.modules:
         handler = importlib.reload(sys.modules["handler"])
     else:
         handler = importlib.import_module("handler")
-    if handler.boto3 is None:
-        handler.boto3 = _Boto3Stub()
+    # Always isolate the handler from the process-wide boto3 module. Replacing
+    # boto3.client directly would leak the fake into unrelated tests.
+    handler.boto3 = _Boto3Stub()
     return handler
 
 
@@ -232,7 +397,7 @@ def _load_handler(monkeyenv):
 def test_dry_run_makes_no_mutating_calls():
     os.environ["DRY_RUN"] = "true"
     os.environ.pop("ALERT_TOPIC_ARN", None)
-    handler = _load_handler({"PROJECT_TAG": "harbormaster"})
+    handler = _load_handler({"PROJECT_TAG": "harbormaster", "ENVIRONMENT": "base"})
     recorder = _Recorder()
     handler.boto3.client = make_fake_boto3_client(recorder)
 
@@ -247,7 +412,7 @@ def test_dry_run_makes_no_mutating_calls():
 
 def test_only_tagged_resources_are_selected():
     os.environ["DRY_RUN"] = "true"
-    handler = _load_handler({"PROJECT_TAG": "harbormaster"})
+    handler = _load_handler({"PROJECT_TAG": "harbormaster", "ENVIRONMENT": "base"})
     recorder = _Recorder()
     handler.boto3.client = make_fake_boto3_client(recorder)
 
@@ -258,12 +423,18 @@ def test_only_tagged_resources_are_selected():
     assert res["emr"]["terminated"] == ["j-HB"]
     assert res["msk_serverless"]["deleted"] == ["harbormaster-msk"]
     assert res["auto_scaling"]["zeroed"] == ["harbormaster-asg"]
+    assert res["network_load_balancers"]["would_delete"] == ["harbormaster-eks"]
+    assert res["nat_gateways"]["would_delete"] == ["nat-hb"]
+    assert res["elastic_ips"]["would_release"] == ["eipalloc-hb"]
+    assert res["network_load_balancers"]["delete_requested"] == []
+    assert res["nat_gateways"]["delete_requested"] == []
+    assert res["elastic_ips"]["release_requested"] == []
     assert res["cost_explorer"]["summary"]["amount"] == 12.34
 
 
 def test_per_service_failure_does_not_abort_run():
     os.environ["DRY_RUN"] = "true"
-    handler = _load_handler({"PROJECT_TAG": "harbormaster"})
+    handler = _load_handler({"PROJECT_TAG": "harbormaster", "ENVIRONMENT": "base"})
     recorder = _Recorder()
     # EMR blows up; everything else must still complete.
     handler.boto3.client = make_fake_boto3_client(recorder, failing_service="emr")
@@ -279,10 +450,25 @@ def test_per_service_failure_does_not_abort_run():
     assert res["cost_explorer"]["summary"]["amount"] == 12.34
 
 
+def test_network_failure_does_not_abort_later_cleanup_blocks():
+    os.environ["DRY_RUN"] = "true"
+    handler = _load_handler({"PROJECT_TAG": "harbormaster", "ENVIRONMENT": "base"})
+    recorder = _Recorder()
+    handler.boto3.client = make_fake_boto3_client(recorder, failing_service="elbv2")
+
+    result = handler.lambda_handler({}, None)
+    res = result["results"]
+
+    assert "simulated elbv2 outage" in res["network_load_balancers"]["error"]
+    assert res["nat_gateways"]["would_delete"] == ["nat-hb"]
+    assert res["elastic_ips"]["would_release"] == ["eipalloc-hb"]
+    assert res["cost_explorer"]["summary"]["amount"] == 12.34
+
+
 def test_wet_run_performs_actions_and_publishes():
     os.environ["DRY_RUN"] = "false"
     os.environ["ALERT_TOPIC_ARN"] = "arn:aws:sns:us-east-1:000000000000:hb-alerts"
-    handler = _load_handler({"PROJECT_TAG": "harbormaster"})
+    handler = _load_handler({"PROJECT_TAG": "harbormaster", "ENVIRONMENT": "base"})
     recorder = _Recorder()
     handler.boto3.client = make_fake_boto3_client(recorder)
 
@@ -293,8 +479,14 @@ def test_wet_run_performs_actions_and_publishes():
     assert "emr.terminate_job_flows" in names
     assert "msk.delete_cluster" in names
     assert "asg.update_auto_scaling_group" in names
+    assert "elbv2.delete_load_balancer" in names
+    assert "ec2.delete_nat_gateway" in names
+    assert "ec2.release_address" in names
     assert "sns.publish" in names
     assert result["dry_run"] is False
+    assert result["results"]["network_load_balancers"]["delete_requested"] == ["harbormaster-eks"]
+    assert result["results"]["nat_gateways"]["delete_requested"] == ["nat-hb"]
+    assert result["results"]["elastic_ips"]["release_requested"] == ["eipalloc-hb"]
     # Reset for any subsequent runners.
     os.environ["DRY_RUN"] = "true"
     os.environ.pop("ALERT_TOPIC_ARN", None)
@@ -308,6 +500,7 @@ def _run_all():
         test_dry_run_makes_no_mutating_calls,
         test_only_tagged_resources_are_selected,
         test_per_service_failure_does_not_abort_run,
+        test_network_failure_does_not_abort_later_cleanup_blocks,
         test_wet_run_performs_actions_and_publishes,
     ]
     failures = 0

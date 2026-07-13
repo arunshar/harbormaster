@@ -9,6 +9,11 @@ output "api_id" {
   value = aws_apigatewayv2_api.this.id
 }
 
+output "api_execution_arn" {
+  description = "Execution ARN used to scope SigV4 invoke permission for the Managed Flink caller."
+  value       = aws_apigatewayv2_api.this.execution_arn
+}
+
 output "access_log_group_name" {
   description = "CloudWatch log group receiving access logs (null when disabled)."
   value       = var.enable_access_logging ? aws_cloudwatch_log_group.access[0].name : null

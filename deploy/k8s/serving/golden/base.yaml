@@ -1,7 +1,3 @@
-# GOLDEN MANIFEST (gate 5.2 checksum): committed output of
-#   kubectl kustomize deploy/k8s/serving/base
-# Regenerate ONLY with that command after a reviewed manifest change;
-# tests/e2e/test_phase5_k8s_manifests.py compares semantically.
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -20,12 +16,13 @@ metadata:
 spec:
   ports:
   - name: http
+    nodePort: 30080
     port: 80
     protocol: TCP
     targetPort: 8000
   selector:
     app: serving
-  type: ClusterIP
+  type: NodePort
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -52,7 +49,7 @@ spec:
         - secretRef:
             name: serving-env
             optional: true
-        image: harbormaster-serving:latest
+        image: harbormaster.invalid/serving@sha256:0000000000000000000000000000000000000000000000000000000000000000
         livenessProbe:
           httpGet:
             path: /healthz
@@ -96,7 +93,7 @@ spec:
     name: serving
   triggers:
   - metadata:
-      activationTargetMetricValue: "0"
+      activationTargetMetricValue: "5000"
       awsRegion: us-east-1
       dimensionName: StreamName
       dimensionValue: harbormaster-base-ais-raw

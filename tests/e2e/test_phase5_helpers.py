@@ -15,7 +15,7 @@ from e2e.phase5_helpers import (
     enable_phase5_requires_enable_phase1,
     guard_is_armed_by_default,
     guard_window_default_hours,
-    helm_data_sources_gated_on_keda_flag,
+    helm_data_sources_gated_on_access_flag,
     keda_release_is_gated_on_install_keda,
     module_is_gated_on_enable_phase5,
     node_group_scaling_config,
@@ -218,27 +218,27 @@ def test_keda_gating_false_when_unconditional():
 def test_helm_data_gating_needs_both_sources():
     only_one = """
     data "aws_eks_cluster" "phase5" {
-      count = var.enable_phase5_keda ? 1 : 0
+      count = var.enable_phase5_kubernetes_access ? 1 : 0
     }
     data "aws_eks_cluster_auth" "phase5" {
       name = "x"
     }
     """
-    assert helm_data_sources_gated_on_keda_flag(only_one) is False
+    assert helm_data_sources_gated_on_access_flag(only_one) is False
 
 
 def test_helm_data_gating_true_when_both_gated():
     both = """
     data "aws_eks_cluster" "phase5" {
-      count = var.enable_phase5_keda ? 1 : 0
+      count = var.enable_phase5_kubernetes_access ? 1 : 0
       name  = "x"
     }
     data "aws_eks_cluster_auth" "phase5" {
-      count = var.enable_phase5_keda ? 1 : 0
+      count = var.enable_phase5_kubernetes_access ? 1 : 0
       name  = "x"
     }
     """
-    assert helm_data_sources_gated_on_keda_flag(both) is True
+    assert helm_data_sources_gated_on_access_flag(both) is True
 
 
 # --------------------------------------------------------------------------- #
@@ -249,15 +249,20 @@ def test_real_eks_cluster_and_node_group_are_gated_on_enable_phase5():
     assert module_is_gated_on_enable_phase5(text, "eks_cluster") is True
     assert module_is_gated_on_enable_phase5(text, "eks_node_group") is True
     gated = enable_phase5_references(text)
-    assert {"eks_teardown_guard", "eks_cluster", "eks_node_group"} <= gated
+    assert {"eks_teardown_guard", "eks_cluster", "eks_node_group", "eks_frontdoor"} <= gated
+
+
+def test_real_eks_cluster_depends_on_both_teardown_guards():
+    text = ENV_MAIN_TF_PATH.read_text()
+    cluster_block = text.split('module "eks_cluster"', 1)[1].split('module "eks_node_group"', 1)[0]
+    assert "depends_on = [module.eks_teardown_guard, module.finops]" in cluster_block
 
 
 def test_real_node_group_defaults_are_the_scale_to_zero_shape():
-    # The spec pins scaling_config { min_size = 0, max_size = 3,
-    # desired_size = 0 }; the literals live in the variables' defaults.
+    # W4 deliberately caps the one-window worker pool at one node.
     node_vars = (EKS_NODE_GROUP_MODULE_PATH / "variables.tf").read_text()
     assert variable_default(node_vars, "min_size") == "0"
-    assert variable_default(node_vars, "max_size") == "3"
+    assert variable_default(node_vars, "max_size") == "1"
     assert variable_default(node_vars, "desired_size") == "0"
     cfg = node_group_scaling_config((EKS_NODE_GROUP_MODULE_PATH / "main.tf").read_text())
     assert cfg == {
@@ -270,6 +275,38 @@ def test_real_node_group_defaults_are_the_scale_to_zero_shape():
 def test_real_node_group_is_spot():
     text = (EKS_NODE_GROUP_MODULE_PATH / "main.tf").read_text()
     assert 'capacity_type  = "SPOT"' in text
+    node_vars = (EKS_NODE_GROUP_MODULE_PATH / "variables.tf").read_text()
+    assert variable_default(node_vars, "ami_type") == '"AL2023_x86_64_STANDARD"'
+
+
+def test_real_node_group_uses_a_dedicated_restricted_security_group():
+    root = ENV_MAIN_TF_PATH.read_text()
+    cluster = (EKS_CLUSTER_MODULE_PATH / "main.tf").read_text()
+    node = (EKS_NODE_GROUP_MODULE_PATH / "main.tf").read_text()
+    frontdoor = (ENV_MAIN_TF_PATH.parents[2] / "modules" / "eks_frontdoor" / "main.tf").read_text()
+
+    assert "vpc_security_group_ids = [aws_security_group.node.id]" in node
+    assert "security_group_ids      = [aws_security_group.control_plane.id]" in cluster
+    assert "vpc_id      = var.vpc_id" in cluster
+    for rule_name in ("control_plane_https", "control_plane_kubelet"):
+        rule = node.split(f'resource "aws_vpc_security_group_ingress_rule" "{rule_name}"', 1)[
+            1
+        ].split("resource ", 1)[0]
+        assert "referenced_security_group_id = var.control_plane_security_group_id" in rule
+        assert "cidr_ipv4" not in rule
+    reciprocal = node.split(
+        'resource "aws_vpc_security_group_ingress_rule" "node_to_control_plane_https"', 1
+    )[1].split("resource ", 1)[0]
+    assert "security_group_id            = var.control_plane_security_group_id" in reciprocal
+    assert "referenced_security_group_id = aws_security_group.node.id" in reciprocal
+    assert "cidr_ipv4" not in reciprocal
+    assert "from_port                    = 443" in reciprocal
+    assert "module.eks_cluster[0].control_plane_security_group_id" in root
+    assert "module.eks_cluster[0].cluster_security_group_id" not in root
+    assert "node_security_group_id      = module.eks_node_group[0].node_security_group_id" in root
+    assert "security_group_id            = var.node_security_group_id" in frontdoor
+    assert "referenced_security_group_id = aws_security_group.nlb.id" in frontdoor
+    assert "self = true" not in node
 
 
 def test_real_keda_release_is_gated_and_pinned():
@@ -277,19 +314,34 @@ def test_real_keda_release_is_gated_and_pinned():
     cluster_vars = (EKS_CLUSTER_MODULE_PATH / "variables.tf").read_text()
     assert keda_release_is_gated_on_install_keda(main) is True
     assert variable_default(cluster_vars, "install_keda") == "false"
-    # The chart version is pinned (war-story P8), not floating.
-    assert variable_default(cluster_vars, "keda_chart_version") is not None
+    assert variable_default(cluster_vars, "keda_chart_version") == '"2.20.0"'
+    assert "aws_iam_role_policy.keda_cloudwatch" in main
+    serving_readme = (
+        ENV_MAIN_TF_PATH.parents[4] / "deploy" / "k8s" / "serving" / "README.md"
+    ).read_text()
+    assert "keda-2.20.0-crds.yaml" in serving_readme
+    assert "2.15.1" not in serving_readme
+
+
+def test_real_eks_version_is_standard_support_and_extended_support_is_disabled():
+    main = (EKS_CLUSTER_MODULE_PATH / "main.tf").read_text()
+    cluster_vars = (EKS_CLUSTER_MODULE_PATH / "variables.tf").read_text()
+    assert variable_default(cluster_vars, "eks_version") == '"1.34"'
+    assert 'support_type = "STANDARD"' in main
 
 
 def test_real_helm_provider_is_count_safe():
     text = ENV_MAIN_TF_PATH.read_text()
-    assert helm_data_sources_gated_on_keda_flag(text) is True
+    assert helm_data_sources_gated_on_access_flag(text) is True
 
 
 def test_real_enable_phase5_keda_requires_enable_phase5():
     text = ENV_VARIABLES_TF_PATH.read_text()
     assert variable_default(text, "enable_phase5_keda") == "false"
     assert "!var.enable_phase5_keda || var.enable_phase5" in text
+    assert "!var.enable_phase5_keda || var.enable_phase5_kubernetes_access" in text
+    assert "!var.enable_phase5_keda || var.phase5_node_desired_size >= 1" in text
+    assert "!var.enable_phase5_keda || var.enable_nat" in text
 
 
 def test_real_cluster_endpoint_is_private_by_default():
@@ -297,3 +349,47 @@ def test_real_cluster_endpoint_is_private_by_default():
     cluster_vars = (EKS_CLUSTER_MODULE_PATH / "variables.tf").read_text()
     assert "endpoint_private_access = true" in main
     assert variable_default(cluster_vars, "endpoint_public_access") == "false"
+
+
+def test_real_root_wires_operator_endpoint_and_worker_controls():
+    main = ENV_MAIN_TF_PATH.read_text()
+    variables = ENV_VARIABLES_TF_PATH.read_text()
+    assert "endpoint_public_access = var.phase5_endpoint_public_access" in main
+    assert "public_access_cidrs    = var.phase5_public_access_cidrs" in main
+    assert "desired_size = var.phase5_node_desired_size" in main
+    assert variable_default(variables, "phase5_endpoint_public_access") == "false"
+    assert variable_default(variables, "phase5_public_access_cidrs") == "[]"
+    assert variable_default(variables, "phase5_node_desired_size") == "0"
+    ipv4_host_pattern = 'regex("^([0-9]{1,3}\\\\.){3}[0-9]{1,3}/32$", cidr)'
+    assert ipv4_host_pattern in variables
+    assert ipv4_host_pattern in (EKS_CLUSTER_MODULE_PATH / "variables.tf").read_text()
+    assert "/128" not in variables
+    assert "var.phase5_node_desired_size == 0 || var.enable_nat" in variables
+
+
+def test_real_node_desired_size_stays_terraform_managed_without_an_autoscaler():
+    main = (EKS_NODE_GROUP_MODULE_PATH / "main.tf").read_text()
+    assert "ignore_changes" not in main
+
+
+def test_real_keda_irsa_is_subject_scoped_and_uses_chart_native_values():
+    main = (EKS_CLUSTER_MODULE_PATH / "main.tf").read_text()
+    assert "system:serviceaccount:${var.keda_namespace}:${var.keda_service_account_name}" in main
+    assert 'values   = ["sts.amazonaws.com"]' in main
+    assert 'actions   = ["cloudwatch:GetMetricData"]' in main
+    assert 'name  = "podIdentity.aws.irsa.enabled"' in main
+    assert 'name  = "podIdentity.aws.irsa.roleArn"' in main
+
+
+def test_real_node_role_output_waits_for_required_policy_attachments():
+    outputs = (EKS_CLUSTER_MODULE_PATH / "outputs.tf").read_text()
+    block = outputs.split('output "node_role_arn"', 1)[1].split("output ", 1)[0]
+    assert "aws_iam_role_policy_attachment.node_worker" in block
+    assert "aws_iam_role_policy_attachment.node_cni" in block
+    assert "aws_iam_role_policy_attachment.node_ecr_read" in block
+
+
+def test_real_guard_window_and_schedule_are_bounded():
+    variables = ENV_VARIABLES_TF_PATH.read_text()
+    assert "var.phase5_teardown_max_age_hours <= 8" in variables
+    assert '["rate(5 minutes)", "rate(30 minutes)"]' in variables

@@ -40,6 +40,11 @@ variable "serving_endpoint" {
   default     = ""
 }
 
+variable "serving_api_execution_arn" {
+  description = "API Gateway execution ARN for the one SigV4-authorized serving API."
+  type        = string
+}
+
 variable "lake_bucket_arn" {
   type = string
 }
@@ -102,6 +107,7 @@ data "aws_iam_policy_document" "assume" {
       identifiers = ["kinesisanalytics.amazonaws.com"]
     }
   }
+
 }
 
 resource "aws_iam_role" "flink" {
@@ -155,6 +161,13 @@ data "aws_iam_policy_document" "flink" {
     effect    = "Allow"
     actions   = ["logs:PutLogEvents", "logs:DescribeLogGroups", "logs:DescribeLogStreams"]
     resources = ["arn:aws:logs:${var.aws_region}:*:*"]
+  }
+
+  statement {
+    sid       = "InvokeServingApi"
+    effect    = "Allow"
+    actions   = ["execute-api:Invoke"]
+    resources = ["${var.serving_api_execution_arn}/$default/POST/v1/score-ais"]
   }
 }
 

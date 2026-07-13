@@ -21,11 +21,10 @@ aws_region = "us-east-1"
 # confirmation link to this address; click it or you will receive no alerts.
 alert_email = "you@example.com"
 
-# Name (not ARN) of an EXISTING IAM role that your platform/CI assumes to create
-# spend-incurring resources. On a $75 breach the budget action attaches a deny
-# policy to THIS role. Do not point it at your break-glass admin identity.
-# Example: "harbormaster-platform" or "github-actions-deployer".
-platform_role_name = "REPLACE_WITH_YOUR_PLATFORM_ROLE_NAME"
+# Fixed name (not ARN) of the EXISTING role used for Harbormaster mutations.
+# On a $75 breach the budget action attaches the spend-freeze policy to it.
+# The permissions boundary intentionally grants that action on this role only.
+platform_role_name = "harbormaster-platform"
 
 # Create the single NAT gateway. Default false avoids the hourly NAT charge.
 # Only set true when a private-subnet workload needs general internet egress.
@@ -61,6 +60,25 @@ enable_phase3 = false
 # exist behind this toggle yet as of the 2026-07-04 sprint (gate 4.6 adds
 # modules/drift_watch; authored and plan-verified only, never applied).
 enable_phase4 = false
+
+# Phase 5 EKS front door. Every value below is the safe resting posture. The
+# W4 runbook changes these in reviewed stages: Phase 5 on with one worker and
+# one operator IPv4 /32, then Kubernetes access and KEDA on, then the route
+# moves from ECS to EKS only after the workload is healthy.
+enable_phase5                   = false
+enable_phase5_kubernetes_access = false
+enable_phase5_keda              = false
+phase5_endpoint_public_access   = false
+phase5_public_access_cidrs      = []
+phase5_node_desired_size        = 0
+phase5_guard_dry_run            = false
+phase5_teardown_max_age_hours   = 4
+phase5_teardown_schedule_expression = "rate(30 minutes)"
+phase5_keep_alive_until         = ""
+
+# API Gateway stays on the existing ECS service until the reviewed W4
+# retarget. The EKS listener ARN is Terraform-wired, never pasted into tfvars.
+serving_target = "ecs"
 
 # Customer-managed KMS key (modules/kms) for S3, RDS, DynamoDB, and CloudWatch
 # log groups. Keep false for the original encryption and a zero-diff plan;

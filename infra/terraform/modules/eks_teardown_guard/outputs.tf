@@ -1,7 +1,7 @@
 # modules/eks_teardown_guard/outputs.tf
 
 output "function_name" {
-  description = "Name of the guard Lambda function (invoke it manually to exercise the force-destroy in a demo window, gate 5.9's live requirement)."
+  description = "Name of the guard Lambda function. W4 proves it through its Scheduler target, not a direct manual invocation."
   value       = aws_lambda_function.guard.function_name
 }
 
