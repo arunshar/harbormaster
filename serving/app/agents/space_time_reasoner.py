@@ -10,9 +10,9 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from shapely.geometry import Polygon, mapping
+from shapely.geometry import mapping
 
-from app.components.space_time_prism import Prism, intersect, speed_bounds_for
+from app.components.space_time_prism import Polygonal, Prism, intersect, speed_bounds_for
 from app.config import Settings
 from app.models import AnchorPair, GeoEllipse
 
@@ -43,9 +43,9 @@ class SpaceTimeReasoner:
             base_polygon_geojson=mapping(prism.ellipse_polygon()),
         )
 
-    async def intersect_pairwise(self, prisms: Iterable[Prism]) -> list[Polygon]:
+    async def intersect_pairwise(self, prisms: Iterable[Prism]) -> list[Polygonal]:
         ps = list(prisms)
-        out: list[Polygon] = []
+        out: list[Polygonal] = []
         for i in range(len(ps)):
             for j in range(i + 1, len(ps)):
                 inter = intersect(ps[i], ps[j])

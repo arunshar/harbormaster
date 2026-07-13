@@ -14,7 +14,7 @@ from typing import Literal
 
 from shapely.geometry import Polygon, mapping
 
-from app.components.space_time_prism import Prism, intersect
+from app.components.space_time_prism import Polygonal, Prism, intersect
 from app.config import Settings
 from app.models import RendezvousRegion
 
@@ -142,7 +142,7 @@ class RendezvousFinderAgent:
         return t0, t1
 
     @staticmethod
-    def _confidence(a: Prism, b: Prism, inter: Polygon, dc_bonus: float = 0.0) -> float:
+    def _confidence(a: Prism, b: Prism, inter: Polygonal, dc_bonus: float = 0.0) -> float:
         # smaller intersection relative to MOBR area implies tighter bound -> higher confidence
         if inter.is_empty:
             return 0.0

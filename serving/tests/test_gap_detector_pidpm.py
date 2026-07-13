@@ -11,9 +11,10 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from app.agents.gap_detector import GapDetectorAgent
+from app.agents.gap_detector import GapDetectorAgent, _mobr_bounds_overlap
+from app.components.space_time_prism import Prism
 from app.config import Settings
-from app.models import Anchor
+from app.models import Anchor, AnchorPair, SpeedBounds
 
 T0 = datetime(2024, 6, 1, tzinfo=UTC)
 
@@ -83,3 +84,54 @@ async def test_transitive_gap_prisms_merge_into_one_connected_region():
     # not emitted as separate (previously double-counted / dropped) records
     assert gaps[0].start.lat == 0.0
     assert gaps[0].end.lat == pytest.approx(0.2)
+
+
+def test_antimeridian_mobr_components_do_not_overlap_greenwich_bounds():
+    bounds = SpeedBounds(v_max_mps=20.0)
+    dateline = Prism.compute(
+        AnchorPair(
+            a=Anchor(lat=0.0, lon=179.9, t=T0),
+            b=Anchor(lat=0.0, lon=-179.9, t=T0 + timedelta(hours=2)),
+        ),
+        bounds,
+    ).mobr()
+    greenwich = Prism.compute(
+        AnchorPair(
+            a=Anchor(lat=0.0, lon=-0.1, t=T0),
+            b=Anchor(lat=0.0, lon=0.1, t=T0 + timedelta(hours=2)),
+        ),
+        bounds,
+    ).mobr()
+    seam_neighbor = Prism.compute(
+        AnchorPair(
+            a=Anchor(lat=0.0, lon=-179.95, t=T0),
+            b=Anchor(lat=0.0, lon=-179.75, t=T0 + timedelta(hours=2)),
+        ),
+        bounds,
+    ).mobr()
+    exact_seam = Prism.compute(
+        AnchorPair(
+            a=Anchor(lat=0.0, lon=180.0, t=T0),
+            b=Anchor(lat=0.0, lon=-180.0, t=T0 + timedelta(hours=2)),
+        ),
+        bounds,
+    ).mobr()
+
+    assert not _mobr_bounds_overlap(dateline, greenwich)
+    assert _mobr_bounds_overlap(dateline, seam_neighbor)
+    assert _mobr_bounds_overlap(exact_seam, seam_neighbor)
+
+
+@pytest.mark.asyncio
+async def test_antimeridian_gap_uses_short_distance_and_cut_geojson():
+    traj = [
+        Anchor(lat=0.0, lon=179.9, t=T0),
+        Anchor(lat=0.0, lon=-179.9, t=T0 + timedelta(minutes=40)),
+    ]
+
+    gaps = await GapDetectorAgent(Settings()).detect({"trajectory": traj, "domain": "vessel"})
+
+    assert len(gaps) == 1
+    assert gaps[0].distance_m == pytest.approx(22_238.985_329, rel=1e-9)
+    assert gaps[0].p_physical == 1.0
+    assert gaps[0].coverage_polygon_geojson["type"] == "MultiPolygon"
