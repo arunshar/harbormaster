@@ -513,3 +513,75 @@ An entry graduates from ANTICIPATED to grounded only when it is backed by a real
 - **Root cause:** the sweep's mutation-testing lens edited source files in place to check whether a mutation survives, then reverted them. The reverts restored the source cleanly, but Python had already compiled `.pyc` bytecode from the MUTATED source into `__pycache__`, and its invalidation check did not trigger a recompile, so the interpreter loaded stale bytecode that no longer matched the (correct) source. `inspect.getsource` reads the `.py` and looked right; the running code came from the poisoned `.pyc`.
 - **Fix:** cleared every `__pycache__` directory; the full suite went green. The lesson was recorded so future sweeps run with `PYTHONDONTWRITEBYTECODE=1` or clear the cache on exit.
 - **Lesson:** any tool that rewrites source in place (mutation testing, codemods, autofixers) can leave `.pyc` files whose bytecode outlives the source it came from, and a test failing against source that reads correctly is the signature. When behavior contradicts the source you can see, suspect the bytecode cache before the logic.
+
+## P41: An optional empty Terraform value is still an invalid AWS API value
+
+**Tags:** [PLATFORM / personal-build] TOOLING
+
+**Status: GROUNDED**; 2026-07-12, Wave 4 W3 live window (commit `86f3d63`, `infra/terraform/modules/kda_flink/main.tf`; fix verified in the same live window).
+
+- **Symptom:** the Kinesis Data Analytics v2 application failed during `terraform apply` with `ValidationException: Member must have length greater than or equal to 1`, even though the empty `quarantine_bucket` value meant that quarantining was intentionally disabled.
+- **Wrong first hypothesis:** an unrelated Flink application setting or Terraform provider serialization bug was producing a malformed request.
+- **Root cause:** Terraform still serialized `quarantine_bucket = ""` into the Flink property map. Kinesis Analytics v2 rejects every zero-length property-map value; an empty string is not the same as an absent optional property at the AWS API boundary.
+- **Fix:** constructed the property map with `merge()` and conditionally added `quarantine_bucket` only when it was nonempty. The Flink job already treats a missing property as disabled, so the change fixed the request without changing runtime semantics.
+- **Lesson:** an optional value has two representations, absent and present-but-empty, and external APIs may accept only one. Model omission explicitly at the IaC boundary instead of assuming an empty string carries application-level meaning through every layer.
+
+## P42: `.dockerignore` excluded the source tree a nested Dockerfile needed
+
+**Tags:** [PLATFORM / personal-build] TOOLING
+
+**Status: GROUNDED**; 2026-07-12, Wave 4 W3 image build (commit `86f3d63`, `.dockerignore` and `cdc/consumer/Dockerfile`; rebuilt successfully in the same window).
+
+- **Symptom:** the first real CDC consumer image build failed at `COPY cdc ./cdc`; Docker reported that the source path was missing even though the directory existed in the repository.
+- **Wrong first hypothesis:** the Dockerfile was using the wrong build context, or the image-build command pointed at the wrong directory.
+- **Root cause:** the repository-level `.dockerignore` excluded the entire `cdc` tree from the build context. The Connect image had never exposed the mistake because its Dockerfile downloads a JAR and copies no local CDC source, while the consumer Dockerfile imports the package and must copy it.
+- **Fix:** removed the blanket `cdc` exclusion and documented why that tree must remain in the context, matching the existing carve-out for another locally imported package.
+- **Lesson:** build-context filters are shared dependencies across every Dockerfile that uses the context. A successful sibling image proves nothing if it copies a different subset of the repository; test each real Dockerfile against the exact context it will receive.
+
+## P43: Private DNS made one endpoint security group a VPC-wide dependency
+
+**Tags:** [PLATFORM / personal-build] NETWORKING SECURITY
+
+**Status: GROUNDED**; 2026-07-12, Wave 4 W3 live CDC deployment (commit `86f3d63`, `infra/terraform/modules/cdc_monitoring/main.tf`; the Debezium task retrieved its secret after the live fix).
+
+- **Symptom:** the Debezium Fargate task failed during startup with `ResourceInitializationError`; `GetSecretValue` timed out even though the task had the right Secrets Manager permission and outbound network access.
+- **Wrong first hypothesis:** the secret ARN, task execution-role policy, or ECS secret injection configuration was wrong.
+- **Root cause:** the monitoring module created private-DNS interface endpoints for Secrets Manager and CloudWatch. Those DNS names resolve to the endpoint ENIs for every client in the VPC, but the endpoint security group allowed port 443 only from the slot-lag Lambda security group. Debezium was routed to the endpoint and silently blocked at ingress.
+- **Fix:** allowed HTTPS ingress from the VPC CIDR, consistent with the endpoint's VPC-wide private-DNS scope and the convention used by the other modules.
+- **Lesson:** enabling private DNS changes the network path for the whole VPC, not just the resource that created the endpoint. The endpoint security group's trust scope must cover every intended in-VPC caller or valid IAM requests will look like unexplained network timeouts.
+
+## P44: MSK's data plane uses `kafka-cluster:*`, not `kafka:*`
+
+**Tags:** [PLATFORM / personal-build] SECURITY TOOLING
+
+**Status: GROUNDED**; 2026-07-12, Wave 4 W3 live CDC deployment (commit `86f3d63`, `infra/aws/harbormaster-permissions-boundary.json`; boundary policy v2 applied live and the Connect worker authenticated to MSK and joined its group).
+
+- **Symptom:** the Connect worker crash-looped with `SaslAuthenticationException`, and ECS Exec was unavailable, even though its task role contained the expected MSK IAM and session-channel permissions.
+- **Wrong first hypothesis:** the task-role policy, MSK bootstrap configuration, or IAM SASL client properties were incomplete.
+- **Root cause:** the permissions boundary is an intersection, so task-role allows outside the boundary are effective denies. The boundary allowed `kafka:*`, the MSK control-plane namespace, but omitted `kafka-cluster:*`, the MSK IAM data-plane namespace. It also omitted `ssmmessages:*`, which ECS Exec needs for its channels.
+- **Fix:** added both namespaces to the boundary and applied it as policy version v2. The worker then authenticated to MSK and joined its consumer group, and the live debugging channel became available.
+- **Lesson:** AWS service permissions can be split across similarly named IAM namespaces, and a permissions boundary must admit every namespace used by the workload. Validate effective permissions at the intersection, not by reading the task role alone.
+
+## P45: An unquoted remote heredoc erased a secret-provider reference before validation
+
+**Tags:** [PLATFORM / personal-build] TOOLING SECURITY
+
+**Status: GROUNDED**; live symptom observed 2026-07-12 in the Wave 4 W3 window, root cause reproduced and fix verified locally the same day (commit `159da26`, `cdc/connector/registration.py`, test `cdc/tests/test_connector_registration.py`, transcript `docs/drills/CDC_connector_registration_local_2026-07-12.md`). The corrected command has not been retried on AWS.
+
+- **Symptom:** Debezium connector validation reported an empty database password in separate attempts using `${env:...}` and `${dir:...}` references. The ECS-injected secret existed, and the tmpfs file used by the `dir` attempt contained 28 bytes.
+- **Wrong first hypothesis:** Kafka Connect 3.7 was resolving ConfigProvider references after `Connector.validate()`, or the Debezium image's providers were broken at validation time.
+- **Root cause:** the runbook sent connector JSON through an unquoted remote Bash heredoc. Bash expanded `${env:...}` and `${dir:...}` as shell parameter expressions before `curl` ran, so Kafka Connect received an empty string and never saw a provider placeholder. Kafka 3.7 source confirmed that worker-side transformation happens before connector validation.
+- **Fix:** base64-encoded the JSON locally, decoded it inside the remote command, and posted the decoded bytes with `--data-binary @-`. The regression test runs the real shell and HTTP transport and proves the placeholder survives. A fresh local Debezium 2.7 and Connect 3.7 stack reached connector and task state `RUNNING` and passed all five Phase 2 checks.
+- **Lesson:** when a downstream parser appears to erase syntax, inspect every upstream interpreter first. Secret references are code-like strings, and shell transport must preserve their bytes exactly; encode the payload instead of layering fragile quoting rules.
+
+## P46: A rolling ECS deployment leaves two plausible task ARNs
+
+**Tags:** [PLATFORM / personal-build] CONCURRENCY TOOLING
+
+**Status: GROUNDED**; operational finding from the 2026-07-12 Wave 4 W3 live window (commit `86f3d63`, `docs/runbooks/WAVE4_LIVE_WINDOWS.md`). This is the sixth W3 finding and a runbook correction, not a code-path fix.
+
+- **Symptom:** an ECS Exec check appeared to prove that a just-deployed configuration change had not taken effect; the inspected task still showed the old environment and behavior after a successful apply.
+- **Wrong first hypothesis:** Terraform or ECS had ignored the new task definition, or the replacement task had started with stale configuration.
+- **Root cause:** ECS rolling deployment temporarily ran the old and new tasks together. A task ARN captured before the apply still identified a valid running task, but it was the retiring revision, so subsequent checks interrogated the wrong container.
+- **Fix:** changed the runbook to re-fetch the current `RUNNING` task ARN after every apply before executing diagnostics.
+- **Lesson:** in a rolling deployment, `RUNNING` proves liveness, not freshness. Treat task identity as ephemeral after every deployment and re-fetch it before collecting diagnostic evidence.
