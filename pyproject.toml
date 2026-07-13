@@ -117,9 +117,9 @@ src = ["serving", "streaming", "cdc", "lake", "mlops", "."]
 
 [tool.ruff.format]
 # Grandfathered format-debt: these files are not ruff-format-clean today
-# (measured 2026-07-06: 15 files, 249 lines). Four are vendored verbatim from
-# geotrace-agent and MUST stay byte-identical (see per-file-ignores below);
-# the rest are pre-existing debt. Excluded from `ruff format --check` so the CI
+# (measured 2026-07-06: 15 files, 249 lines). Three agent modules remain verbatim
+# from geotrace-agent; space_time_prism.py is a regression-tested local fork.
+# The rest are pre-existing debt. Excluded from `ruff format --check` so the CI
 # format gate is green now while still enforcing format on every other file.
 # This is format-only; these files are still linted. Burn the list down.
 exclude = [
@@ -144,7 +144,8 @@ exclude = [
 select = ["E", "F", "I", "UP", "B"]
 
 [tool.ruff.lint.per-file-ignores]
-# Verbatim-vendored from geotrace-agent; kept byte-identical, not reformatted.
+# GeoTrace-derived files retain their upstream formatting. The three agent
+# modules stay byte-identical; space_time_prism.py is a Harbormaster-maintained fork.
 "serving/app/components/space_time_prism.py" = ["E501"]
 "serving/app/agents/space_time_reasoner.py" = ["E501"]
 "serving/app/agents/rendezvous_finder.py" = ["E501"]

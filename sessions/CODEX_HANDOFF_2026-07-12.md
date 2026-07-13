@@ -139,9 +139,11 @@ before keyed-state access.
 The focused source test run passed 93 tests at 99.64% line and branch coverage,
 and isolated checks passed against the packaged Flink ZIP. No Managed Flink job
 was run. The sentinel removes the pre-quarantine exception but can still become
-a hot key group during sustained malformed traffic. Remaining code work is the
-prism ellipse center and the surviving test-strength mutants. See
-`docs/drills/FLINK_MMSI_KEY_LOCAL_2026-07-13.md`.
+a hot key group during sustained malformed traffic. The prism ellipse-center
+defect is also locally complete with direct and dynamic-merge regressions.
+Its pre-existing antimeridian and near-pole projection limits remain documented
+outside finding 20. Remaining ordered code work is the surviving test-strength
+mutants. See `docs/drills/FLINK_MMSI_KEY_LOCAL_2026-07-13.md`.
 
 ### 4. Structural / low-priority
 
@@ -167,9 +169,8 @@ production-image, and fresh kind CDC evidence. Its live migration and derived-st
 rebuild remain outside the autonomous boundary.
 Continue with:
 
-1. **Robustness items** (open item #3): prism ellipse center, then the remaining
-   test-strength mutants. Each real code defect needs a test that fails before
-   and passes after; each concern remains a separate PR.
+1. **Robustness items** (open item #3): the remaining test-strength mutants.
+   Each concern remains a separate PR with a focused mutation check and full CI.
 2. **War stories P41-P46** to `arunshar/debug-war-stories` (the six W3 fixes; content
    is in this file + the PR #6 commit + the runbook, so it is a copy-and-format job).
 
