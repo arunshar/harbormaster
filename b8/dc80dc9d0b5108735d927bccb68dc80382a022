@@ -3,6 +3,8 @@ docs/WAVE3_FINDINGS.md
 serving/tests/test_bedrock_explainer.py
   s_87fd0589dba2e0::t_b61143fc49a3ea 78-93,107-110
   s_87fd0589dba2e0::t_7981be7f709266 111-112
+sessions/CODEX_HANDOFF_2026-07-12.md
+  s_87fd0589dba2e0::t_e5a1ceb37ca9df 146-149,175-177
 ---
 {
   "schema_version": "authorship/3.0.0",
