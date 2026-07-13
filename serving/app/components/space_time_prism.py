@@ -1,5 +1,9 @@
 """Hägerstrand space-time prism kernel.
 
+Derived from GeoTrace-Agent. Harbormaster maintains a local fork for verified
+serving fixes; supplied ellipses are centered on their own foci rather than the
+Prism's anchor pair and use the local projection defined by those foci.
+
 Given two anchors A = (lat_A, lon_A, t_A) and B = (lat_B, lon_B, t_B)
 with t_A < t_B, and a maximum speed v_max, the set of points reachable
 from A by t and able to reach B by t_B is, at each interior time t,
@@ -10,9 +14,11 @@ a geo-ellipse with foci A and B and semi-major axis
 The full prism is the union of these ellipses across t in [t_A, t_B].
 This module computes prisms, ellipses, MOBRs, and their intersections.
 
-Math is done in a local equirectangular projection centered on the
-midpoint of the anchor pair so that distances are Euclidean to first
-order. For continental-scale anchors switch to a UTM zone via pyproj.
+Math is done in a local equirectangular projection centered on the active
+ellipse's foci so that distances are Euclidean to first order. The base ellipse
+uses the prism anchor pair; a supplied ellipse uses its own foci. For
+continental-scale, antimeridian-crossing, or near-polar anchors, switch to a
+projection and geometry representation designed for that domain.
 """
 
 from __future__ import annotations
@@ -25,7 +31,7 @@ from typing import Any
 
 import numpy as np
 from shapely.affinity import rotate, translate
-from shapely.geometry import Polygon
+from shapely.geometry import MultiPolygon, Polygon
 from shapely.geometry.polygon import orient as orient_polygon
 
 from app.models import AnchorPair, GeoEllipse, SpeedBounds
@@ -71,6 +77,19 @@ def _projection_for(pair: AnchorPair) -> _LocalProjection:
     return _LocalProjection(
         lat_ref_rad=math.radians(0.5 * (pair.a.lat + pair.b.lat)),
         lon_ref_rad=math.radians(0.5 * (pair.a.lon + pair.b.lon)),
+    )
+
+
+def _ellipse_center_xy(proj: _LocalProjection, ellipse: GeoEllipse) -> tuple[float, float]:
+    ax, ay = proj.to_xy(ellipse.a_lat, ellipse.a_lon)
+    bx, by = proj.to_xy(ellipse.b_lat, ellipse.b_lon)
+    return 0.5 * (ax + bx), 0.5 * (ay + by)
+
+
+def _projection_for_ellipse(ellipse: GeoEllipse) -> _LocalProjection:
+    return _LocalProjection(
+        lat_ref_rad=math.radians(0.5 * (ellipse.a_lat + ellipse.b_lat)),
+        lon_ref_rad=math.radians(0.5 * (ellipse.a_lon + ellipse.b_lon)),
     )
 
 
@@ -210,32 +229,31 @@ class Prism:
         """Minimum Orthogonal Bounding Rectangle of an ellipse, in lon/lat."""
 
         e = ellipse or self.base_ellipse
-        # rectangle in local xy aligned with ellipse axes, centered on AB midpoint
-        cx = 0.5 * (self.proj.to_xy(self.pair.a.lat, self.pair.a.lon)[0]
-                    + self.proj.to_xy(self.pair.b.lat, self.pair.b.lon)[0])
-        cy = 0.5 * (self.proj.to_xy(self.pair.a.lat, self.pair.a.lon)[1]
-                    + self.proj.to_xy(self.pair.b.lat, self.pair.b.lon)[1])
+        proj = _projection_for_ellipse(e)
+        # rectangle in local xy aligned with ellipse axes and centered on its foci
+        cx, cy = _ellipse_center_xy(proj, e)
         a, b, theta = e.semi_major_m, e.semi_minor_m, e.rotation_rad
         local = Polygon([(-a, -b), (a, -b), (a, b), (-a, b)])
         local = rotate(local, math.degrees(theta), origin=(0, 0))
         local = translate(local, cx, cy)
-        coords = [self.proj.to_lonlat(x, y) for x, y in local.exterior.coords]
+        coords = [proj.to_lonlat(x, y) for x, y in local.exterior.coords]
         return orient_polygon(Polygon(coords), sign=1.0)
 
     def ellipse_polygon(self, ellipse: GeoEllipse | None = None, n: int = 64) -> Polygon:
         e = ellipse or self.base_ellipse
-        ax, ay = self.proj.to_xy(self.pair.a.lat, self.pair.a.lon)
-        bx, by = self.proj.to_xy(self.pair.b.lat, self.pair.b.lon)
-        cx, cy = 0.5 * (ax + bx), 0.5 * (ay + by)
+        proj = _projection_for_ellipse(e)
+        cx, cy = _ellipse_center_xy(proj, e)
         a, b, theta = e.semi_major_m, e.semi_minor_m, e.rotation_rad
         ts = np.linspace(0, 2 * math.pi, n, endpoint=False)
         xs = cx + a * np.cos(ts) * math.cos(theta) - b * np.sin(ts) * math.sin(theta)
         ys = cy + a * np.cos(ts) * math.sin(theta) + b * np.sin(ts) * math.cos(theta)
-        coords = [self.proj.to_lonlat(float(x), float(y)) for x, y in zip(xs, ys, strict=True)]
+        coords = [proj.to_lonlat(float(x), float(y)) for x, y in zip(xs, ys, strict=True)]
         return orient_polygon(Polygon(coords), sign=1.0)
 
     @staticmethod
-    def merge_dynamic(ellipses: Iterable[GeoEllipse], pair: AnchorPair) -> Polygon:
+    def merge_dynamic(
+        ellipses: Iterable[GeoEllipse], pair: AnchorPair
+    ) -> Polygon | MultiPolygon:
         """Dynamic Region Merge: maximal-union of overlapping ellipses.
 
         Mirrors STAGD-DRM: indexes ellipses by R*-tree and unions

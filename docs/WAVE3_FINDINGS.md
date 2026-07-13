@@ -22,6 +22,7 @@ Disposition key: **Fixed** (with a regression test) / **Deferred** (real but low
 | 5 | high | `serving/app/watchlist.py`, `cdc/consumer/envelope.py`, `cdc/sinks/dynamo.py`, `cdc/sinks/redis_cache.py` | The CDC-maintained DynamoDB and Redis read side used tenant-oblivious MMSI keys, so same-MMSI rows could overwrite or read across tenants. | Carried `tenant_id` through Debezium envelopes, feature entity IDs, DynamoDB partitions, Redis keys, and `WatchlistLookup`. A fresh local kind stack passed the CDC smoke in 4.28 seconds and all five Phase 2 e2e criteria; a local production-image run verified same-MMSI isolation across both API containers. |
 | 3 | med | `cdc/schema/tenancy.py`, `scripts/migrate_p39.py` | Backend-connect DDL could backfill pre-existing rows from the session tenant instead of the zero sentinel. | Replaced implicit migration with an explicit sentinel backfill and row-preserving census. The migration shares an advisory lock with runtime schema bootstrap, rejects active CDC, and requires an all-tenant `BYPASSRLS` or superuser view when RLS is already enabled. |
 | 4 | n/a | `streaming/flink/job.py`, `streaming/flink/transforms.py`, `streaming/flink/window_logic.py` | The production `key_by` selector parsed JSON inline, so malformed input could fail the partitioning operator before the process function reached its quarantine path. | Replaced the throwing selector with strict `mmsi_partition_key` copies in source and packaged runtime code. Invalid inputs use sentinel key `-1`; `FeatureProcess` calls `_quarantine` and returns before keyed-state access. Local tests cover valid, malformed, out-of-range, and deeply nested JSON. |
+| 20 | n/a | `serving/app/components/space_time_prism.py` | `mobr` and `ellipse_polygon` centered a supplied ellipse on the prism's anchor pair instead of the supplied ellipse's own foci. | Within the kernel's documented local projection domain, centered each active ellipse on its own foci with its own projection. Direct geometry, dynamic-merge, and meter-scale-at-latitude regressions cover the fix. The module is now a maintained GeoTrace-derived fork. |
 
 The fixes and evidence for findings 1, 3, and 5 are local only. The live AWS Postgres migration and
 tenant-qualified DynamoDB/Redis rebuild remain a human-run maintenance window;
@@ -39,7 +40,12 @@ one key group and create a hot partition. See
 
 ## Deferred to the Codex production-hardening plan (real, lower-priority)
 
-Pre-existing robustness (not Phase 5): **20** (`space_time_prism.py` `ellipse_polygon` center ignores the passed ellipse's own foci); **11** (`watchlist.py` `... or 0.9` is a redundant no-op after `_attr`'s default); **12** (the stretch service trains inline in an `async def` handler, blocking the loop; acceptable for a demo stretch, noted).
+Pre-existing robustness (not Phase 5): **11** (`watchlist.py` `... or 0.9` is a redundant no-op after `_attr`'s default); **12** (the stretch service trains inline in an `async def` handler, blocking the loop; acceptable for a demo stretch, noted).
+
+Pre-existing projection debt: the local equirectangular prism kernel does not
+split antimeridian-crossing geometry and is unstable near the poles. Finding 20
+fixes supplied-ellipse centering within the documented local projection domain;
+it does not close those broader geographic edge cases.
 
 ## Refuted during production hardening
 
