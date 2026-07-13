@@ -171,10 +171,14 @@ post-PUT status-visibility race, with regression tests and fresh kind evidence.
 P39 composite-key hardening is also complete locally, with real PostgreSQL,
 production-image, and fresh kind CDC evidence. Its live migration and derived-store
 rebuild remain outside the autonomous boundary.
-Continue with:
 
-1. **War stories P41-P46** to `arunshar/debug-war-stories` (the six W3 fixes; content
-   is in this file + the PR #6 commit + the runbook, so it is a copy-and-format job).
+All ranked Section A work is complete. The final port found that the target mirror
+stopped at P28, so P29-P46 were copied from the corrected Harbormaster source and
+merged as `arunshar/debug-war-stories` PR #1 on 2026-07-13. Before the copy,
+Harbormaster PR #22 corrected P31's source-path provenance. The mirror now contains
+106 journal stories plus 46 platform stories, 152 total. Editorial curation of the
+50 raw-mirrored entries remains separate low-priority archive work, not a Phase 5
+implementation gate.
 
 ### B. Human-run live-AWS windows (Codex PREPARES and DRIVES WITH the human, never autonomous)
 
@@ -233,6 +237,5 @@ and close the Phase 5 gate in `docs/phases/PHASE_5.md` with the real numbers.
 
 Read `git log --oneline -8`, `gh pr list`, and `docs/runbooks/WAVE4_LIVE_WINDOWS.md`.
 If the goal is to close the Phase 5 gate, schedule the W4 human-run window. For safe
-autonomous work, continue with the next one-concern robustness PR; P39 is locally
-complete. Do not retry the optional connector command or run the P39 cutover on AWS
-except in a scheduled human-run window.
+autonomous work, Section A is complete. Do not retry the optional connector command
+or run the P39 cutover on AWS except in a scheduled human-run window.
