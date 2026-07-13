@@ -36,7 +36,7 @@ from cdc.sinks.base import MemoryAudit, MemorySink  # noqa: E402
 
 TRANSCRIPT = REPO_ROOT / "docs" / "drills" / "P2_duplicates.md"
 
-WATCH_KEY = 'watchlist|{"mmsi":367000003}'
+WATCH_KEY = 'watchlist|{"mmsi":367000003,"tenant_id":"00000000-0000-0000-0000-000000000000"}'
 
 
 class UnguardedMemorySink(MemorySink):

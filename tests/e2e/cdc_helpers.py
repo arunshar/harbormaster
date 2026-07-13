@@ -7,6 +7,8 @@ import hashlib
 import json
 from typing import Any
 
+DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000000"
+
 
 def has_reason(score_response: dict, code: str) -> bool:
     """True if a /v1/score-ais response carries the given reason code."""
@@ -26,14 +28,18 @@ def online_state_hash(items: list[dict[str, Any]]) -> str:
     return hashlib.sha256(canon.encode()).hexdigest()
 
 
-def missing_online(written_mmsis: list[int], items: list[dict[str, Any]]) -> list[int]:
+def missing_online(
+    written_mmsis: list[int],
+    items: list[dict[str, Any]],
+    tenant_id: str = DEFAULT_TENANT_ID,
+) -> list[int]:
     """Which written watchlist MMSIs have not (yet) reached the online store."""
     online = {
         i.get("entity_id", {}).get("S")
         for i in items
         if i.get("feature_name", {}).get("S") == "watchlist" and item_is_online(i)
     }
-    return [m for m in written_mmsis if str(m) not in online]
+    return [m for m in written_mmsis if f"{tenant_id}:{m}" not in online]
 
 
 def score_payload(mmsi: int, lat: float = 37.7, lon: float = -122.5) -> dict:

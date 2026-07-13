@@ -19,6 +19,9 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from typing import Any
+from uuid import UUID
+
+from cdc.schema.ddl import CDC_TABLES, DEFAULT_TENANT_ID
 
 DATA_OPS = ("c", "u", "d", "r")
 
@@ -39,6 +42,15 @@ class ChangeEvent:
     before: dict[str, Any] | None
     after: dict[str, Any] | None
     source: dict[str, Any] = field(default_factory=dict, hash=False)
+    # Routing normalization may add tenant_id to legacy row images. Retain the
+    # delivered key and images separately so cdc_audit remains transport truth.
+    delivered_pk: dict[str, Any] | None = field(default=None, compare=False, hash=False, repr=False)
+    delivered_before: dict[str, Any] | None = field(
+        default=None, compare=False, hash=False, repr=False
+    )
+    delivered_after: dict[str, Any] | None = field(
+        default=None, compare=False, hash=False, repr=False
+    )
 
     @property
     def is_delete(self) -> bool:
@@ -88,6 +100,46 @@ def _unwrap(raw: bytes | str | None) -> dict[str, Any] | None:
     return obj
 
 
+def _canonical_tenant_id(value: Any) -> str:
+    try:
+        return str(UUID(str(value)))
+    except (ValueError, TypeError, AttributeError) as exc:
+        raise EnvelopeError(f"invalid tenant_id: {value!r}") from exc
+
+
+def _normalize_registry_identity(
+    key_obj: dict[str, Any], payload: dict[str, Any]
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Converge legacy and composite Debezium keys on one tenant identity.
+
+    Events recorded before P39 have no tenant column and belong to the legacy
+    single-tenant sentinel. During a schema transition, a row tenant can also
+    arrive with the old key shape. Any explicit disagreement is corruption and
+    fails before a derived-store write.
+    """
+    explicit: set[str] = set()
+    if "tenant_id" in key_obj:
+        explicit.add(_canonical_tenant_id(key_obj["tenant_id"]))
+    for image_name in ("before", "after"):
+        image = payload.get(image_name)
+        if isinstance(image, dict) and "tenant_id" in image:
+            explicit.add(_canonical_tenant_id(image["tenant_id"]))
+    if len(explicit) > 1:
+        raise EnvelopeError("envelope has mismatched tenant_id in key and row")
+    tenant_id = next(iter(explicit), DEFAULT_TENANT_ID)
+
+    normalized_key = dict(key_obj)
+    normalized_key["tenant_id"] = tenant_id
+    normalized_payload = dict(payload)
+    for image_name in ("before", "after"):
+        image = payload.get(image_name)
+        if isinstance(image, dict):
+            normalized_image = dict(image)
+            normalized_image["tenant_id"] = tenant_id
+            normalized_payload[image_name] = normalized_image
+    return normalized_key, normalized_payload
+
+
 def parse_envelope(topic: str, key: bytes | str | None, value: bytes | str | None) -> ParsedMessage:
     """Parse one Kafka message from a Debezium topic into a typed event."""
     if topic.startswith(HEARTBEAT_TOPIC_PREFIX):
@@ -98,6 +150,9 @@ def parse_envelope(topic: str, key: bytes | str | None, value: bytes | str | Non
 
     if payload is None:
         # Kafka tombstone: null value after an op=d event (tombstones.on.delete).
+        if key_obj:
+            tenant_id = _canonical_tenant_id(key_obj.get("tenant_id", DEFAULT_TENANT_ID))
+            key_obj = {**key_obj, "tenant_id": tenant_id}
         return Tombstone(pk=key_obj)
 
     if "op" not in payload:
@@ -119,6 +174,11 @@ def parse_envelope(topic: str, key: bytes | str | None, value: bytes | str | Non
 
     if not key_obj:
         raise EnvelopeError(f"envelope for {table} has no key; the pk comes from the key")
+    delivered_pk = dict(key_obj)
+    delivered_before = dict(payload["before"]) if isinstance(payload.get("before"), dict) else None
+    delivered_after = dict(payload["after"]) if isinstance(payload.get("after"), dict) else None
+    if table in CDC_TABLES:
+        key_obj, payload = _normalize_registry_identity(key_obj, payload)
 
     return ChangeEvent(
         table=str(table),
@@ -129,4 +189,7 @@ def parse_envelope(topic: str, key: bytes | str | None, value: bytes | str | Non
         before=payload.get("before"),
         after=payload.get("after"),
         source=source,
+        delivered_pk=delivered_pk,
+        delivered_before=delivered_before,
+        delivered_after=delivered_after,
     )

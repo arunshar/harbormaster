@@ -58,15 +58,22 @@ def test_fixture_semantics_spot_checks():
     update_lsn = [e.lsn for e in events if e.op == "u"][0]
     delete_lsn = [e.lsn for e in events if e.op == "d"][0]
     # the update won over the create and its redelivery
-    wl = state['watchlist|{"mmsi":367000003}']
+    wl = state['watchlist|{"mmsi":367000003,"tenant_id":"00000000-0000-0000-0000-000000000000"}']
     assert wl["deleted"] is False and wl["row"]["severity"] == 0.95
     assert wl["last_applied_lsn"] == update_lsn
     # the snapshot-seeded watchlist row was deleted by the streamed op=d
-    legacy = state['watchlist|{"mmsi":367000001}']
+    legacy = state[
+        'watchlist|{"mmsi":367000001,"tenant_id":"00000000-0000-0000-0000-000000000000"}'
+    ]
     assert legacy["deleted"] is True and legacy["row"] is None
     assert legacy["last_applied_lsn"] == delete_lsn
     # snapshot vessels row survives untouched
-    assert state['vessels|{"mmsi":367000001}']["row"]["name"] == "PACIFIC HARRIER"
+    assert (
+        state['vessels|{"mmsi":367000001,"tenant_id":"00000000-0000-0000-0000-000000000000"}'][
+            "row"
+        ]["name"]
+        == "PACIFIC HARRIER"
+    )
 
 
 # ------------------------------------------------------- invariants 1 and 2
@@ -165,6 +172,23 @@ def test_snapshot_writes_at_the_floor_and_stream_always_outranks():
     a2 = Applier(store=store2, audit=MemoryAudit())
     rr = a2.apply_batch([_mk("r", 5000), _mk("r", 5000)], commit=lambda: None)
     assert rr.applied == 1 and rr.guard_rejected == 1
+
+
+def test_p39_resnapshot_requires_cleared_tenant_qualified_state():
+    pk = {"tenant_id": "00000000-0000-0000-0000-000000000000", "mmsi": 1}
+    store = MemorySink()
+    assert store.upsert("watchlist", pk, {"reason": "stale"}, lsn=7) is True
+
+    result = Applier(store=store, audit=MemoryAudit()).apply_batch(
+        [_mk("r", 9000, after={"reason": "snapshot"}, pk=pk)],
+        commit=lambda: None,
+    )
+
+    assert result.applied == 0 and result.guard_rejected == 1
+    state = store.final_state()[
+        'watchlist|{"mmsi":1,"tenant_id":"00000000-0000-0000-0000-000000000000"}'
+    ]
+    assert state["row"]["reason"] == "stale" and state["last_applied_lsn"] == 7
 
 
 def test_content_error_is_counted_audited_and_never_stalls_the_batch():
@@ -275,6 +299,7 @@ def test_audit_records_transport_truth_including_redeliveries():
     assert sum(r["applied"] for r in audit.rows) == result.applied
     dupes = [r for r in audit.rows if r["lsn"] == create_lsn and r["event_table"] == "watchlist"]
     assert [r["applied"] for r in dupes] == [True, False]  # first applied, replay rejected
+    assert {r["pk"] for r in dupes} == {'{"mmsi":367000003}'}
 
 
 def test_audit_buffers_until_flush():

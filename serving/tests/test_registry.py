@@ -88,6 +88,37 @@ async def test_configured_registry_propagates_missing_runtime_dependency(monkeyp
         await RegistryStore.connect(Settings(pg_dsn="postgresql://configured"))
 
 
+async def test_configured_registry_propagates_schema_failure(monkeypatch):
+    async def broken_schema(*_args, **_kwargs):
+        raise RuntimeError("P39 schema contract failed")
+
+    monkeypatch.setattr(PostgresRegistryBackend, "connect", broken_schema)
+    with pytest.raises(RuntimeError, match="P39 schema contract failed"):
+        await RegistryStore.connect(Settings(pg_dsn="postgresql://configured"))
+
+
+async def test_configured_registry_falls_back_on_connection_failure(monkeypatch):
+    async def unavailable(*_args, **_kwargs):
+        raise ConnectionRefusedError("connection refused")
+
+    monkeypatch.setattr(PostgresRegistryBackend, "connect", unavailable)
+    store = await RegistryStore.connect(Settings(pg_dsn="postgresql://configured"))
+    assert isinstance(store.backend, MemoryRegistryBackend)
+
+
+@pytest.mark.parametrize(
+    "error",
+    (FileNotFoundError("missing TLS certificate"), PermissionError("TLS key is unreadable")),
+)
+async def test_configured_registry_propagates_non_network_os_error(monkeypatch, error):
+    async def misconfigured(*_args, **_kwargs):
+        raise error
+
+    monkeypatch.setattr(PostgresRegistryBackend, "connect", misconfigured)
+    with pytest.raises(type(error), match=str(error)):
+        await RegistryStore.connect(Settings(pg_dsn="postgresql://configured"))
+
+
 # ------------------------------------------------------------------ endpoints
 
 
@@ -131,10 +162,7 @@ def test_registry_endpoint_input_validation():
         assert c.put(f"/v1/registry/watchlist/{MMSI}", json={"reason": "  "}).status_code == 422
         # unbounded strings are rejected: a DynamoDB item caps at 400 KB
         assert (
-            c.put(
-                f"/v1/registry/watchlist/{MMSI}", json={"reason": "x" * 5000}
-            ).status_code
-            == 422
+            c.put(f"/v1/registry/watchlist/{MMSI}", json={"reason": "x" * 5000}).status_code == 422
         )
 
 

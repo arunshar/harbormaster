@@ -96,7 +96,7 @@ async def seed_snapshot_rows() -> None:
             """
             INSERT INTO vessels (mmsi, name, flag_state, vessel_type, updated_at)
             VALUES ($1, 'PACIFIC HARRIER', 'US', 'cargo', '2026-07-01T00:00:00Z')
-            ON CONFLICT (mmsi) DO NOTHING
+            ON CONFLICT (tenant_id, mmsi) DO NOTHING
             """,
             SNAPSHOT_MMSI,
         )
@@ -105,7 +105,7 @@ async def seed_snapshot_rows() -> None:
             INSERT INTO watchlist (mmsi, reason, severity, added_by, created_at, updated_at)
             VALUES ($1, 'legacy flag', 0.5, 'seed',
                     '2026-06-01T00:00:00Z', '2026-06-01T00:00:00Z')
-            ON CONFLICT (mmsi) DO NOTHING
+            ON CONFLICT (tenant_id, mmsi) DO NOTHING
             """,
             SNAPSHOT_MMSI,
         )
@@ -130,7 +130,8 @@ async def run_live_dml() -> None:
             (
                 """
                 UPDATE watchlist SET severity = 0.95, updated_at = '2026-07-03T12:05:00Z'
-                WHERE mmsi = $1
+                WHERE tenant_id = '00000000-0000-0000-0000-000000000000'::uuid
+                  AND mmsi = $1
                 """,
                 LIVE_MMSI,
             ),
@@ -150,7 +151,12 @@ async def run_live_dml() -> None:
                 f"{LIVE_MMSI}:ofac",
                 LIVE_MMSI,
             ),
-            ("DELETE FROM watchlist WHERE mmsi = $1", SNAPSHOT_MMSI),
+            (
+                """DELETE FROM watchlist
+                   WHERE tenant_id = '00000000-0000-0000-0000-000000000000'::uuid
+                     AND mmsi = $1""",
+                SNAPSHOT_MMSI,
+            ),
         ]
         for sql, *args in steps:
             await conn.execute(sql, *args)

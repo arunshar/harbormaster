@@ -110,14 +110,43 @@ async def _set_tenant(conn, tenant_id: str) -> None:
     await conn.execute("SELECT set_config('app.tenant_id', $1, false)", tenant_id)
 
 
-async def test_each_backend_waits_on_the_shared_schema_bootstrap_lock():
-    """Both DDL paths must participate in the same cross-process lock."""
+async def _create_legacy_registry_schema(conn, *, with_tenant_id: bool = False) -> None:
+    tenant_column = "tenant_id uuid NOT NULL, " if with_tenant_id else ""
+    await conn.execute(
+        f"CREATE TABLE vessels ({tenant_column}mmsi bigint PRIMARY KEY, "
+        "name text NOT NULL DEFAULT '')"
+    )
+    await conn.execute(
+        f"CREATE TABLE watchlist ({tenant_column}mmsi bigint PRIMARY KEY, reason text NOT NULL)"
+    )
+    await conn.execute(
+        f"CREATE TABLE sanctions_flags ({tenant_column}id text PRIMARY KEY, "
+        "mmsi bigint NOT NULL, regime text NOT NULL)"
+    )
+
+
+async def _grant_owner_bypass_rls(owner_dsn: str) -> None:
+    import asyncpg
+
+    admin = await asyncpg.connect(dsn=os.environ["HM_TEST_PG_DSN"])
+    try:
+        role = urlsplit(owner_dsn).username
+        statement = await admin.fetchval("SELECT format('ALTER ROLE %I BYPASSRLS', $1::text)", role)
+        await admin.execute(statement)
+    finally:
+        await admin.close()
+
+
+async def test_each_schema_path_waits_on_the_shared_bootstrap_lock():
+    """Migration and both runtime DDL paths must use one lock."""
     import asyncpg
 
     from cdc.schema import tenancy
+    from scripts.migrate_p39 import migrate
 
     async with fresh_tenant_db() as owner_dsn:
         for connect in (
+            lambda: migrate(owner_dsn),
             lambda: PostgresHitlBackend.connect(owner_dsn, TENANT_A),
             lambda: PostgresRegistryBackend.connect(owner_dsn, TENANT_B),
         ):
@@ -160,7 +189,7 @@ async def test_each_backend_waits_on_the_shared_schema_bootstrap_lock():
                     if not task.done():
                         task.cancel()
                     result = (await asyncio.gather(task, return_exceptions=True))[0]
-                    if not isinstance(result, BaseException):
+                    if result is not None and not isinstance(result, BaseException):
                         await result.close()
                 await observer.close()
                 await blocker.close()
@@ -322,3 +351,160 @@ async def test_registry_backend_sessions_are_tenant_scoped_end_to_end():
         finally:
             await backend_a.close()
             await backend_b.close()
+
+
+async def test_registry_composite_keys_allow_same_business_key_per_tenant():
+    """RLS must not turn a shared MMSI into a cross-tenant uniqueness error."""
+    async with fresh_tenant_db() as owner_dsn:
+        backend_a = await PostgresRegistryBackend.connect(owner_dsn, TENANT_A)
+        backend_b = await PostgresRegistryBackend.connect(owner_dsn, TENANT_B)
+        try:
+            mmsi = 368000040
+            await backend_a.upsert_vessel(mmsi, {"name": "A vessel"})
+            await backend_b.upsert_vessel(mmsi, {"name": "B vessel"})
+            assert (await backend_a.get_vessel(mmsi))["name"] == "A vessel"
+            assert (await backend_b.get_vessel(mmsi))["name"] == "B vessel"
+
+            await backend_a.upsert_watchlist(mmsi, {"reason": "A reason"})
+            await backend_b.upsert_watchlist(mmsi, {"reason": "B reason"})
+            assert (await backend_a.list_watchlist())[0]["reason"] == "A reason"
+            assert (await backend_b.list_watchlist())[0]["reason"] == "B reason"
+
+            await backend_a.upsert_sanction(mmsi, {"regime": "OFAC", "reference": "A"})
+            await backend_b.upsert_sanction(mmsi, {"regime": "OFAC", "reference": "B"})
+            await backend_a.delete_sanctions(mmsi)
+            assert await backend_b.delete_sanctions(mmsi) == 1
+
+            assert await backend_a.delete_watchlist(mmsi) is True
+            assert await backend_b.delete_watchlist(mmsi) is True
+        finally:
+            await backend_a.close()
+            await backend_b.close()
+
+
+async def test_legacy_registry_rows_backfill_to_sentinel_before_key_migration():
+    """A pre-P39 row must not be attributed to the tenant running migration."""
+    async with fresh_tenant_db() as owner_dsn:
+        import asyncpg
+
+        conn = await asyncpg.connect(dsn=owner_dsn)
+        try:
+            await _create_legacy_registry_schema(conn)
+            await _set_tenant(conn, TENANT_A)
+            await conn.execute("INSERT INTO vessels (mmsi, name) VALUES (368000050, 'legacy')")
+
+            # Normal startup must refuse the legacy contract with the reviewed
+            # migration instruction, not fail earlier on the new index.
+            with pytest.raises(RuntimeError, match="run the P39 migration"):
+                await PostgresRegistryBackend.connect(owner_dsn, TENANT_A)
+
+            from scripts.migrate_p39 import migrate
+
+            # Exercise the real entrypoint, including its table/index ordering.
+            await migrate(owner_dsn)
+
+            # The migration session is tenant A, but the old row belongs to the
+            # single-tenant sentinel and is visible only after switching there.
+            assert await conn.fetchval("SELECT count(*) FROM vessels") == 0
+            await _set_tenant(conn, "00000000-0000-0000-0000-000000000000")
+            assert await conn.fetchval("SELECT tenant_id::text FROM vessels") == (
+                "00000000-0000-0000-0000-000000000000"
+            )
+            pk = await conn.fetchval(
+                """SELECT pg_get_constraintdef(oid)
+                     FROM pg_constraint
+                    WHERE conrelid = 'vessels'::regclass AND contype = 'p'"""
+            )
+            assert pk == "PRIMARY KEY (tenant_id, mmsi)"
+
+            # A completed RLS schema still needs an unfiltered all-tenant
+            # census. Grant the reviewed migration role BYPASSRLS, then prove
+            # the transaction is idempotent without relying on filtered zeros.
+            await _grant_owner_bypass_rls(owner_dsn)
+            await migrate(owner_dsn)
+            assert await conn.fetchval("SELECT count(*) FROM vessels") == 1
+        finally:
+            await conn.close()
+
+
+async def test_migration_refuses_an_rls_filtered_legacy_census():
+    """A non-bypass role must never approve a census that FORCE RLS hid."""
+    async with fresh_tenant_db() as owner_dsn:
+        import asyncpg
+
+        from cdc.schema import ddl, tenancy
+        from scripts.migrate_p39 import migrate
+
+        conn = await asyncpg.connect(dsn=owner_dsn)
+        try:
+            await _create_legacy_registry_schema(conn, with_tenant_id=True)
+            await conn.execute(
+                "INSERT INTO vessels (tenant_id, mmsi, name) VALUES ($1::uuid, 368000060, 'A')",
+                TENANT_A,
+            )
+            for table in ddl.CDC_TABLES:
+                for stmt in tenancy.security_statements_for(table):
+                    await conn.execute(stmt)
+        finally:
+            await conn.close()
+
+        with pytest.raises(RuntimeError, match="BYPASSRLS or superuser"):
+            await migrate(owner_dsn)
+
+
+async def test_migration_approval_preserves_tenants_and_repairs_policy_drift(monkeypatch):
+    async with fresh_tenant_db() as owner_dsn:
+        import asyncpg
+
+        from cdc.schema import tenancy
+        from scripts.migrate_p39 import APPROVED_CENSUS_ENV, migrate
+
+        conn = await asyncpg.connect(dsn=owner_dsn)
+        try:
+            await _create_legacy_registry_schema(conn, with_tenant_id=True)
+            await conn.execute(
+                "INSERT INTO vessels (tenant_id, mmsi, name) VALUES ($1::uuid, 368000070, 'A')",
+                TENANT_A,
+            )
+        finally:
+            await conn.close()
+
+        monkeypatch.delenv(APPROVED_CENSUS_ENV, raising=False)
+        with pytest.raises(RuntimeError, match="classify the printed per-tenant census"):
+            await migrate(owner_dsn)
+
+        monkeypatch.setenv(APPROVED_CENSUS_ENV, "1")
+        await migrate(owner_dsn)
+        await _grant_owner_bypass_rls(owner_dsn)
+
+        conn = await asyncpg.connect(dsn=owner_dsn)
+        try:
+            await _set_tenant(conn, TENANT_A)
+            assert (
+                await conn.fetchval("SELECT tenant_id::text FROM vessels WHERE mmsi = 368000070")
+                == TENANT_A
+            )
+
+            await conn.execute(f"DROP POLICY {tenancy.policy_name('vessels')} ON vessels")
+            await conn.execute(
+                f"CREATE POLICY {tenancy.policy_name('vessels')} ON vessels "
+                "USING (true) WITH CHECK (true)"
+            )
+        finally:
+            await conn.close()
+
+        await migrate(owner_dsn)
+        conn = await asyncpg.connect(dsn=owner_dsn)
+        try:
+            qual = await conn.fetchval(
+                """SELECT qual FROM pg_policies
+                     WHERE tablename = 'vessels' AND policyname = $1""",
+                tenancy.policy_name("vessels"),
+            )
+            assert "current_setting" in qual and qual != "true"
+            await conn.execute("CREATE POLICY vessels_unexpected ON vessels USING (true)")
+        finally:
+            await conn.close()
+
+        with pytest.raises(RuntimeError, match="has 2 policies"):
+            await migrate(owner_dsn)

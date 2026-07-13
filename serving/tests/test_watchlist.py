@@ -11,6 +11,9 @@ import asyncio
 import threading
 from typing import Any
 
+import pytest
+
+from app.config import Settings
 from app.metrics import WATCHLIST_LOOKUP_ERRORS
 from app.watchlist import (
     EMPTY_STATUS,
@@ -27,11 +30,15 @@ from app.watchlist import (
 from ._helpers import build_score_in
 
 MMSI = 367000003
+TENANT_A = "11111111-1111-1111-1111-111111111111"
+TENANT_B = "22222222-2222-2222-2222-222222222222"
 
 
-def _item(feature: str, **attrs: Any) -> dict:
+def _item(feature: str, *, tenant_id: str | None = None, **attrs: Any) -> dict:
     out: dict[str, Any] = {
-        "entity_id": {"S": online_entity_id(MMSI)},
+        "entity_id": {
+            "S": online_entity_id(MMSI, tenant_id) if tenant_id else online_entity_id(MMSI)
+        },
         "feature_name": {"S": feature},
     }
     for k, v in attrs.items():
@@ -55,6 +62,19 @@ class FakeDdb:
         if self.err:
             raise self.err
         return {"Items": self.items}
+
+
+class PartitionedFakeDdb(FakeDdb):
+    """Filter the shared fake table by the requested DynamoDB partition."""
+
+    def query(self, **kwargs: Any) -> dict:
+        self.calls.append(kwargs)
+        requested = kwargs["ExpressionAttributeValues"][":e"]["S"]
+        return {
+            "Items": [
+                item for item in self.items if item.get("entity_id", {}).get("S") == requested
+            ]
+        }
 
 
 class FakeRedis:
@@ -133,6 +153,56 @@ def test_cache_hit_skips_ddb():
     assert len(ddb.calls) == 1
 
 
+def test_settings_tenant_reaches_the_lookup():
+    lookup = WatchlistLookup.from_settings(Settings(tenant_id=TENANT_A))
+    assert lookup._tenant_id == TENANT_A
+
+
+@pytest.mark.parametrize("tenant_id", ["", None, "not-a-uuid"])
+def test_online_keys_reject_invalid_tenant_ids(tenant_id):
+    with pytest.raises((TypeError, ValueError)):
+        online_entity_id(MMSI, tenant_id)
+
+
+def test_same_mmsi_cannot_share_cache_or_ddb_partition_across_tenants():
+    redis = FakeRedis()
+    ddb = PartitionedFakeDdb(
+        [
+            _item(FEATURE_WATCHLIST, tenant_id=TENANT_B, reason="tenant B"),
+            _item(FEATURE_WATCHLIST, tenant_id=TENANT_A, reason="tenant A"),
+        ]
+    )
+    lookup_a = WatchlistLookup(
+        ddb_client=ddb,
+        redis_client=redis,
+        table="t",
+        tenant_id=TENANT_A,
+    )
+    lookup_b = WatchlistLookup(
+        ddb_client=ddb,
+        redis_client=redis,
+        table="t",
+        tenant_id=TENANT_B,
+    )
+    assert lookup_a.get(MMSI).reason == "tenant A"
+    assert lookup_b.get(MMSI).reason == "tenant B"
+    assert ddb.calls[0]["ExpressionAttributeValues"] == {
+        ":e": {"S": online_entity_id(MMSI, TENANT_A)}
+    }
+    assert ddb.calls[1]["ExpressionAttributeValues"] == {
+        ":e": {"S": online_entity_id(MMSI, TENANT_B)}
+    }
+    assert redis_key(MMSI, TENANT_A) in redis.store
+    assert redis_key(MMSI, TENANT_B) in redis.store
+    assert WatchlistStatus.from_json(redis.store[redis_key(MMSI, TENANT_A)]).reason == "tenant A"
+    assert WatchlistStatus.from_json(redis.store[redis_key(MMSI, TENANT_B)]).reason == "tenant B"
+
+    # Subsequent reads stay isolated in their tenant-specific cache entries.
+    assert lookup_a.get(MMSI).reason == "tenant A"
+    assert lookup_b.get(MMSI).reason == "tenant B"
+    assert len(ddb.calls) == 2
+
+
 def test_ddb_error_fails_open_and_counts():
     before = WATCHLIST_LOOKUP_ERRORS._value.get()
     lookup = WatchlistLookup(
@@ -174,7 +244,7 @@ async def test_aget_coalesces_concurrent_misses_into_one_fetch(monkeypatch):
     # let every caller run its lock section and coalesce onto the one future
     for _ in range(500):
         await asyncio.sleep(0)
-        if MMSI in lookup._inflight and sum(t.done() for t in tasks) == 0:
+        if online_entity_id(MMSI) in lookup._inflight and sum(t.done() for t in tasks) == 0:
             break
     release.set()
     results = await asyncio.gather(*tasks)

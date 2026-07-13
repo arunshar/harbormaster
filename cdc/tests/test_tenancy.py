@@ -28,16 +28,23 @@ def test_default_tenant_sentinel_matches_serving_config():
     assert tenancy.DEFAULT_TENANT_ID == SERVING_DEFAULT_TENANT_ID
 
 
-def test_statements_for_emits_the_four_idempotent_forms_in_order():
+def test_statements_for_expands_backfills_contracts_and_enables_rls_in_order():
     stmts = tenancy.statements_for("watchlist")
-    assert len(stmts) == 4
-    add, enable, force, policy = stmts
+    assert len(stmts) == 8
+    add, backfill, default, not_null, primary_key, enable, force, policy = stmts
     assert add.startswith("ALTER TABLE watchlist ADD COLUMN IF NOT EXISTS tenant_id uuid")
-    assert "NOT NULL" in add
+    assert "DEFAULT" not in add and "NOT NULL" not in add
+    assert f"SET tenant_id = '{tenancy.DEFAULT_TENANT_ID}'::uuid" in backfill
+    assert "WHERE tenant_id IS NULL" in backfill
+    assert "current_setting('app.tenant_id', true)" in default
+    assert not_null == "ALTER TABLE watchlist ALTER COLUMN tenant_id SET NOT NULL;"
+    assert "ARRAY['tenant_id', 'mmsi']::text[]" in primary_key
+    assert "ALTER TABLE watchlist ADD PRIMARY KEY (tenant_id, mmsi)" in primary_key
     assert enable == "ALTER TABLE watchlist ENABLE ROW LEVEL SECURITY;"
     assert force == "ALTER TABLE watchlist FORCE ROW LEVEL SECURITY;"
     assert "CREATE POLICY watchlist_tenant_isolation ON watchlist" in policy
-    assert "IF NOT EXISTS" in policy  # guarded DO block, re-runnable at connect
+    assert "DROP POLICY watchlist_tenant_isolation ON watchlist" in policy
+    assert "WITH CHECK" in policy
 
 
 def test_statements_for_rejects_a_non_tenant_table():
@@ -51,21 +58,56 @@ def test_policy_predicate_uses_missing_ok_current_setting():
     assert "current_setting('app.tenant_id', true)" in tenancy.POLICY_PREDICATE
     assert "NULLIF" in tenancy.POLICY_PREDICATE
     for table in tenancy.TENANT_TABLES:
-        policy = tenancy.statements_for(table)[3]
+        policy = tenancy.statements_for(table)[-1]
         assert tenancy.POLICY_PREDICATE in policy
 
 
-def test_column_default_stamps_the_session_tenant_not_a_literal():
-    add = tenancy.statements_for("hitl_queue")[0]
-    assert "current_setting('app.tenant_id', true)" in add
-    assert tenancy.DEFAULT_TENANT_ID in add  # ALTER backfill can never NULL-violate
+def test_legacy_backfill_precedes_the_session_aware_default():
+    add, backfill, default, not_null, *_ = tenancy.statements_for("hitl_queue")
+    assert "DEFAULT" not in add
+    assert tenancy.DEFAULT_TENANT_ID in backfill
+    assert "current_setting('app.tenant_id', true)" in default
+    assert tenancy.DEFAULT_TENANT_ID in default
+    assert "SET NOT NULL" in not_null
 
 
 def test_full_statements_cover_every_table():
     stmts = tenancy.statements()
-    assert len(stmts) == 4 * len(tenancy.TENANT_TABLES)
+    assert len(stmts) == 31
     for table in tenancy.TENANT_TABLES:
         assert any(f"CREATE POLICY {tenancy.policy_name(table)}" in s for s in stmts)
+
+
+def test_runtime_statements_exclude_the_connector_sensitive_key_contract():
+    for table in ddl.CDC_TABLES:
+        runtime = tenancy.runtime_statements_for(table)
+        assert not any("ADD PRIMARY KEY" in stmt for stmt in runtime)
+        assert len(runtime) == len(tenancy.statements_for(table)) - 1
+
+
+def test_structural_and_security_statements_partition_the_migration():
+    for table in ddl.CDC_TABLES:
+        assert tenancy.statements_for(table) == (
+            *tenancy.structural_statements_for(table),
+            *tenancy.security_statements_for(table),
+        )
+        structural = tenancy.structural_statements_for(table)
+        security = tenancy.security_statements_for(table)
+        assert not any("ROW LEVEL SECURITY" in stmt for stmt in structural)
+        assert any("ENABLE ROW LEVEL SECURITY" in stmt for stmt in security)
+
+
+async def test_p39_migration_refuses_an_active_debezium_slot():
+    from scripts.migrate_p39 import _assert_slot_inactive
+
+    class ActiveSlotConnection:
+        async def fetchval(self, query, slot_name):
+            assert "pg_replication_slots" in query
+            assert slot_name == ddl.SLOT_NAME
+            return True
+
+    with pytest.raises(RuntimeError, match="replication slot.*is active"):
+        await _assert_slot_inactive(ActiveSlotConnection())
 
 
 def test_canonical_ddl_sha_matches_the_pinned_checksum():

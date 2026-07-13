@@ -105,10 +105,11 @@ class MemoryAudit:
         self.rows: list[dict[str, Any]] = []
 
     def append(self, event: ChangeEvent, applied: bool) -> None:
+        delivered_pk = event.delivered_pk if event.delivered_pk is not None else event.pk
         self._buffer.append(
             {
                 "event_table": event.table,
-                "pk": pk_key(event.pk),
+                "pk": pk_key(delivered_pk),
                 "op": event.op,
                 "lsn": event.lsn,
                 "applied": applied,

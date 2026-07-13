@@ -38,8 +38,16 @@ async def test_enqueue_writes_a_row_with_schema_fields():
     assert len(rows) == 1
     r = rows[0]
     schema_fields = (
-        "id", "trace_id", "mmsi", "ts", "score",
-        "reasons", "confidence", "label", "reviewer", "created_at",
+        "id",
+        "trace_id",
+        "mmsi",
+        "ts",
+        "score",
+        "reasons",
+        "confidence",
+        "label",
+        "reviewer",
+        "created_at",
     )
     for field in schema_fields:
         assert field in r
@@ -79,6 +87,37 @@ async def test_configured_hitl_propagates_missing_runtime_dependency(monkeypatch
 
     monkeypatch.setattr(PostgresHitlBackend, "connect", missing_dependency)
     with pytest.raises(ModuleNotFoundError, match="asyncpg"):
+        await HitlQueue.connect(Settings(pg_dsn="postgresql://configured"))
+
+
+async def test_configured_hitl_propagates_schema_failure(monkeypatch):
+    async def broken_schema(*_args, **_kwargs):
+        raise RuntimeError("P39 schema contract failed")
+
+    monkeypatch.setattr(PostgresHitlBackend, "connect", broken_schema)
+    with pytest.raises(RuntimeError, match="P39 schema contract failed"):
+        await HitlQueue.connect(Settings(pg_dsn="postgresql://configured"))
+
+
+async def test_configured_hitl_falls_back_on_connection_failure(monkeypatch):
+    async def unavailable(*_args, **_kwargs):
+        raise ConnectionRefusedError("connection refused")
+
+    monkeypatch.setattr(PostgresHitlBackend, "connect", unavailable)
+    queue = await HitlQueue.connect(Settings(pg_dsn="postgresql://configured"))
+    assert isinstance(queue.backend, MemoryHitlBackend)
+
+
+@pytest.mark.parametrize(
+    "error",
+    (FileNotFoundError("missing TLS certificate"), PermissionError("TLS key is unreadable")),
+)
+async def test_configured_hitl_propagates_non_network_os_error(monkeypatch, error):
+    async def misconfigured(*_args, **_kwargs):
+        raise error
+
+    monkeypatch.setattr(PostgresHitlBackend, "connect", misconfigured)
+    with pytest.raises(type(error), match=str(error)):
         await HitlQueue.connect(Settings(pg_dsn="postgresql://configured"))
 
 

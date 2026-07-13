@@ -14,6 +14,7 @@ Two backends behind one interface, mirroring serving/app/hitl.py exactly:
 
 from __future__ import annotations
 
+import socket
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
@@ -23,6 +24,13 @@ from app.config import DEFAULT_TENANT_ID, Settings
 from app.errors import RegistryEntryNotFound
 
 log = structlog.get_logger(__name__)
+
+
+def _public_row(row: Any) -> dict[str, Any]:
+    """Return a registry row without exposing the internal tenancy key."""
+    result = dict(row)
+    result.pop("tenant_id", None)
+    return result
 
 
 def _sanctions_flag_id(mmsi: int, regime: str) -> str:
@@ -47,13 +55,15 @@ class RegistryBackend(Protocol):
 
 
 class MemoryRegistryBackend:
-    def __init__(self) -> None:
+    def __init__(self, tenant_id: str = DEFAULT_TENANT_ID) -> None:
+        self._tenant_id = tenant_id
         self._vessels: dict[int, dict[str, Any]] = {}
         self._watchlist: dict[int, dict[str, Any]] = {}
         self._sanctions: dict[str, dict[str, Any]] = {}
 
     async def upsert_vessel(self, mmsi: int, fields: dict[str, str]) -> dict[str, Any]:
         row = {
+            "tenant_id": self._tenant_id,
             "mmsi": mmsi,
             "name": fields.get("name", ""),
             "flag_state": fields.get("flag_state", ""),
@@ -61,16 +71,17 @@ class MemoryRegistryBackend:
             "updated_at": datetime.now(UTC),
         }
         self._vessels[mmsi] = row
-        return dict(row)
+        return _public_row(row)
 
     async def get_vessel(self, mmsi: int) -> dict[str, Any] | None:
         row = self._vessels.get(mmsi)
-        return dict(row) if row else None
+        return _public_row(row) if row else None
 
     async def upsert_watchlist(self, mmsi: int, fields: dict[str, Any]) -> dict[str, Any]:
         now = datetime.now(UTC)
         prev = self._watchlist.get(mmsi)
         row = {
+            "tenant_id": self._tenant_id,
             "mmsi": mmsi,
             "reason": fields["reason"],
             "severity": float(fields.get("severity", 0.9)),
@@ -79,19 +90,20 @@ class MemoryRegistryBackend:
             "updated_at": now,
         }
         self._watchlist[mmsi] = row
-        return dict(row)
+        return _public_row(row)
 
     async def delete_watchlist(self, mmsi: int) -> bool:
         return self._watchlist.pop(mmsi, None) is not None
 
     async def list_watchlist(self) -> list[dict[str, Any]]:
-        return [dict(r) for r in sorted(self._watchlist.values(), key=lambda r: r["mmsi"])]
+        return [_public_row(r) for r in sorted(self._watchlist.values(), key=lambda r: r["mmsi"])]
 
     async def upsert_sanction(self, mmsi: int, fields: dict[str, str]) -> dict[str, Any]:
         now = datetime.now(UTC)
         fid = _sanctions_flag_id(mmsi, fields["regime"])
         prev = self._sanctions.get(fid)
         row = {
+            "tenant_id": self._tenant_id,
             "id": fid,
             "mmsi": mmsi,
             "regime": fields["regime"],
@@ -100,7 +112,7 @@ class MemoryRegistryBackend:
             "updated_at": now,
         }
         self._sanctions[fid] = row
-        return dict(row)
+        return _public_row(row)
 
     async def delete_sanctions(self, mmsi: int) -> int:
         gone = [k for k, v in self._sanctions.items() if v["mmsi"] == mmsi]
@@ -113,8 +125,9 @@ class MemoryRegistryBackend:
 
 
 class PostgresRegistryBackend:
-    def __init__(self, pool: Any) -> None:
+    def __init__(self, pool: Any, tenant_id: str) -> None:
         self._pool = pool
+        self._tenant_id = tenant_id
 
     @classmethod
     async def connect(cls, dsn: str, tenant_id: str = DEFAULT_TENANT_ID) -> PostgresRegistryBackend:
@@ -138,92 +151,135 @@ class PostgresRegistryBackend:
                         "SELECT pg_advisory_xact_lock($1)",
                         tenancy.SCHEMA_BOOTSTRAP_LOCK_ID,
                     )
-                    for stmt in ddl.statements():
+                    # Table creation is safe on both fresh and legacy schemas.
+                    # Verify the key contract before tenant-dependent index or
+                    # RLS DDL so a legacy deployment gets the migration
+                    # instruction instead of an UndefinedColumn error.
+                    for stmt in ddl.table_statements():
                         await conn.execute(stmt)
+                    for table, expected in (
+                        ("vessels", "PRIMARY KEY (tenant_id, mmsi)"),
+                        ("watchlist", "PRIMARY KEY (tenant_id, mmsi)"),
+                        ("sanctions_flags", "PRIMARY KEY (tenant_id, id)"),
+                    ):
+                        actual = await conn.fetchval(
+                            """SELECT pg_get_constraintdef(oid)
+                                 FROM pg_constraint
+                                WHERE conrelid = $1::regclass AND contype = 'p'""",
+                            table,
+                        )
+                        if actual != expected:
+                            raise RuntimeError(
+                                f"{table} still has {actual!r}; run the P39 migration with "
+                                "Debezium stopped before starting the registry"
+                            )
                     for table in ddl.CDC_TABLES:
-                        for stmt in tenancy.statements_for(table):
+                        for stmt in tenancy.runtime_statements_for(table):
                             await conn.execute(stmt)
+                        await tenancy.assert_security_contract(conn, table)
+                    for stmt in ddl.post_tenancy_statements():
+                        await conn.execute(stmt)
         except BaseException:
             await pool.close()
             raise
-        return cls(pool)
+        return cls(pool, tenant_id)
 
     async def upsert_vessel(self, mmsi: int, fields: dict[str, str]) -> dict[str, Any]:
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(
                 """
-                INSERT INTO vessels (mmsi, name, flag_state, vessel_type, updated_at)
-                VALUES ($1, $2, $3, $4, now())
-                ON CONFLICT (mmsi) DO UPDATE SET
+                INSERT INTO vessels (tenant_id, mmsi, name, flag_state, vessel_type, updated_at)
+                VALUES ($1::uuid, $2, $3, $4, $5, now())
+                ON CONFLICT (tenant_id, mmsi) DO UPDATE SET
                     name = EXCLUDED.name,
                     flag_state = EXCLUDED.flag_state,
                     vessel_type = EXCLUDED.vessel_type,
                     updated_at = now()
                 RETURNING *
                 """,
+                self._tenant_id,
                 mmsi,
                 fields.get("name", ""),
                 fields.get("flag_state", ""),
                 fields.get("vessel_type", ""),
             )
-        return dict(row)
+        return _public_row(row)
 
     async def get_vessel(self, mmsi: int) -> dict[str, Any] | None:
         async with self._pool.acquire() as conn:
-            row = await conn.fetchrow("SELECT * FROM vessels WHERE mmsi = $1", mmsi)
-        return dict(row) if row else None
+            row = await conn.fetchrow(
+                "SELECT * FROM vessels WHERE tenant_id = $1::uuid AND mmsi = $2",
+                self._tenant_id,
+                mmsi,
+            )
+        return _public_row(row) if row else None
 
     async def upsert_watchlist(self, mmsi: int, fields: dict[str, Any]) -> dict[str, Any]:
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(
                 """
-                INSERT INTO watchlist (mmsi, reason, severity, added_by, created_at, updated_at)
-                VALUES ($1, $2, $3, $4, now(), now())
-                ON CONFLICT (mmsi) DO UPDATE SET
+                INSERT INTO watchlist
+                    (tenant_id, mmsi, reason, severity, added_by, created_at, updated_at)
+                VALUES ($1::uuid, $2, $3, $4, $5, now(), now())
+                ON CONFLICT (tenant_id, mmsi) DO UPDATE SET
                     reason = EXCLUDED.reason,
                     severity = EXCLUDED.severity,
                     added_by = EXCLUDED.added_by,
                     updated_at = now()
                 RETURNING *
                 """,
+                self._tenant_id,
                 mmsi,
                 fields["reason"],
                 float(fields.get("severity", 0.9)),
                 fields.get("added_by", ""),
             )
-        return dict(row)
+        return _public_row(row)
 
     async def delete_watchlist(self, mmsi: int) -> bool:
         async with self._pool.acquire() as conn:
-            status = await conn.execute("DELETE FROM watchlist WHERE mmsi = $1", mmsi)
+            status = await conn.execute(
+                "DELETE FROM watchlist WHERE tenant_id = $1::uuid AND mmsi = $2",
+                self._tenant_id,
+                mmsi,
+            )
         return not status.endswith(" 0")
 
     async def list_watchlist(self) -> list[dict[str, Any]]:
         async with self._pool.acquire() as conn:
-            rows = await conn.fetch("SELECT * FROM watchlist ORDER BY mmsi")
-        return [dict(r) for r in rows]
+            rows = await conn.fetch(
+                "SELECT * FROM watchlist WHERE tenant_id = $1::uuid ORDER BY mmsi",
+                self._tenant_id,
+            )
+        return [_public_row(r) for r in rows]
 
     async def upsert_sanction(self, mmsi: int, fields: dict[str, str]) -> dict[str, Any]:
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(
                 """
-                INSERT INTO sanctions_flags (id, mmsi, regime, reference, created_at, updated_at)
-                VALUES ($1, $2, $3, $4, now(), now())
-                ON CONFLICT (id) DO UPDATE SET
+                INSERT INTO sanctions_flags
+                    (tenant_id, id, mmsi, regime, reference, created_at, updated_at)
+                VALUES ($1::uuid, $2, $3, $4, $5, now(), now())
+                ON CONFLICT (tenant_id, id) DO UPDATE SET
                     reference = EXCLUDED.reference,
                     updated_at = now()
                 RETURNING *
                 """,
+                self._tenant_id,
                 _sanctions_flag_id(mmsi, fields["regime"]),
                 mmsi,
                 fields["regime"],
                 fields.get("reference", ""),
             )
-        return dict(row)
+        return _public_row(row)
 
     async def delete_sanctions(self, mmsi: int) -> int:
         async with self._pool.acquire() as conn:
-            status = await conn.execute("DELETE FROM sanctions_flags WHERE mmsi = $1", mmsi)
+            status = await conn.execute(
+                "DELETE FROM sanctions_flags WHERE tenant_id = $1::uuid AND mmsi = $2",
+                self._tenant_id,
+                mmsi,
+            )
         try:
             return int(status.rsplit(" ", 1)[-1])
         except ValueError:  # pragma: no cover - asyncpg always returns "DELETE n"
@@ -253,9 +309,28 @@ class RegistryStore:
                 # A configured durable backend must not silently become an
                 # in-memory writer because the production image is incomplete.
                 raise
-            except Exception as exc:  # DB unreachable -> development fallback
+            except Exception as exc:
+                # A network outage keeps the established dev fallback. Schema,
+                # migration, and RLS failures must surface instead of silently
+                # bypassing Postgres and CDC with an in-memory writer.
+                try:
+                    import asyncpg
+
+                    connection_error = isinstance(
+                        exc,
+                        (
+                            ConnectionError,
+                            TimeoutError,
+                            socket.gaierror,
+                            asyncpg.PostgresConnectionError,
+                        ),
+                    )
+                except ModuleNotFoundError:
+                    connection_error = False
+                if not connection_error:
+                    raise
                 log.warning("registry_postgres_unavailable_fallback_memory", err=str(exc))
-        return cls(MemoryRegistryBackend())
+        return cls(MemoryRegistryBackend(settings.resolved_tenant_id()))
 
     async def upsert_vessel(self, mmsi: int, fields: dict[str, str]) -> dict[str, Any]:
         return await self.backend.upsert_vessel(mmsi, fields)
