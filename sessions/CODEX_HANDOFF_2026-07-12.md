@@ -140,6 +140,73 @@ showcase and two-variant live SageMaker canary were set up but not fully exercis
 (the canary actuator code is real and unit-tested); ECR `hm-pidpm-demo` cleanup; the
 `~18 May 2027`-style FinOps discipline stands.
 
+## Execution plan for the rest of the implementation (Codex)
+
+This is the full remaining work, split by SAFETY. The split is the contract, not a
+suggestion.
+
+### A. Safe for Codex to do autonomously (no live AWS; all local + tested)
+
+Do these in order; each is a normal PR to `master` with tests in the same change,
+CI green before merge, one concern per PR.
+
+1. **Connector-registration debug on the local kind stack** (open item #1 above).
+   `make cdc-up` brings up a full local Kafka Connect + Postgres + Redis stack for
+   free. Reproduce the empty-password validate failure there, work the hypotheses in
+   open item #1, and land the fix + a regression test. The infra half (dir-provider +
+   entrypoint wrapper) is already merged; only the Connect-version validate-time
+   resolution remains. This is the cheapest, highest-signal first move.
+2. **P39 multi-tenancy composite-key hardening** (open item #3). Composite
+   `(tenant_id, key)` through the base DDL, the Debezium message-key mapper, and the
+   registry upserts. RLS + cross-tenant tests against a local Postgres (the existing
+   `make phase5-tenant-smoke` convention), never mocked.
+3. **Robustness items** (open item #4): flink `key_by` correctness, ingest
+   `PutRecords` partial-failure retry, prism ellipse center, remaining test-strength
+   mutants. Each with a test that fails before and passes after.
+4. **War stories P41-P46** to `arunshar/debug-war-stories` (the six W3 fixes; content
+   is in this file + the PR #6 commit + the runbook, so it is a copy-and-format job).
+
+### B. Human-run live-AWS windows (Codex PREPARES and DRIVES WITH the human, never autonomous)
+
+Codex may: write/adjust the terraform, generate the exact command sequences, do the
+read-only verification calls, and reconcile state. Codex may NOT: run `terraform
+apply`/`destroy`, `bootstrap.sh`, `aws ... modify/create/delete`, or any mutation on
+its own. Every mutating command is pasted and run by the human in a scheduled window,
+exactly as in the W1/W2/W3 precedent. Guardrails: `$75/mo` FinOps hard cap + nightly
+teardown Lambda in force; always re-fetch the RUNNING task ARN after an apply; every
+window ends back at Phase 0/1-only standing.
+
+- **W4 window (closes the Phase 5 gate).** Full step-by-step in
+  `docs/runbooks/WAVE4_LIVE_WINDOWS.md`, "Window W4": EKS + KEDA measured cold-start
+  `0->N->0` (criterion a), Flink backpressure drill + `docs/drills/M3_backpressure_loadtest.md`
+  postmortem (criterion b), and the live EKS teardown-guard force-destroy +
+  `terraform state rm` reconcile (criterion f). Optional same-window: live RLS drill,
+  a few live Bedrock calls. Grounds war story P37 (cold-start) either way.
+- **W3-remainder (optional).** CMK apply + verify (RDS re-encryption forces a replace,
+  so do it on a fresh Phase 1 window per the module doc) and the two-variant canary
+  live weight-shift + forced revert (proves the DR-13 burn-rollback end to end).
+
+### C. The production test plan (the Wave 5 core; human-run with Codex driving)
+
+After W4, this is what makes Codex's handoff a real production sign-off, executed WITH
+the human, same safety contract as B:
+
+- **Cloud load test** replacing the M4-extrapolated `$/inference` with a measured
+  number (closes the last "extrapolated, not measured" claim in `docs/HONESTY.md`).
+- **Soak + alarm live-fire**: run the serving plane under sustained load, deliberately
+  breach an SLO, and confirm the burn-rate composite alarm -> auto-rollback path fires.
+- **Chaos drills** converting the remaining ANTICIPATED war stories to grounded where
+  feasible (P1 hot shard, P3 snapshot lock, P4 async burst drop, P5 cold-read throttle,
+  P6 small-file explosion, P8 provider drift) with runbook pointers + verification bars.
+- **Boundary Part C** least-privilege proof: switch the deploy identity to the
+  boundary-gated `harbormaster-platform` role and re-run a Phase 1 plan/apply to prove
+  it can create the bounded roles but cannot escalate. Only then does the IAM row in
+  `AB_MASTERCLASS_AUDIT.md` move off Partial.
+- **Cost audit + rollback rehearsal**, each with a runbook pointer and a pass bar.
+
+Deliverable: update `docs/HONESTY.md` and the audit doc to their final measured states,
+and close the Phase 5 gate in `docs/phases/PHASE_5.md` with the real numbers.
+
 ## Guardrails to carry forward
 
 - No unattended AWS mutation, ever; windows are human-run and scheduled.
