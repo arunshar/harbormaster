@@ -1,0 +1,21 @@
+PLATFORM_WAR_STORIES.md
+  s_87fd0589dba2e0::t_2558b897dbbacc 516-528,530-535,537-552,554-568,570,572-578,580,582-585
+  s_87fd0589dba2e0::t_af05fd19213b6a 571,586
+  s_87fd0589dba2e0::t_181bdef4601f2a 529,536,553,569,579,581,587
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "e2f0f62b08eec8674ba7dd5590c4a23fae882a8b",
+  "prompts": {},
+  "sessions": {
+    "s_87fd0589dba2e0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5912-4f5a-7aa3-8604-0ccba141cb86",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
