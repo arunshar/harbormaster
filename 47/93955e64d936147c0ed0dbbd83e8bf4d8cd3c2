@@ -1,0 +1,40 @@
+docs/drills/CDC_connector_status_poll_race_2026-07-12.md
+  s_87fd0589dba2e0::t_c78073652a5292 36,59-63,65-66,68-71
+  s_87fd0589dba2e0::t_11c7f9b7fec58a 27-29
+  s_87fd0589dba2e0::t_55cca8900a1f38 64,67
+  s_87fd0589dba2e0::t_cd876ce97fcd9b 1-26,30-35,37-58
+cdc/tests/test_connector_registration.py
+  s_87fd0589dba2e0::t_4542caccdc0ce9 115-135,187-188
+  s_87fd0589dba2e0::t_11c7f9b7fec58a 7,204-210,212-243
+  s_87fd0589dba2e0::t_995c11e40e990a 10,45,51-54,94-112
+  s_87fd0589dba2e0::t_d7477d9711d597 57-65,136-186
+  s_c339ca357cc531::t_d2fa308ff7dd4f 55-56,113-114
+cdc/connector/registration.py
+  s_87fd0589dba2e0::t_ed5c611c3338f2 16,156,161-170
+  s_87fd0589dba2e0::t_d7477d9711d597 129-130,149,152-155,157-160,171-175,177-196
+  s_87fd0589dba2e0::t_11c7f9b7fec58a 13,133-136
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "4793955e64d936147c0ed0dbbd83e8bf4d8cd3c2",
+  "prompts": {},
+  "sessions": {
+    "s_87fd0589dba2e0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5912-4f5a-7aa3-8604-0ccba141cb86",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    },
+    "s_c339ca357cc531": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5234-51ff-7f23-a378-2834cc7022f3",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
