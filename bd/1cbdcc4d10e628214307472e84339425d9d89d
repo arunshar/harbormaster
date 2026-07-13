@@ -1,0 +1,25 @@
+docs/WAVE3_FINDINGS.md
+  s_87fd0589dba2e0::t_5db5dfe3e428fb 26
+  s_87fd0589dba2e0::t_7e58e592061241 55
+serving/tests/test_bedrock_explainer.py
+  s_87fd0589dba2e0::t_b61143fc49a3ea 78-93,107-110
+  s_87fd0589dba2e0::t_7981be7f709266 111-112
+sessions/CODEX_HANDOFF_2026-07-12.md
+  s_87fd0589dba2e0::t_e5a1ceb37ca9df 146-149,175-177
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "bd1cbdcc4d10e628214307472e84339425d9d89d",
+  "prompts": {},
+  "sessions": {
+    "s_87fd0589dba2e0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5912-4f5a-7aa3-8604-0ccba141cb86",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    }
+  }
+}
