@@ -1,0 +1,25 @@
+docs/WAVE3_FINDINGS.md
+  s_87fd0589dba2e0::t_75df670e6e5027 47-49
+serving/app/watchlist.py
+  s_87fd0589dba2e0::t_51a6c9e8b6b279 138-142
+serving/tests/test_watchlist.py
+  s_87fd0589dba2e0::t_5c83ae398df5b3 118-122
+  s_87fd0589dba2e0::t_75df670e6e5027 113-117
+  s_87fd0589dba2e0::t_51a6c9e8b6b279 123-129
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "c1a7f064f445834c46085354cdc8e8fd122d7581",
+  "prompts": {},
+  "sessions": {
+    "s_87fd0589dba2e0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5912-4f5a-7aa3-8604-0ccba141cb86",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
