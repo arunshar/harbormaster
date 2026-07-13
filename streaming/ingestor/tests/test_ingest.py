@@ -166,6 +166,43 @@ def test_kinesis_putter_retries_partial_failures_then_succeeds(monkeypatch):
     assert slept[0] > 0
 
 
+def test_kinesis_putter_maps_later_failures_against_current_pending_records():
+    # Round 1 fails noncontiguous original indexes 1, 4, and 6. Round 2 then
+    # fails indexes 0 and 2 of that smaller pending list, which are original
+    # records 1 and 6. Indexing against the original batch here would wrongly
+    # resend records 0 and 2 instead.
+    client = Mock()
+    client.put_records.side_effect = [
+        _partial_failure_response(7, failed_idx={1, 4, 6}),
+        _partial_failure_response(3, failed_idx={0, 2}),
+        _ok_response(2),
+    ]
+    slept: list[float] = []
+    put = _kinesis_putter(client, "ais-raw", sleep=slept.append, rng=random.Random(1234))
+
+    put(_entries(7))
+
+    submitted = [
+        [record["PartitionKey"] for record in call.kwargs["Records"]]
+        for call in client.put_records.call_args_list
+    ]
+    assert submitted == [
+        ["0", "1", "2", "3", "4", "5", "6"],
+        ["1", "4", "6"],
+        ["1", "6"],
+    ]
+    assert len(slept) == 2
+
+
+def test_kinesis_putter_rejects_response_cardinality_mismatch():
+    client = Mock()
+    client.put_records.return_value = _ok_response(1)
+    put = _kinesis_putter(client, "ais-raw")
+
+    with pytest.raises(ValueError, match=r"zip\(\) argument 2 is shorter"):
+        put(_entries(2))
+
+
 def test_kinesis_putter_retries_throttling_clienterror_then_succeeds(monkeypatch):
     # Whole-call throttling twice, then success. Backoff is increasing per attempt.
     client = Mock()
