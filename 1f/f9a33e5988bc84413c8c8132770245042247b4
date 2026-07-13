@@ -1,0 +1,100 @@
+scripts/cdc_smoke.py
+  s_87fd0589dba2e0::t_e81909735e6269 118,157-160
+mlops/fixtures/expectations.json
+  s_87fd0589dba2e0::t_149aa5ef9b1a52 47
+tests/e2e/cdc_helpers.py
+  s_87fd0589dba2e0::t_bcf7f83519e2e2 10-11,31-35,42
+docs/drills/P39_local_cdc_smoke.md
+  s_87fd0589dba2e0::t_30bea4da987a70 1-16
+scripts/migrate_p39.py
+  s_87fd0589dba2e0::t_179518f39ef11e 1-48
+cdc/consumer/envelope.py
+  s_87fd0589dba2e0::t_5985af0cda0a3a 22-24,94-133,144-146,169
+  s_87fd0589dba2e0::t_ce1336f7b8baf9 168
+cdc/fixtures/expectations.json
+  s_87fd0589dba2e0::t_87f1640e9d7acd 10
+  s_87fd0589dba2e0::t_149aa5ef9b1a52 2
+docs/drills/M_tenant_leak_p39.md
+  s_87fd0589dba2e0::t_80fc50f3702eff 1-4,18
+  s_87fd0589dba2e0::t_820f9dde044028 5-17
+serving/tests/test_tenant_rls.py
+  s_87fd0589dba2e0::t_5482fb012967df 259-274,277-306
+  s_87fd0589dba2e0::t_55015bdc5f3873 230-258
+  s_87fd0589dba2e0::t_5039b7331d3b8d 275-276
+scripts/drill_p1_slot_bloat.py
+  s_87fd0589dba2e0::t_e81909735e6269 128
+cdc/schema/tenancy.py
+  s_87fd0589dba2e0::t_d275a457397852 41,60-101,117-127,151-160
+  s_c339ca357cc531::t_9abc5f49b25bf7 102
+  s_87fd0589dba2e0::t_a1545bb4cb0cae 108,128-130,161-170
+cdc/tests/test_sinks.py
+  s_87fd0589dba2e0::t_75e10c240dea63 30-39,49,54-59,74-76,84-85,87,95,104-107,110,114,122-126,128-133,143,188-201,212,226,241-242,245,247-250,264-265,275,280-283
+cdc/schema/ddl.py
+  s_87fd0589dba2e0::t_d275a457397852 28,32-33,37-38,44-45,50-51,62-63,68-69,73-76
+cdc/sinks/dynamo.py
+  s_87fd0589dba2e0::t_25b8d9689a7140 20
+  s_87fd0589dba2e0::t_c5c6e687a01b95 46-49,54-59,72,77,81,85,87
+  s_87fd0589dba2e0::t_5985af0cda0a3a 29,50-53
+serving/app/watchlist.py
+  s_87fd0589dba2e0::t_25b8d9689a7140 4,18
+  s_87fd0589dba2e0::t_5985af0cda0a3a 32,53
+  s_87fd0589dba2e0::t_c5c6e687a01b95 36,49-52,56,58,170,176,182,240,261,280,295-297
+docs/phases/PHASE_2.md
+  s_87fd0589dba2e0::t_f8672b816faedf 12
+  s_87fd0589dba2e0::t_87a7fa704e56a4 89
+scripts/phase5_tenant_smoke.py
+  s_87fd0589dba2e0::t_061716ef71849e 181-183,186-188
+  s_87fd0589dba2e0::t_b8ff29079c462d 161-180
+cdc/sinks/redis_cache.py
+  s_87fd0589dba2e0::t_c5c6e687a01b95 27,35-36,42,46
+serving/app/registry.py
+  s_87fd0589dba2e0::t_a1545bb4cb0cae 148-163,165
+  s_87fd0589dba2e0::t_3ef9f8e972ab27 28-34,58-59,66,74,78,84,93,99,106,115,128,130,167,173-175,182,188,192-197,203-206,213,219,223-227,232-236,242-245,250,256,260-264,309
+  s_87fd0589dba2e0::t_9d2d04ca64a39e 290-307
+cdc/tests/test_tenancy.py
+  s_87fd0589dba2e0::t_7fc92c21de77d1 80-86
+  s_87fd0589dba2e0::t_f0056a89ed448d 31,33-34,36-42,60,64-70,75
+scripts/drill_p2_duplicates.py
+  s_87fd0589dba2e0::t_bcf7f83519e2e2 39-42
+tests/e2e/test_cdc_helpers.py
+  s_87fd0589dba2e0::t_bcf7f83519e2e2 6,17
+scripts/cdc_record_fixture.py
+  s_87fd0589dba2e0::t_e81909735e6269 99,108,133-134,154-159
+cdc/tests/test_envelope.py
+  s_87fd0589dba2e0::t_1aed6b1e929215 156-159,192-201
+  s_87fd0589dba2e0::t_afdf1da5c46358 160-180
+  s_87fd0589dba2e0::t_f0056a89ed448d 18-19,49,55,82-85,94,107-109,120,154-155,181-191
+cdc/tests/test_ddl.py
+  s_87fd0589dba2e0::t_f0056a89ed448d 26-33
+cdc/tests/test_applier.py
+  s_87fd0589dba2e0::t_87f1640e9d7acd 61-63,67-69,73-75
+docs/drills/P39_test_suite.md
+  s_87fd0589dba2e0::t_cf23ba184b10bd 1-10
+tests/e2e/test_phase2.py
+  s_87fd0589dba2e0::t_bcf7f83519e2e2 56,84,188,193
+  s_87fd0589dba2e0::t_e81909735e6269 242-243
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "1ff9a33e5988bc84413c8c8132770245042247b4",
+  "prompts": {},
+  "sessions": {
+    "s_87fd0589dba2e0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5912-4f5a-7aa3-8604-0ccba141cb86",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    },
+    "s_c339ca357cc531": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5234-51ff-7f23-a378-2834cc7022f3",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
