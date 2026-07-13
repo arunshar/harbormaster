@@ -70,23 +70,40 @@ def run_live(
     sleep: Callable[[float], None],
     max_reconnects: int = 5,
 ) -> int:
-    """Consume PositionReports from open_stream() into `handle`, reconnecting the
-    whole connect+stream with capped backoff on error. Returns records handled.
-    A clean stream end returns; exhausting retries re-raises. open_stream/handle/
-    sleep are injected so the loop tests with no network."""
+    """Consume PositionReports from open_stream() into `handle`.
+
+    Source and parse failures reconnect with capped backoff. Sink failures from
+    `handle` propagate immediately because reconnecting cannot replay a record that
+    was already consumed. A clean stream end returns; exhausting source retries
+    re-raises. Dependencies are injected so the loop tests with no network.
+    """
     handled = 0
     for attempt in range(max_reconnects + 1):
         try:
-            for msg in open_stream():
-                rec = parse_aisstream_message(msg)
-                if rec is not None:
-                    handle(rec)
-                    handled += 1
-            return handled
+            stream = iter(open_stream())
         except Exception:
             if attempt >= max_reconnects:
                 raise
             sleep(backoff_schedule(attempt + 1))
+            continue
+
+        while True:
+            try:
+                msg = next(stream)
+                rec = parse_aisstream_message(msg)
+            except StopIteration:
+                return handled
+            except Exception:
+                if attempt >= max_reconnects:
+                    raise
+                sleep(backoff_schedule(attempt + 1))
+                break
+
+            if rec is not None:
+                # Sink failures propagate immediately. Reconnecting the source
+                # cannot replay a record that has already been consumed.
+                handle(rec)
+                handled += 1
     return handled
 
 

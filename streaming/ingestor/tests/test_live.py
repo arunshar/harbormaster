@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
+from unittest.mock import Mock
 
 import pytest
+from botocore.exceptions import ClientError
 
+from ingestor.ingest import PutRecordsExhaustedError, _kinesis_putter, record_to_entry
 from ingestor.live import DEFAULT_BBOX, parse_aisstream_message, run_live, subscribe_message
 
 
@@ -72,9 +75,86 @@ def test_run_live_reconnects_with_backoff_then_succeeds():
     assert slept[0] > 0
 
 
+def test_run_live_reconnects_after_midstream_source_failure():
+    calls = 0
+    handled = []
+    slept: list[float] = []
+
+    def open_stream():
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+
+            def interrupted_stream():
+                yield _position(1)
+                raise ConnectionError("dropped midstream")
+
+            return interrupted_stream()
+        return iter([_position(2)])
+
+    n = run_live(open_stream, handle=handled.append, sleep=slept.append, max_reconnects=2)
+
+    assert n == 2
+    assert [record.mmsi for record in handled] == [1, 2]
+    assert calls == 2
+    assert len(slept) == 1
+
+
 def test_run_live_raises_after_exhausting_retries():
     def always_fails():
         raise ConnectionError("down")
 
     with pytest.raises(ConnectionError):
         run_live(always_fails, handle=lambda _r: None, sleep=lambda _s: None, max_reconnects=2)
+
+
+def test_run_live_surfaces_sink_exhaustion_without_reconnecting():
+    opened = 0
+    slept: list[float] = []
+
+    def open_stream():
+        nonlocal opened
+        opened += 1
+        return [_position(1)]
+
+    def fail_sink(_record):
+        raise PutRecordsExhaustedError(
+            failed_count=1,
+            attempts=2,
+            error_codes={"ProvisionedThroughputExceededException": 1},
+        )
+
+    with pytest.raises(PutRecordsExhaustedError):
+        run_live(open_stream, handle=fail_sink, sleep=slept.append, max_reconnects=3)
+
+    assert opened == 1
+    assert slept == []
+
+
+def test_run_live_surfaces_raw_client_error_without_reconnecting():
+    opened = 0
+    slept: list[float] = []
+    client = Mock()
+    error = ClientError(
+        {"Error": {"Code": "AccessDeniedException", "Message": "denied"}},
+        "PutRecords",
+    )
+    client.put_records.side_effect = error
+    put = _kinesis_putter(client, "ais-raw")
+
+    def open_stream():
+        nonlocal opened
+        opened += 1
+        return [_position(1)]
+
+    with pytest.raises(ClientError) as raised:
+        run_live(
+            open_stream,
+            handle=lambda record: put([record_to_entry(record)]),
+            sleep=slept.append,
+            max_reconnects=3,
+        )
+
+    assert raised.value is error
+    assert opened == 1
+    assert slept == []
