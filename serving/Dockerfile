@@ -8,12 +8,14 @@ WORKDIR /srv
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
  && rm -rf /var/lib/apt/lists/*
 
-# Deps + package. pyproject maps serving/app -> app, streaming/features -> features,
-# and ships app/artifacts/corridors.json inside the wheel. shapely wheels bundle GEOS.
+# Deps + package. The serving runtime extra supplies the configured Postgres,
+# DynamoDB, and Redis paths. The wheel carries cdc.schema because registry and
+# HITL initialization use its DDL. Shapely wheels bundle GEOS.
 COPY pyproject.toml README.md ./
 COPY serving/app ./serving/app
 COPY streaming/features ./streaming/features
-RUN pip install --upgrade pip && pip install .
+COPY cdc ./cdc
+RUN pip install --upgrade pip && pip install ".[serving-runtime]"
 
 EXPOSE 8000
 HEALTHCHECK --interval=10s --timeout=3s --retries=5 \

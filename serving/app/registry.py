@@ -26,8 +26,7 @@ log = structlog.get_logger(__name__)
 
 
 def _sanctions_flag_id(mmsi: int, regime: str) -> str:
-    # Kept in sync with cdc.schema.ddl.sanctions_flag_id by a unit test; the
-    # serving wheel must not depend on the cdc package at runtime. A blank
+    # Kept in sync with cdc.schema.ddl.sanctions_flag_id by a unit test. A blank
     # regime would mint the "<mmsi>:" id the CDC key mapper rejects (a poison
     # event); refuse it here too, defense in depth behind the model validator.
     normalized = regime.strip().lower()
@@ -121,7 +120,7 @@ class PostgresRegistryBackend:
     async def connect(cls, dsn: str, tenant_id: str = DEFAULT_TENANT_ID) -> PostgresRegistryBackend:
         import asyncpg  # lazy; only the real backend needs it
 
-        from cdc.schema import ddl, tenancy  # lazy; serving runs without cdc unless PG is used
+        from cdc.schema import ddl, tenancy  # lazy; only the Postgres path needs schema DDL
 
         async def _set_tenant(conn: Any) -> None:
             # Phase 5 gate 5.4: pin app.tenant_id before any query (see
@@ -239,7 +238,11 @@ class RegistryStore:
                 )
                 log.info("registry_backend", kind="postgres")
                 return cls(backend)
-            except Exception as exc:  # asyncpg missing or DB unreachable -> memory
+            except ModuleNotFoundError:
+                # A configured durable backend must not silently become an
+                # in-memory writer because the production image is incomplete.
+                raise
+            except Exception as exc:  # DB unreachable -> development fallback
                 log.warning("registry_postgres_unavailable_fallback_memory", err=str(exc))
         return cls(MemoryRegistryBackend())
 

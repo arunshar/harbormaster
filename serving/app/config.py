@@ -15,9 +15,8 @@ from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Phase 5 single-tenant sentinel: the zero UUID every row and session carries
-# when HM_TENANT_ID is unset. Mirrors cdc/schema/tenancy.py's copy (the serving
-# wheel must not depend on the cdc package at runtime; a unit test asserts the
-# two never drift, the sanctions_flag_id convention).
+# when HM_TENANT_ID is unset. Mirrors cdc/schema/tenancy.py's copy; a unit test
+# asserts the two never drift.
 DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000000"
 
 

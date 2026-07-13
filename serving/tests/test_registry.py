@@ -11,6 +11,7 @@ import os
 import pytest
 from fastapi.testclient import TestClient
 
+from app.config import Settings
 from app.errors import RegistryEntryNotFound
 from app.main import app
 from app.registry import MemoryRegistryBackend, PostgresRegistryBackend, RegistryStore
@@ -76,6 +77,15 @@ async def test_delete_sanctions_with_none_raises_not_found():
     store = RegistryStore(MemoryRegistryBackend())
     with pytest.raises(RegistryEntryNotFound):
         await store.delete_sanctions(MMSI)
+
+
+async def test_configured_registry_propagates_missing_runtime_dependency(monkeypatch):
+    async def missing_dependency(*_args, **_kwargs):
+        raise ModuleNotFoundError("No module named 'asyncpg'", name="asyncpg")
+
+    monkeypatch.setattr(PostgresRegistryBackend, "connect", missing_dependency)
+    with pytest.raises(ModuleNotFoundError, match="asyncpg"):
+        await RegistryStore.connect(Settings(pg_dsn="postgresql://configured"))
 
 
 # ------------------------------------------------------------------ endpoints
