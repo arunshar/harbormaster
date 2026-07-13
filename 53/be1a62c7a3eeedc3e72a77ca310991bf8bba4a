@@ -1,0 +1,32 @@
+serving/tests/test_schema_bootstrap.py
+  s_87fd0589dba2e0::t_efeae25638e7df 1-60
+serving/tests/test_tenant_rls.py
+  s_87fd0589dba2e0::t_eea8a2299e2547 24,169-187,192,196,199-204
+  s_87fd0589dba2e0::t_bc7db3004bae36 113-168
+  s_87fd0589dba2e0::t_02752fc5e0c71e 188-191,193-195,197-198
+  s_87fd0589dba2e0::t_34c5b1cd1e4dd8 205-206
+serving/app/hitl.py
+  s_87fd0589dba2e0::t_a6365905c59237 147,162-169,176-178
+  s_87fd0589dba2e0::t_eea8a2299e2547 132-146,148-149
+cdc/schema/tenancy.py
+  s_87fd0589dba2e0::t_eea8a2299e2547 53-57
+serving/app/registry.py
+  s_87fd0589dba2e0::t_eea8a2299e2547 132-145,147-148
+  s_87fd0589dba2e0::t_a6365905c59237 146
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "53be1a62c7a3eeedc3e72a77ca310991bf8bba4a",
+  "prompts": {},
+  "sessions": {
+    "s_87fd0589dba2e0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5912-4f5a-7aa3-8604-0ccba141cb86",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
