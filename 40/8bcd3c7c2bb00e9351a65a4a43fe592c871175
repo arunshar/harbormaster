@@ -1,0 +1,19 @@
+tests/e2e/test_phase5_flink_backpressure.py
+  s_87fd0589dba2e0::t_3e90526a01800a 781-785,800
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "408bcd3c7c2bb00e9351a65a4a43fe592c871175",
+  "prompts": {},
+  "sessions": {
+    "s_87fd0589dba2e0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5912-4f5a-7aa3-8604-0ccba141cb86",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
