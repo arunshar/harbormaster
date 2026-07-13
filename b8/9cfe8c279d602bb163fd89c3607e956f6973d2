@@ -1,9 +1,13 @@
 docs/WAVE3_FINDINGS.md
   s_87fd0589dba2e0::t_620ee16d36e3c4 55
+  s_87fd0589dba2e0::t_54ffd6cea6f3dc 56
+  s_87fd0589dba2e0::t_d487990addad63 27
 mlops/tests/test_disagreement_baseline.py
   s_87fd0589dba2e0::t_484b35b388b923 60-67
   s_87fd0589dba2e0::t_b6da0012717c6b 124-135
   s_87fd0589dba2e0::t_752bc278213608 136-137
+sessions/CODEX_HANDOFF_2026-07-12.md
+  s_87fd0589dba2e0::t_54ffd6cea6f3dc 147-148,175-177
 ---
 {
   "schema_version": "authorship/3.0.0",
