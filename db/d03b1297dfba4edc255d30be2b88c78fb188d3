@@ -2,6 +2,7 @@ streaming/ingestor/ingest.py
   s_87fd0589dba2e0::t_22fc3618fc3ea8 325
   s_87fd0589dba2e0::t_760000a7f1062b 55-76,326-328
   s_87fd0589dba2e0::t_c6cfe3449c0323 294-295,314-315,324,329
+  s_87fd0589dba2e0::t_585ec15794ac28 318
 streaming/ingestor/tests/test_live.py
   s_87fd0589dba2e0::t_66186231beea71 6,9,11,130-158
   s_87fd0589dba2e0::t_9cee8b3d6ce798 78-102
