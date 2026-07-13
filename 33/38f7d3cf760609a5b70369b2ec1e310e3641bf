@@ -1,0 +1,29 @@
+docs/PLATFORM_BOOK.md
+  s_87fd0589dba2e0::t_13f9276acf0454 266
+  s_87fd0589dba2e0::t_34775463e6ace5 317
+  s_87fd0589dba2e0::t_570fea3dce2521 299-302,310-315
+  s_87fd0589dba2e0::t_d79ddbfa2e8fdb 316
+sessions/CODEX_HANDOFF_2026-07-12.md
+  s_87fd0589dba2e0::t_34775463e6ace5 178-183
+  s_87fd0589dba2e0::t_570fea3dce2521 38-40,176-177
+PLATFORM_WAR_STORIES.md
+  s_87fd0589dba2e0::t_0c189afb04f0c9 374,383,386,395,398,407,410,419,422,434
+README.md
+  s_87fd0589dba2e0::t_570fea3dce2521 34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "3338f7d3cf760609a5b70369b2ec1e310e3641bf",
+  "prompts": {},
+  "sessions": {
+    "s_87fd0589dba2e0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5912-4f5a-7aa3-8604-0ccba141cb86",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
