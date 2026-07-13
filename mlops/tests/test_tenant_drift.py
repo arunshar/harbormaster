@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from mlops.drift import DriftConfig, check_input_drift
+from mlops.drift import DriftConfig, DriftResult, check_input_drift
 from mlops.tenant_drift import check_tenant_drift, drifted_tenants, pooled_windows
 
 SHIFTED_TENANT = "tenant-d"
@@ -75,9 +75,30 @@ def test_results_are_keyed_per_tenant_and_sorted(tenant_windows):
         assert [r.feature for r in tenant_results] == ["speed_kts", "gap_s"]
 
 
+def test_result_keys_sort_reverse_insertion_order(tenant_windows):
+    reverse_inserted = dict(reversed(list(tenant_windows.items())))
+    assert list(reverse_inserted) != sorted(reverse_inserted)
+
+    results = check_tenant_drift(reverse_inserted)
+
+    assert list(results) == sorted(reverse_inserted)
+
+
 def test_drifted_tenants_lists_exactly_the_shifted_tenant(tenant_windows):
     assert drifted_tenants(check_tenant_drift(tenant_windows)) == [SHIFTED_TENANT]
     assert drifted_tenants({}) == []
+
+
+def test_drifted_tenant_fanout_sorts_reverse_insertion_order():
+    drifted = DriftResult(feature="speed_kts", psi=0.5, ks=0.4, ks_pvalue=0.001, drifted=True)
+    quiet = DriftResult(feature="speed_kts", psi=0.0, ks=0.0, ks_pvalue=1.0, drifted=False)
+    reverse_inserted = {
+        "tenant-z": [drifted],
+        "tenant-a": [drifted],
+        "tenant-m": [quiet],
+    }
+
+    assert drifted_tenants(reverse_inserted) == ["tenant-a", "tenant-z"]
 
 
 def test_config_passes_through_to_every_partition(tenant_windows):
