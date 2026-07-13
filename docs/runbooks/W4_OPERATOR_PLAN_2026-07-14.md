@@ -24,7 +24,7 @@ An unsuccessful measurement does not authorize a second unplanned load run. Reco
 - Keep the 75 USD hard budget and automatic spend-freeze action armed.
 - Keep the nightly sweep enabled. It runs at 07:00 UTC, which is 00:00 PDT.
 - Enter the MFA code only through the hidden prompt. Do not type it literally into a command or put it in a file, chat, or shell history. Do not persist AWS credentials or the Flink presigned dashboard URL.
-- Use the administrator identity only through the IAM reconciliation in Sections 2 and 3. Use the assumed `harbormaster-platform` role for every command in Sections 4 through 12.
+- Use the administrator identity only through operator Steps 2 and 3. Use the assumed `harbormaster-platform` role for every command in operator Steps 4 through 15, corresponding to canonical runbook Sections 4 through 12.
 - Stop on an unexpected identity, budget state, plan action, guard value, resource replacement, authorization result, or cleanup result.
 
 ## Preparation snapshot from 2026-07-13
@@ -60,10 +60,10 @@ That run observed the following. Treat every AWS value as a snapshot that must b
 - SageMaker endpoints: none.
 - Elastic Load Balancing service-linked role: absent.
 
-Beyond the mandatory IAM reconciliation in Step 3, two additional snapshot-specific preconditions are expected to require human mutation before any EKS plan:
+Beyond the mandatory IAM reconciliation in Step 3, two additional snapshot-specific preconditions may require human mutation before any EKS plan, depending on the fresh preflight:
 
 1. Create the Elastic Load Balancing service-linked role once.
-2. Run the guard-only Stage 0 Terraform plan and apply to set the nightly teardown Lambda to `DRY_RUN=false`.
+2. If the fresh Lambda configuration is dry, run the guard-only Stage 0 Terraform plan and apply to set it to `DRY_RUN=false`.
 
 Do not assume either condition is unchanged tomorrow. Repeat the preflight.
 
@@ -75,7 +75,7 @@ Reserve 08:30 through 16:30 PDT. This leaves a large margin before the 00:00 PDT
 |---|---|---:|
 | 08:30 | Local preparation and fresh artifact directory | 30 minutes |
 | 09:00 | Admin read-only preflight and IAM reconciliation | 45 minutes |
-| 09:45 | Mandatory guard-only Stage 0 | 30 minutes |
+| 09:45 | Guard assertion; Stage 0 only if dry | 30 minutes |
 | 10:15 | EKS Stage 1 create and verification | 60 minutes |
 | 11:15 | KEDA, image, and immutable manifest | 45 minutes |
 | 12:00 | Managed Flink start and KEDA stabilization | 45 minutes |
@@ -153,14 +153,7 @@ Required verdicts:
 
 Set `NIGHTLY_TEARDOWN_WET` only from the saved Lambda configuration. The 2026-07-13 snapshot was `false`, so expect Stage 0, but obey tomorrow's result.
 
-The ELB service-linked-role lookup returned `NoSuchEntity` on 2026-07-13. If it is still absent, Arun runs the one create command in Section 2:
-
-```bash
-aws iam create-service-linked-role \
-  --aws-service-name elasticloadbalancing.amazonaws.com
-```
-
-Immediately verify it with the read-only `aws iam get-role` command and save the result. If creation reports that the role already exists, verify the role, preserve the response, and do not retry.
+The ELB service-linked-role lookup returned `NoSuchEntity` on 2026-07-13. Run the guarded Section 2 probe, which saves lookup stderr and treats only `NoSuchEntity` as expected absence. If absent, Arun runs the conditional create block. That human mutation block immediately reruns `get-role` and saves the verified role JSON. Any other lookup or create error is fatal; an already-existing race is verified rather than retried.
 
 Checkpoint: budget and guard evidence is saved, no W4 cluster exists, and the ELB service-linked role exists.
 
@@ -171,14 +164,16 @@ Run Section 3 as administrator. This is not optional because W4 depends on the n
 Perform these substeps in order:
 
 1. Inspect the committed boundary and platform policy statements locally.
-2. Create one new boundary policy version and set it as default.
-3. Save the returned version as `NEW_BOUNDARY_VERSION`.
-4. Do not delete `v2`; it is the immediate rollback version.
-5. Verify the budget-action role and its exact attach/detach policy scope.
-6. Use the IAM simulator to prove the budget action can attach the spend freeze to `harbormaster-platform`.
-7. Reconcile the existing platform role's inline IAM-management policy.
-8. Update its maximum session duration to 28,800 seconds.
-9. Run every positive and negative platform simulation in Section 3.
+2. Capture the prior default boundary version, platform inline policy document, and platform role maximum session duration.
+3. Arm the Section 3 reconciliation rollback handler before the first mutation.
+4. Create one new boundary policy version and set it as default.
+5. Save the returned version as `NEW_BOUNDARY_VERSION`.
+6. Do not delete the prior version; it is the immediate rollback version.
+7. Verify the budget-action role and its exact attach/detach policy scope.
+8. Use the IAM simulator to prove the budget action can attach the spend freeze to `harbormaster-platform`.
+9. Reconcile the existing platform role's inline IAM-management policy.
+10. Update its maximum session duration to 28,800 seconds.
+11. Run every positive and negative platform simulation in Section 3.
 
 The expected simulation decisions are encoded in each helper invocation:
 
@@ -191,7 +186,7 @@ The expected simulation decisions are encoded in each helper invocation:
 - unrelated role creation: `implicitDeny`;
 - boundary mutation: `explicitDeny`.
 
-Stop if any result differs. Do not assume the platform role until all eight checks pass.
+Stop if any result differs. The armed human-run rollback restores and verifies the captured boundary default, inline policy, and maximum session duration on any reconciliation or simulation failure. Do not bypass or disarm it. Do not assume the platform role until all eight checks pass.
 
 Assume `harbormaster-platform` with a direct MFA-backed administrator identity. Enter the MFA token through the hidden prompt. Verify the returned caller ARN starts with:
 
@@ -199,7 +194,7 @@ Assume `harbormaster-platform` with a direct MFA-backed administrator identity. 
 arn:aws:sts::645322802947:assumed-role/harbormaster-platform/
 ```
 
-Keep that shell for Sections 4 through 12. If it expires, first unset `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_SESSION_TOKEN`. Require the restored caller ARN to equal the direct administrator ARN saved during preflight. Then repeat the MFA assume-role block with a fresh token, export the new session values, and recheck the platform caller. Do not try to call STS through the expired exported session.
+Keep that shell for operator Steps 4 through 15, corresponding to canonical runbook Sections 4 through 12. If it expires, first unset `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_SESSION_TOKEN`. Require the restored caller ARN to equal the direct administrator ARN saved during preflight. Then repeat the MFA assume-role block with a fresh token, export the new session values, and recheck the platform caller. Do not try to call STS through the expired exported session.
 
 Checkpoint: all simulation artifacts pass and the active caller is the bounded platform role.
 
@@ -266,9 +261,10 @@ Verify:
 - the single node is `Ready`;
 - every KEDA pod is running;
 - the `keda-operator` service account carries the Terraform-created IRSA annotation;
-- operator logs contain no credential or CloudWatch authorization error.
+- `keda-operator-describe.txt` and `keda-operator.log` are saved from the exact canonical commands;
+- the explicit log scan finds no credential or CloudWatch authorization error.
 
-Do not continue with an unhealthy operator. Preserve `kubectl describe` and pod logs in `ARTIFACT_DIR` before stopping.
+Do not continue with an unhealthy operator. Preserve those exact describe and log artifacts in `ARTIFACT_DIR` before stopping.
 
 Checkpoint: KEDA is healthy and authorized before any serving Deployment is applied.
 
@@ -335,14 +331,14 @@ The declared load hypothesis is 5 rps steady state, a 400 rps burst from second 
 
 After completion, require:
 
-- all three process exit statuses are saved;
+- all three process exit statuses are saved and all three equal zero;
 - all three JSON artifacts report `status: completed`;
 - all three use the same fresh run ID;
 - scale events include `scale_requested`, `pod_ready`, `first_inference_success`, and `returned_to_zero`;
 - the bound dashboard artifact reports all three backpressure conditions true;
-- Kinesis and Flink lag artifacts cover the load start through return to zero and show later drain.
+- both Kinesis and Flink lag captures succeed, cover the load start through return to zero, and show a later value below their peak.
 
-Kinesis lag alone does not prove Flink backpressure. If the dashboard criterion or any artifact fails, record the failure and continue immediately to rollback. Do not claim the criterion closed.
+Kinesis lag alone does not prove Flink backpressure. The saved evidence verdict must record explicit criterion (a) and (b) booleans. Criterion (a) requires successful processes, complete bound artifacts, and all four scale events. Criterion (b) additionally requires the dashboard backpressure conditions, both metric captures, and later drain in both series. If any process, dashboard criterion, metric capture, drain check, or artifact fails, record the failure and continue immediately to rollback. Do not claim the criterion closed.
 
 Checkpoint: evidence verdict is written, regardless of pass or fail.
 
@@ -365,24 +361,28 @@ Disable Terraform Kubernetes access, set the Phase 5 maximum age to zero, and se
 
 Do not invoke the Lambda directly. Start the read-only log tail and polling loop. Let Scheduler delete the node group and cluster. Confirmation requires `ResourceNotFoundException`, not an inferred timeout or empty local state.
 
-The polling loop is bounded. If deletion is not confirmed, preserve logs and AWS descriptions. Do not remove cluster or node-group state. Leave the nightly teardown wet and stop for diagnosis.
+The polling loop is bounded. If deletion is not confirmed, preserve logs and AWS descriptions, write criterion (f) as failed, and do not remove cluster or node-group state. Continue to the separately labeled reviewed Terraform resting-plan cleanup so any still-live EKS control plane, node group, NLB, NAT, and worker resources are deleted through normal state ownership. Leave the nightly teardown wet. Stop for diagnosis only after the final absence checks and safe resting plan complete.
 
-Checkpoint: AWS confirms the cluster is absent and the guard logs are saved.
+Checkpoint: the guard verdict and available logs are saved. Success confirms
+the cluster is absent and the final log capture succeeded. Failure preserves
+state and proceeds to the fallback cleanup plan.
 
 ## Step 13: reconcile only confirmed missing state
 
-List the two expected state addresses. Only after AWS confirms the cluster is not found, Arun runs the exact `terraform state rm` command in Section 11 for:
+List the two expected state addresses. Only after AWS confirms the cluster is not found, Arun runs the exact conditional `terraform state rm` command in Section 11 for:
 
 ```text
 module.eks_cluster[0].aws_eks_cluster.this
 module.eks_node_group[0].aws_eks_node_group.this
 ```
 
-Do not remove any other address. This is state reconciliation after an authorized external guard action, not a substitute for deleting a live resource.
+Do not remove any other address. This is state reconciliation after an authorized external guard action, not a substitute for deleting a live resource. If criterion (f) failed, the conditional preserves both addresses and the fallback cleanup plan handles any live resources.
 
 Stop Managed Flink and poll until it is `READY`. Preserve the stopped application description.
 
-Checkpoint: only the two confirmed-missing EKS objects were removed from state, and Flink is stopped.
+Checkpoint: Flink is stopped. On guard success, only the two confirmed-missing
+EKS objects were removed from state. On guard failure, both addresses remain
+for the fallback Terraform cleanup.
 
 ## Step 14: apply the safe resting posture
 
@@ -397,7 +397,7 @@ Set the complete final tfvars block from Section 11. Key resting values are:
 - ECS serving target restored;
 - Flink code key empty.
 
-Generate `wave4-w4-final-cleanup`. It may delete remaining Phase 5 resources and the Managed Flink application. It must not delete or replace Phase 1 state stores. Apply the exact reviewed plan.
+Generate `wave4-w4-final-cleanup` after a successful guard proof. If criterion (f) failed, generate the distinct `wave4-w4-guard-fallback-cleanup` plan without removing EKS state. The fallback may delete still-live EKS objects but may not create any resource or replace either EKS object. Either plan may delete remaining Phase 5 resources and the Managed Flink application, and neither may delete or replace Phase 1 state stores. Apply only the exact reviewed plan.
 
 Checkpoint: the final cleanup apply succeeds without touching Phase 1 data.
 
@@ -405,6 +405,10 @@ Checkpoint: the final cleanup apply succeeds without touching Phase 1 data.
 
 Run Section 12 in full. Required results:
 
+- active caller is still the `harbormaster-platform` assumed role;
+- budget is still exactly 75 USD with actual spend below 75 USD;
+- automatic spend freeze is still `STANDBY` for the exact platform role and policy;
+- `NEW_BOUNDARY_VERSION` is still the default boundary version;
 - W4 EKS cluster absent;
 - W4 NLB absent;
 - Harbormaster NAT gateway absent;
@@ -416,9 +420,11 @@ Run Section 12 in full. Required results:
 - signed ECS inference returns HTTP 200;
 - `wave4-w4-verified-clean` plan has zero add, change, and destroy actions.
 
-Create the sanitized handoff from the explicit allowlist. Confirm it contains no `.tfplan`, credential, security token, signature, or presigned URL. Review every allowlisted file before sharing it.
+Create the sanitized handoff from the explicit allowlist. Confirm it contains no `.tfplan`, `*.plan.txt`, `AKIA` or `ASIA` access-key identifiers, credential JSON fields, security token, signature, or presigned URL. Review every allowlisted file before sharing it.
 
-Do not update `docs/drills/M3_backpressure_loadtest.md`, Phase 5 status, or war story P37 until the sanitized artifacts are available. Every reported number must be generated from those files.
+Do not update `docs/drills/M3_backpressure_loadtest.md`, Phase 5 status, or war story P37 until the sanitized artifacts are available. If criterion (a) passes, its measured timing can ground the observed cold-start behavior either way. Ground P37 as an SLO-breach story only if that measured value crosses the documented tier threshold. Every reported number must be generated from those files.
+
+If criterion (a), (b), or (f) failed, complete cleanup, final verification, and sanitization, then let the canonical final assertion exit nonzero. The Phase 5 gate remains open.
 
 ## Artifact checklist
 
@@ -427,19 +433,19 @@ Before ending the window, confirm the live directory or sanitized handoff has th
 - Git head and Flink ZIP SHA-256.
 - Caller identity for administrator and platform-role phases.
 - Budget, budget action, nightly schedule, and nightly Lambda preflight.
-- Boundary before and after, budget-action policy, and IAM simulations.
+- Boundary before and after, platform policy and role rollback inputs, budget-action policy, IAM simulations, and any rollback verification.
 - Every plan text, plan summary, and binary-plan SHA-256 comparison.
 - EKS cluster, node group, guard schedule, and guard function descriptions.
-- Kubernetes nodes, KEDA pods, IRSA service account, and serving inventory.
+- Kubernetes nodes, KEDA pods, IRSA service account, exact KEDA operator describe and log captures, and serving inventory.
 - Digest-pinned rendered serving manifest.
 - Flink running description and metric inventory.
 - KEDA stabilization JSONL.
 - Load, scale timeline, Flink dashboard backpressure, process status, evidence verdict, and CloudWatch lag artifacts.
 - ECS rollback inference result.
-- Guard live-fire poll, follow log, final log, and deletion confirmation.
+- Guard live-fire poll, follow log, final log, criterion verdict, and deletion confirmation or fallback state-preservation record.
 - Flink stopped description.
 - Final EKS, NLB, NAT, Elastic IP, schedule, and Flink absence checks.
-- Final nightly guard check, signed ECS inference, and zero-change plan.
+- Final platform caller, budget, action, and boundary checks; final nightly guard check; signed ECS inference; and zero-change plan.
 
 ## Work deliberately excluded from this window
 

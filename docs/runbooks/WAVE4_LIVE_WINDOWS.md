@@ -159,6 +159,9 @@ export NIGHTLY_TEARDOWN_WET
 BOUNDARY_ARN="arn:aws:iam::${ACCOUNT_ID}:policy/harbormaster-permissions-boundary"
 aws iam get-policy --policy-arn "$BOUNDARY_ARN" \
   | tee "$ARTIFACT_DIR/boundary-before.json"
+PRIOR_BOUNDARY_VERSION=$(jq -er '.Policy.DefaultVersionId' \
+  "$ARTIFACT_DIR/boundary-before.json")
+export PRIOR_BOUNDARY_VERSION
 
 aws eks list-clusters | tee "$ARTIFACT_DIR/eks-before.json"
 aws kafka list-clusters-v2 | tee "$ARTIFACT_DIR/msk-before.json"
@@ -180,20 +183,58 @@ Required preflight verdicts:
   `DRY_RUN=false`, or the guard-only Stage 0 apply below must complete before
   any EKS plan is generated. This window must not overlap that sweep.
 
-The internal NLB needs the Elastic Load Balancing service-linked role. Check it
-without changing anything:
+The internal NLB needs the Elastic Load Balancing service-linked role. This
+guarded probe preserves stderr and treats only `NoSuchEntity` as expected
+absence. Any other lookup failure is fatal even with `set -euo pipefail`.
 
 ```bash
-aws iam get-role --role-name AWSServiceRoleForElasticLoadBalancing \
-  | tee "$ARTIFACT_DIR/elb-service-linked-role.json"
+ELB_ROLE_BEFORE="$ARTIFACT_DIR/elb-service-linked-role-before.json"
+ELB_ROLE_BEFORE_STDERR="$ARTIFACT_DIR/elb-service-linked-role-before.stderr.txt"
+if aws iam get-role --role-name AWSServiceRoleForElasticLoadBalancing \
+  > "$ELB_ROLE_BEFORE" 2> "$ELB_ROLE_BEFORE_STDERR"; then
+  cat "$ELB_ROLE_BEFORE"
+  ELB_SERVICE_LINKED_ROLE_PRESENT=true
+else
+  ELB_ROLE_LOOKUP_STATUS=$?
+  cat "$ELB_ROLE_BEFORE_STDERR" >&2
+  if rg -q '\(NoSuchEntity\)' "$ELB_ROLE_BEFORE_STDERR"; then
+    ELB_SERVICE_LINKED_ROLE_PRESENT=false
+  else
+    printf 'unexpected ELB service-linked-role lookup failure\n' >&2
+    exit "$ELB_ROLE_LOOKUP_STATUS"
+  fi
+fi
+export ELB_SERVICE_LINKED_ROLE_PRESENT
 ```
 
-If that returns `NoSuchEntity`, this one bootstrap action is required.
-`ARUN RUNS`:
+If and only if the guarded probe records `NoSuchEntity`, this one bootstrap
+action is required. This entire block is a human-run mutation boundary. A
+create race that reports an existing role is followed by the same mandatory
+read-only verification; every other create failure is fatal. `ARUN RUNS`:
 
 ```bash
-aws iam create-service-linked-role \
-  --aws-service-name elasticloadbalancing.amazonaws.com
+if test "$ELB_SERVICE_LINKED_ROLE_PRESENT" = false; then
+  ELB_ROLE_CREATE_STDOUT="$ARTIFACT_DIR/elb-service-linked-role-create.json"
+  ELB_ROLE_CREATE_STDERR="$ARTIFACT_DIR/elb-service-linked-role-create.stderr.txt"
+  if aws iam create-service-linked-role \
+    --aws-service-name elasticloadbalancing.amazonaws.com \
+    > "$ELB_ROLE_CREATE_STDOUT" 2> "$ELB_ROLE_CREATE_STDERR"; then
+    cat "$ELB_ROLE_CREATE_STDOUT"
+  else
+    ELB_ROLE_CREATE_STATUS=$?
+    cat "$ELB_ROLE_CREATE_STDERR" >&2
+    if ! rg -qi 'already exists|has been taken' "$ELB_ROLE_CREATE_STDERR"; then
+      exit "$ELB_ROLE_CREATE_STATUS"
+    fi
+  fi
+fi
+
+aws iam get-role --role-name AWSServiceRoleForElasticLoadBalancing \
+  > "$ARTIFACT_DIR/elb-service-linked-role.json" \
+  2> "$ARTIFACT_DIR/elb-service-linked-role.stderr.txt"
+cat "$ARTIFACT_DIR/elb-service-linked-role.json"
+jq -e '.Role.RoleName == "AWSServiceRoleForElasticLoadBalancing"' \
+  "$ARTIFACT_DIR/elb-service-linked-role.json"
 ```
 
 ## 3. Update the existing permissions boundary
@@ -220,6 +261,128 @@ jq '.Statement[] | select(.Sid == "PassOnlyHarbormasterRolesToServices" or .Sid 
   infra/aws/harbormaster-platform-permissions.json
 ```
 
+Before any IAM mutation, capture every value needed for an exact rollback:
+
+```bash
+aws iam get-role-policy \
+  --role-name harbormaster-platform \
+  --policy-name harbormaster-iam-management \
+  | tee "$ARTIFACT_DIR/platform-policy-before.json"
+aws iam get-role --role-name harbormaster-platform \
+  | tee "$ARTIFACT_DIR/platform-role-before.json"
+jq -e '.PolicyDocument | type == "object"' \
+  "$ARTIFACT_DIR/platform-policy-before.json"
+jq '.PolicyDocument' "$ARTIFACT_DIR/platform-policy-before.json" \
+  > "$ARTIFACT_DIR/platform-policy-before-document.json"
+PRIOR_PLATFORM_MAX_SESSION_DURATION=$(jq -er '.Role.MaxSessionDuration' \
+  "$ARTIFACT_DIR/platform-role-before.json")
+export PRIOR_PLATFORM_MAX_SESSION_DURATION
+test -n "$PRIOR_BOUNDARY_VERSION"
+```
+
+The next human-run block arms an exit and interrupt rollback before changing
+IAM. If any later reconciliation command or simulator assertion fails, it
+restores the prior boundary default, the prior platform inline policy, and the
+prior maximum session duration, then verifies all three. Do not disarm this
+handler manually. `ARUN RUNS`:
+
+```bash
+IAM_RECONCILIATION_COMPLETE=false
+IAM_RECONCILIATION_ROLLBACK_STARTED=false
+rollback_iam_reconciliation() {
+  local rollback_status=0
+
+  if ! aws iam set-default-policy-version \
+    --policy-arn "$BOUNDARY_ARN" \
+    --version-id "$PRIOR_BOUNDARY_VERSION"; then
+    rollback_status=1
+  fi
+  if ! aws iam put-role-policy \
+    --role-name harbormaster-platform \
+    --policy-name harbormaster-iam-management \
+    --policy-document \
+      "file://$ARTIFACT_DIR/platform-policy-before-document.json"; then
+    rollback_status=1
+  fi
+  if ! aws iam update-role \
+    --role-name harbormaster-platform \
+    --max-session-duration "$PRIOR_PLATFORM_MAX_SESSION_DURATION"; then
+    rollback_status=1
+  fi
+
+  if ! aws iam get-policy --policy-arn "$BOUNDARY_ARN" \
+    | tee "$ARTIFACT_DIR/boundary-rollback-verification.json"; then
+    rollback_status=1
+  fi
+  if ! aws iam get-role-policy \
+    --role-name harbormaster-platform \
+    --policy-name harbormaster-iam-management \
+    | tee "$ARTIFACT_DIR/platform-policy-rollback-verification.json"; then
+    rollback_status=1
+  fi
+  if ! aws iam get-role --role-name harbormaster-platform \
+    | tee "$ARTIFACT_DIR/platform-role-rollback-verification.json"; then
+    rollback_status=1
+  fi
+
+  if ! jq -e --arg version "$PRIOR_BOUNDARY_VERSION" \
+    '.Policy.DefaultVersionId == $version' \
+    "$ARTIFACT_DIR/boundary-rollback-verification.json"; then
+    rollback_status=1
+  fi
+  if ! jq -e -s '.[0].PolicyDocument == .[1].PolicyDocument' \
+    "$ARTIFACT_DIR/platform-policy-before.json" \
+    "$ARTIFACT_DIR/platform-policy-rollback-verification.json"; then
+    rollback_status=1
+  fi
+  if ! jq -e --argjson duration "$PRIOR_PLATFORM_MAX_SESSION_DURATION" \
+    '.Role.MaxSessionDuration == $duration' \
+    "$ARTIFACT_DIR/platform-role-rollback-verification.json"; then
+    rollback_status=1
+  fi
+
+  if test "$rollback_status" -eq 0; then
+    printf 'IAM reconciliation rollback verified\n' \
+      | tee "$ARTIFACT_DIR/iam-reconciliation-rollback.txt"
+  else
+    printf 'IAM reconciliation rollback incomplete; stop and inspect artifacts\n' \
+      | tee "$ARTIFACT_DIR/iam-reconciliation-rollback.txt" >&2
+  fi
+  return "$rollback_status"
+}
+
+rollback_incomplete_iam_reconciliation() {
+  local trigger="$1"
+  local original_status="$2"
+
+  case "$trigger" in
+    INT) original_status=130 ;;
+    TERM) original_status=143 ;;
+    EXIT|ERR)
+      test "$original_status" -ne 0 || original_status=1
+      ;;
+  esac
+
+  if test "$IAM_RECONCILIATION_ROLLBACK_STARTED" = true; then
+    trap - EXIT INT TERM ERR
+    exit "$original_status"
+  fi
+  IAM_RECONCILIATION_ROLLBACK_STARTED=true
+  trap - EXIT INT TERM ERR
+  if test "$IAM_RECONCILIATION_COMPLETE" != true; then
+    printf 'IAM reconciliation failed; restoring captured prior values\n' >&2
+    if ! rollback_iam_reconciliation; then
+      exit 1
+    fi
+  fi
+  exit "$original_status"
+}
+trap 'iam_trap_status=$?; rollback_incomplete_iam_reconciliation EXIT "$iam_trap_status"' EXIT
+trap 'iam_trap_status=$?; rollback_incomplete_iam_reconciliation INT "$iam_trap_status"' INT
+trap 'iam_trap_status=$?; rollback_incomplete_iam_reconciliation TERM "$iam_trap_status"' TERM
+trap 'iam_trap_status=$?; rollback_incomplete_iam_reconciliation ERR "$iam_trap_status"' ERR
+```
+
 `ARUN RUNS`:
 
 ```bash
@@ -234,6 +397,11 @@ aws iam get-policy-version \
   --policy-arn "$BOUNDARY_ARN" \
   --version-id "$NEW_BOUNDARY_VERSION" \
   | tee "$ARTIFACT_DIR/boundary-after.json"
+aws iam get-policy --policy-arn "$BOUNDARY_ARN" \
+  | tee "$ARTIFACT_DIR/boundary-default-after.json"
+jq -e --arg version "$NEW_BOUNDARY_VERSION" \
+  '.Policy.DefaultVersionId == $version' \
+  "$ARTIFACT_DIR/boundary-default-after.json"
 
 aws iam get-role --role-name harbormaster-base-budget-action \
   | tee "$ARTIFACT_DIR/budget-action-role.json"
@@ -282,14 +450,8 @@ policy version.
 
 Reconcile the already-existing platform role's inline policy so its deferred
 least-privilege path can create EKS roles, service-linked roles, and the
-cluster-scoped OIDC provider. This does not switch the active identity.
-
-```bash
-aws iam get-role-policy \
-  --role-name harbormaster-platform \
-  --policy-name harbormaster-iam-management \
-  | tee "$ARTIFACT_DIR/platform-policy-before.json"
-```
+cluster-scoped OIDC provider. The prior inline policy and role settings are
+already captured above. This does not switch the active identity.
 
 `ARUN RUNS`:
 
@@ -311,6 +473,13 @@ aws iam get-role-policy \
   --role-name harbormaster-platform \
   --policy-name harbormaster-iam-management \
   | tee "$ARTIFACT_DIR/platform-policy-after.json"
+aws iam get-role --role-name harbormaster-platform \
+  | tee "$ARTIFACT_DIR/platform-role-after.json"
+jq -e -s '.[0] == .[1].PolicyDocument' \
+  infra/aws/harbormaster-platform-permissions.json \
+  "$ARTIFACT_DIR/platform-policy-after.json"
+jq -e '.Role.MaxSessionDuration == 28800' \
+  "$ARTIFACT_DIR/platform-role-after.json"
 ```
 
 Use the read-only IAM simulator against the deployed role and its new default
@@ -391,6 +560,11 @@ simulate_platform boundary-mutation explicitDeny \
   --action-names iam:CreatePolicyVersion \
   --resource-arns "$BOUNDARY_ARN" \
   --context-entries "$PLATFORM_PRINCIPAL_CONTEXT"
+
+IAM_RECONCILIATION_COMPLETE=true
+trap - EXIT INT TERM ERR
+printf 'IAM reconciliation verified; rollback handler disarmed\n' \
+  | tee "$ARTIFACT_DIR/iam-reconciliation-complete.txt"
 ```
 
 Stop unless every assertion matches its named decision. The simulator is a
@@ -631,11 +805,22 @@ kubectl get nodes -o wide | tee "$ARTIFACT_DIR/k8s-nodes.txt"
 kubectl get pods -n keda -o wide | tee "$ARTIFACT_DIR/keda-pods.txt"
 kubectl get serviceaccount -n keda keda-operator -o yaml \
   | tee "$ARTIFACT_DIR/keda-service-account.yaml"
+kubectl describe deployment -n keda keda-operator \
+  | tee "$ARTIFACT_DIR/keda-operator-describe.txt"
+kubectl logs -n keda deployment/keda-operator \
+  --all-containers=true --tail=500 \
+  | tee "$ARTIFACT_DIR/keda-operator.log"
+if rg -n -i \
+  'AccessDenied|Unauthorized|NoCredentialProviders|Unable to locate credentials|cloudwatch.*(denied|unauthorized)' \
+  "$ARTIFACT_DIR/keda-operator.log"; then
+  printf 'KEDA operator credential or CloudWatch authorization error found\n' >&2
+  exit 1
+fi
 ```
 
 All KEDA pods must be running. The operator service account must carry the
-Terraform-created IRSA role. Stop if the operator logs show credential or
-CloudWatch authorization errors.
+Terraform-created IRSA role. The saved describe output and exact operator log
+must be present, and the explicit authorization-error scan must be empty.
 
 ## 6. Build, push, resolve, and render an immutable serving image
 
@@ -911,6 +1096,14 @@ jq -n \
   --argjson flink_capture "$FLINK_CAPTURE_STATUS" \
   '{load_exit: $load, observer_exit: $observer, flink_capture_exit: $flink_capture}' \
   | tee "$ARTIFACT_DIR/measurement-command-status.json"
+
+if jq -e '
+  .load_exit == 0 and .observer_exit == 0 and .flink_capture_exit == 0
+' "$ARTIFACT_DIR/measurement-command-status.json"; then
+  MEASUREMENT_PROCESSES_SUCCEEDED=true
+else
+  MEASUREMENT_PROCESSES_SUCCEEDED=false
+fi
 ```
 
 The 180-second pre-burst interval allows the zero-replica cold start to
@@ -956,16 +1149,18 @@ else
   FLINK_BACKPRESSURE_CONDITIONS=false
 fi
 
-jq -n \
-  --argjson artifacts_complete "$MEASUREMENT_ARTIFACTS_COMPLETE" \
-  --argjson backpressure_conditions "$FLINK_BACKPRESSURE_CONDITIONS" \
-  '{artifacts_complete: $artifacts_complete,
-    backpressure_conditions: $backpressure_conditions}' \
-  | tee "$ARTIFACT_DIR/measurement-evidence-verdict.json"
+if jq -e '
+  .events | has("scale_requested") and has("pod_ready") and
+  has("first_inference_success") and has("returned_to_zero")
+' "$SCALE_ARTIFACT"; then
+  SCALE_EVENTS_COMPLETE=true
+else
+  SCALE_EVENTS_COMPLETE=false
+fi
 ```
 
-All three artifacts must report `status: completed` with the same fresh W4 run
-ID. The timeline must contain
+All three process exit statuses must be zero, and all three artifacts must
+report `status: completed` with the same fresh W4 run ID. The timeline must contain
 `scale_requested`, `pod_ready`, `first_inference_success`, and
 `returned_to_zero`. The observer first persists a zero-replica, non-serving
 EKS baseline; the load tool refuses to start until that marker exists. These
@@ -1014,13 +1209,77 @@ jq -n \
   '{kinesis_metric_captured: $kinesis, flink_lag_captured: $flink_lag}' \
   | tee "$ARTIFACT_DIR/measurement-metric-status.json"
 
+KINESIS_DRAIN_OBSERVED=false
+FLINK_LAG_DRAIN_OBSERVED=false
+if test "$KINESIS_METRIC_CAPTURED" = true && \
+   jq -e '
+     .Datapoints | sort_by(.Timestamp) as $points |
+     ($points | length) >= 2 and
+     (($points | map(.Maximum // .Average) | max) as $peak |
+      ($points[-1].Maximum // $points[-1].Average) < $peak)
+   ' "$ARTIFACT_DIR/kinesis-iterator-age.json"; then
+  KINESIS_DRAIN_OBSERVED=true
+fi
+if test "$FLINK_LAG_CAPTURED" = true && \
+   jq -e '
+     .Datapoints | sort_by(.Timestamp) as $points |
+     ($points | length) >= 2 and
+     (($points | map(.Maximum // .Average) | max) as $peak |
+      ($points[-1].Maximum // $points[-1].Average) < $peak)
+   ' "$ARTIFACT_DIR/flink-lag.json"; then
+  FLINK_LAG_DRAIN_OBSERVED=true
+fi
+
+MEASUREMENT_CRITERION_A_PASSED=false
+MEASUREMENT_CRITERION_B_PASSED=false
+if test "$MEASUREMENT_PROCESSES_SUCCEEDED" = true && \
+   test "$MEASUREMENT_ARTIFACTS_COMPLETE" = true && \
+   test "$SCALE_EVENTS_COMPLETE" = true; then
+  MEASUREMENT_CRITERION_A_PASSED=true
+fi
+if test "$MEASUREMENT_PROCESSES_SUCCEEDED" = true && \
+   test "$MEASUREMENT_ARTIFACTS_COMPLETE" = true && \
+   test "$FLINK_BACKPRESSURE_CONDITIONS" = true && \
+   test "$KINESIS_METRIC_CAPTURED" = true && \
+   test "$FLINK_LAG_CAPTURED" = true && \
+   test "$KINESIS_DRAIN_OBSERVED" = true && \
+   test "$FLINK_LAG_DRAIN_OBSERVED" = true; then
+  MEASUREMENT_CRITERION_B_PASSED=true
+fi
+
+jq -n \
+  --argjson processes_succeeded "$MEASUREMENT_PROCESSES_SUCCEEDED" \
+  --argjson artifacts_complete "$MEASUREMENT_ARTIFACTS_COMPLETE" \
+  --argjson scale_events_complete "$SCALE_EVENTS_COMPLETE" \
+  --argjson backpressure_conditions "$FLINK_BACKPRESSURE_CONDITIONS" \
+  --argjson kinesis_metric_captured "$KINESIS_METRIC_CAPTURED" \
+  --argjson flink_lag_captured "$FLINK_LAG_CAPTURED" \
+  --argjson kinesis_drain_observed "$KINESIS_DRAIN_OBSERVED" \
+  --argjson flink_lag_drain_observed "$FLINK_LAG_DRAIN_OBSERVED" \
+  --argjson criterion_a "$MEASUREMENT_CRITERION_A_PASSED" \
+  --argjson criterion_b "$MEASUREMENT_CRITERION_B_PASSED" \
+  '{processes_succeeded: $processes_succeeded,
+    artifacts_complete: $artifacts_complete,
+    scale_events_complete: $scale_events_complete,
+    backpressure_conditions: $backpressure_conditions,
+    kinesis_metric_captured: $kinesis_metric_captured,
+    flink_lag_captured: $flink_lag_captured,
+    kinesis_drain_observed: $kinesis_drain_observed,
+    flink_lag_drain_observed: $flink_lag_drain_observed,
+    criteria: {a: $criterion_a, b: $criterion_b}}' \
+  | tee "$ARTIFACT_DIR/measurement-evidence-verdict.json"
+
 ```
 
 Use the exact dimensions shown in `flink-metrics.json` if the live application
 reports additional dimensions. Flink 1.20 does not publish
 `backPressuredTimeMsPerSecond` through the Managed Flink CloudWatch namespace,
 so the bound dashboard artifact is the backpressure source of truth. Criterion
-(b) closes only if `all_conditions_true` is true: the recovered pre-burst tail
+(a) closes only if every process succeeds, every bound artifact completes, and
+all four scale events exist. Criterion (b) closes only if those process and
+artifact checks pass, `all_conditions_true` is true, both required metric
+captures succeed, and both metric series show a later value below their peak.
+The recovered pre-burst tail
 is at or below 0.1, the burst maximum is above 0.1, and the final three
 post-burst samples are at or below 0.1. Kinesis and Flink lag must also show a
 later drain. Otherwise record a failed drill and keep criterion (b) open. Do
@@ -1132,6 +1391,7 @@ cleanup_guard_log_tail() {
 trap cleanup_guard_log_tail EXIT INT TERM
 
 DELETION_CONFIRMED=false
+GUARD_POLL_FAILURE_REASON=""
 for _ in {1..80}; do
   if CLUSTER_STATUS=$(aws eks describe-cluster \
     --name "$CLUSTER" \
@@ -1148,8 +1408,11 @@ for _ in {1..80}; do
         DELETION_CONFIRMED=true
         break
       fi
-      printf 'list-nodegroups failed: %s\n' "$NODEGROUPS" >&2
-      exit "$LIST_STATUS"
+      printf 'list-nodegroups failed with status %s: %s\n' \
+        "$LIST_STATUS" "$NODEGROUPS" \
+        | tee -a "$ARTIFACT_DIR/guard-live-fire-poll.txt" >&2
+      GUARD_POLL_FAILURE_REASON="list-nodegroups failed with status $LIST_STATUS"
+      break
     fi
   else
     DESCRIBE_STATUS=$?
@@ -1157,30 +1420,73 @@ for _ in {1..80}; do
       DELETION_CONFIRMED=true
       break
     fi
-    printf 'describe-cluster failed: %s\n' "$CLUSTER_STATUS" >&2
-    exit "$DESCRIBE_STATUS"
+    printf 'describe-cluster failed with status %s: %s\n' \
+      "$DESCRIBE_STATUS" "$CLUSTER_STATUS" \
+      | tee -a "$ARTIFACT_DIR/guard-live-fire-poll.txt" >&2
+    GUARD_POLL_FAILURE_REASON="describe-cluster failed with status $DESCRIBE_STATUS"
+    break
   fi
   sleep 30
 done
 cleanup_guard_log_tail
 trap - EXIT INT TERM
-test "$DELETION_CONFIRMED" = true
-printf 'cluster deletion confirmed by ResourceNotFoundException at %s\n' \
-  "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  | tee "$ARTIFACT_DIR/guard-live-fire.txt"
+if test "$DELETION_CONFIRMED" = true; then
+  GUARD_PROOF_SUCCEEDED=true
+  GUARD_PROOF_REASON="ResourceNotFoundException observed"
+else
+  GUARD_PROOF_SUCCEEDED=false
+  if test -z "$GUARD_POLL_FAILURE_REASON"; then
+    GUARD_POLL_FAILURE_REASON="bounded poll ended without ResourceNotFoundException"
+  fi
+  GUARD_PROOF_REASON="$GUARD_POLL_FAILURE_REASON"
+fi
 ```
 
-Save the final logs:
+Save the final logs without letting a read-only log error bypass cleanup. The
+criterion requires both deletion confirmation and the final log capture:
 
 ```bash
-aws logs tail "/aws/lambda/$GUARD" --since 60m \
-  | tee "$ARTIFACT_DIR/guard-live-fire.log"
+GUARD_FINAL_LOG_CAPTURED=false
+if aws logs tail "/aws/lambda/$GUARD" --since 60m \
+  2> "$ARTIFACT_DIR/guard-live-fire.stderr.txt" \
+  | tee "$ARTIFACT_DIR/guard-live-fire.log" && \
+  test -s "$ARTIFACT_DIR/guard-live-fire.log"; then
+  GUARD_FINAL_LOG_CAPTURED=true
+else
+  GUARD_LOG_STATUS=$?
+  cat "$ARTIFACT_DIR/guard-live-fire.stderr.txt" >&2
+  GUARD_PROOF_SUCCEEDED=false
+  GUARD_PROOF_REASON="final guard log capture failed with status $GUARD_LOG_STATUS"
+fi
+
+if test "$GUARD_PROOF_SUCCEEDED" = true; then
+  printf 'cluster deletion and guard log capture confirmed at %s\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    | tee "$ARTIFACT_DIR/guard-live-fire.txt"
+else
+  printf 'criterion (f) failed: %s; continuing to reviewed Terraform cleanup\n' \
+    "$GUARD_PROOF_REASON" \
+    | tee "$ARTIFACT_DIR/guard-live-fire.txt" >&2
+fi
+export GUARD_PROOF_SUCCEEDED
+jq -n \
+  --argjson deletion_confirmed "$DELETION_CONFIRMED" \
+  --argjson final_log_captured "$GUARD_FINAL_LOG_CAPTURED" \
+  --arg status "$(test "$GUARD_PROOF_SUCCEEDED" = true && printf passed || printf failed)" \
+  --arg reason "$GUARD_PROOF_REASON" \
+  '{criterion: "f", status: $status,
+    deletion_confirmed: $deletion_confirmed,
+    final_log_captured: $final_log_captured,
+    reason: $reason}' \
+  | tee "$ARTIFACT_DIR/guard-criterion-verdict.json"
 ```
 
 ## 11. Reconcile state and remove all W4 resources
 
-The guard deletes the node group and cluster outside Terraform. Remove only
-those two confirmed-missing objects from Terraform state.
+The success path reconciles the node group and cluster that the guard deleted
+outside Terraform. The failure path keeps both objects under Terraform
+ownership and proceeds to the separately labeled resting-plan cleanup below.
+Never remove state when `GUARD_PROOF_SUCCEEDED=false`.
 
 ```bash
 terraform -chdir=infra/terraform/envs/base state list \
@@ -1194,12 +1500,18 @@ module.eks_cluster[0].aws_eks_cluster.this
 module.eks_node_group[0].aws_eks_node_group.this
 ```
 
-`ARUN RUNS`, only after `describe-cluster` reports not found:
+`ARUN RUNS`. The conditional prevents state removal unless the saved guard
+verdict records `ResourceNotFoundException`:
 
 ```bash
-terraform -chdir=infra/terraform/envs/base state rm \
-  'module.eks_cluster[0].aws_eks_cluster.this' \
-  'module.eks_node_group[0].aws_eks_node_group.this'
+if test "$GUARD_PROOF_SUCCEEDED" = true; then
+  terraform -chdir=infra/terraform/envs/base state rm \
+    'module.eks_cluster[0].aws_eks_cluster.this' \
+    'module.eks_node_group[0].aws_eks_node_group.this'
+else
+  printf 'guard proof failed; preserving EKS cluster and node-group state for Terraform cleanup\n' \
+    | tee "$ARTIFACT_DIR/guard-fallback-state-preserved.txt"
+fi
 ```
 
 Stop the Managed Flink application before the final Terraform apply.
@@ -1248,7 +1560,11 @@ flink_code_s3_key                  = ""
 `ARUN RUNS`:
 
 ```bash
-PLAN_LABEL=wave4-w4-final-cleanup
+if test "$GUARD_PROOF_SUCCEEDED" = true; then
+  PLAN_LABEL=wave4-w4-final-cleanup
+else
+  PLAN_LABEL=wave4-w4-guard-fallback-cleanup
+fi
 PLAN_FILE="$ARTIFACT_DIR/$PLAN_LABEL.tfplan"
 PLAN_SUMMARY="docs/plan-artifacts/$(date -u +%F)-$PLAN_LABEL.json"
 scripts/plan_artifact.sh "$PLAN_LABEL" "$PLAN_FILE"
@@ -1256,12 +1572,30 @@ terraform -chdir=infra/terraform/envs/base show -no-color "$PLAN_FILE" \
   | tee "$ARTIFACT_DIR/$PLAN_LABEL.plan.txt"
 test "$(shasum -a 256 "$PLAN_FILE" | awk '{print $1}')" = \
   "$(jq -r .plan_sha256 "$PLAN_SUMMARY")"
+if test "$GUARD_PROOF_SUCCEEDED" = false; then
+  jq -e '
+    .add == 0 and
+    all(.resource_changes[]?; ((.actions | index("create")) == null)) and
+    all(.resource_changes[]?;
+      if .address == "module.eks_cluster[0].aws_eks_cluster.this" or
+         .address == "module.eks_node_group[0].aws_eks_node_group.this" then
+        .actions == ["delete"]
+      else true end
+    )
+  ' "$PLAN_SUMMARY"
+fi
 ```
 
 The plan may delete remaining Phase 5 resources, including the NLB, target
 group, OIDC provider, EKS IAM roles, guard, Scheduler, log groups, and CMKs
 scheduled for deletion. It may delete the Managed Flink application after the
 code key is cleared. It must not delete or replace Phase 1 state stores.
+When the guard proof failed, the distinct
+`wave4-w4-guard-fallback-cleanup` plan must retain Terraform ownership and
+delete any EKS cluster or node group that is still live. A refreshed object
+already absent in AWS may disappear from the plan, but neither EKS object may
+be created or replaced, and no other resource may be created. Review every
+fallback action before applying it.
 
 `ARUN RUNS`:
 
@@ -1275,6 +1609,42 @@ The signed inference below is a live application POST. `ARUN RUNS`:
 
 ```bash
 set -euo pipefail
+aws sts get-caller-identity \
+  | tee "$ARTIFACT_DIR/final-platform-caller-identity.json"
+FINAL_CALLER_ARN=$(jq -r .Arn \
+  "$ARTIFACT_DIR/final-platform-caller-identity.json")
+case "$FINAL_CALLER_ARN" in
+  "arn:aws:sts::${ACCOUNT_ID}:assumed-role/harbormaster-platform/"*) ;;
+  *) printf 'unexpected final caller: %s\n' "$FINAL_CALLER_ARN" >&2; exit 1 ;;
+esac
+aws budgets describe-budget \
+  --account-id "$ACCOUNT_ID" \
+  --budget-name harbormaster-base-hard-75 \
+  | tee "$ARTIFACT_DIR/hard-budget-final.json"
+aws budgets describe-budget-actions-for-budget \
+  --account-id "$ACCOUNT_ID" \
+  --budget-name harbormaster-base-hard-75 \
+  | tee "$ARTIFACT_DIR/hard-budget-actions-final.json"
+aws iam get-policy --policy-arn "$BOUNDARY_ARN" \
+  | tee "$ARTIFACT_DIR/boundary-final.json"
+jq -e '
+  .Budget.BudgetLimit.Unit == "USD" and
+  (.Budget.BudgetLimit.Amount | tonumber) == 75 and
+  (.Budget.CalculatedSpend.ActualSpend.Amount | tonumber) < 75
+' "$ARTIFACT_DIR/hard-budget-final.json"
+jq -e --arg policy "$SPEND_FREEZE_ARN" --arg role harbormaster-platform '
+  .Actions | any(.[];
+    .ActionType == "APPLY_IAM_POLICY" and
+    .ApprovalModel == "AUTOMATIC" and
+    .Status == "STANDBY" and
+    .Definition.IamActionDefinition.PolicyArn == $policy and
+    (.Definition.IamActionDefinition.Roles | index($role)) != null
+  )
+' "$ARTIFACT_DIR/hard-budget-actions-final.json"
+jq -e --arg version "$NEW_BOUNDARY_VERSION" \
+  '.Policy.DefaultVersionId == $version' \
+  "$ARTIFACT_DIR/boundary-final.json"
+
 aws eks list-clusters | tee "$ARTIFACT_DIR/eks-after.json"
 aws elbv2 describe-load-balancers \
   --query 'LoadBalancers[?LoadBalancerName == `harbormaster-base-eks`]' \
@@ -1331,6 +1701,10 @@ jq -e '
 
 Required final verdicts:
 
+- The caller remains the `harbormaster-platform` assumed role, the hard budget
+  remains exactly 75 USD with actual spend below 75 USD, the automatic spend
+  freeze remains in `STANDBY` for the exact platform role and policy, and the
+  W4 boundary version remains the default.
 - No Harbormaster EKS cluster, serving NLB, NAT gateway, Elastic IP, or Phase 5
   guard schedule remains.
 - The Managed Flink application is absent after its code key is cleared.
@@ -1351,12 +1725,14 @@ mkdir -p "$HANDOFF_DIR/plan-summaries"
 find "$ARTIFACT_DIR" -maxdepth 1 -type f \
   \( -name '*.json' -o -name '*.jsonl' -o -name '*.txt' \
      -o -name '*.yaml' -o -name '*.log' \) \
+  ! -name '*.plan.txt' ! -name '*.tfplan' \
   -exec cp {} "$HANDOFF_DIR/" \;
 find docs/plan-artifacts -maxdepth 1 -type f -name '*-wave4-w4-*.json' \
   -exec cp {} "$HANDOFF_DIR/plan-summaries/" \;
 test -z "$(find "$HANDOFF_DIR" -type f -name '*.tfplan' -print -quit)"
+test -z "$(find "$HANDOFF_DIR" -type f -name '*.plan.txt' -print -quit)"
 if rg -n -i \
-  'X-Amz-(Credential|Signature|Security-Token)=|aws_(access_key_id|secret_access_key|session_token)|AKIA[0-9A-Z]{16}' \
+  'X-Amz-(Credential|Signature|Security-Token)=|aws_(access_key_id|secret_access_key|session_token)|AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|"(AccessKeyId|SecretAccessKey|SessionToken)"[[:space:]]*:' \
   "$HANDOFF_DIR"; then
   printf 'potential credential or presigned URL found; sanitize before handoff\n' >&2
   exit 1
@@ -1364,9 +1740,27 @@ fi
 ```
 
 Review the allowlisted files, then hand only `$HANDOFF_DIR` to Codex. Only then
-create `docs/drills/M3_backpressure_loadtest.md`, update the Phase 5 status,
-and ground war story P37 if a real SLO breach occurred. Every number in those
-documents must trace to a file in the sanitized handoff directory.
+create `docs/drills/M3_backpressure_loadtest.md` and update the Phase 5 status.
+If criterion (a) passes, its measured timing grounds the observed cold-start
+behavior regardless of whether it crosses an SLO. Change war story P37 from
+anticipated to a grounded SLO-breach story only if that measured value crosses
+the documented tier threshold. Every number in those documents must trace to a
+file in the sanitized handoff directory.
+
+If criterion (a), (b), or (f) failed, cleanup and sanitization still complete,
+but W4 must end nonzero so the Phase 5 gate remains open:
+
+```bash
+if test "$MEASUREMENT_CRITERION_A_PASSED" != true || \
+   test "$MEASUREMENT_CRITERION_B_PASSED" != true || \
+   test "$GUARD_PROOF_SUCCEEDED" != true; then
+  printf 'W4 incomplete after safe resting cleanup: criterion a=%s, b=%s, f=%s\n' \
+    "$MEASUREMENT_CRITERION_A_PASSED" \
+    "$MEASUREMENT_CRITERION_B_PASSED" \
+    "$GUARD_PROOF_SUCCEEDED" >&2
+  exit 1
+fi
+```
 
 ## Deferred, non-gating live work
 

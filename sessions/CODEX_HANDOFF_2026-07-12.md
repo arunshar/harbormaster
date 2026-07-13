@@ -97,7 +97,7 @@ has not been retried on AWS. That optional live leg remains a future human-run w
 
 Three acceptance criteria have a live leg only a real cluster and clock can close;
 the Phase 5 gate stays OPEN until they do. Runbook: `docs/runbooks/WAVE4_LIVE_WINDOWS.md`
-(the "Window W4" section, step by step). Summary:
+(the full W4 runbook, canonical Sections 1-12). Summary:
 - (a) EKS + KEDA scale `0 -> N -> 0` on Kinesis/Kafka lag, with a **measured** (not
   estimated) cold-start latency.
 - (b) A deliberate load spike triggers then resolves real Flink backpressure, with a
@@ -210,11 +210,12 @@ teardown Lambda in force; always re-fetch the RUNNING task ARN after an apply; e
 window ends back at Phase 0/1-only standing.
 
 - **W4 window (closes the Phase 5 gate).** Full step-by-step in
-  `docs/runbooks/WAVE4_LIVE_WINDOWS.md`, "Window W4": EKS + KEDA measured cold-start
+  `docs/runbooks/WAVE4_LIVE_WINDOWS.md`, canonical Sections 1-12: EKS + KEDA measured cold-start
   `0->N->0` (criterion a), Flink backpressure drill + `docs/drills/M3_backpressure_loadtest.md`
   postmortem (criterion b), and the live EKS teardown-guard force-destroy +
-  `terraform state rm` reconcile (criterion f). Optional same-window: live RLS drill,
-  a few live Bedrock calls. Grounds war story P37 (cold-start) either way.
+  `terraform state rm` reconcile (criterion f). The measurement grounds the observed
+  cold-start behavior either way; P37 becomes a grounded SLO-breach story only if the
+  measured value crosses the documented tier threshold.
 - **W3-remainder (optional).** CMK apply + verify (RDS re-encryption forces a replace,
   so do it on a fresh Phase 1 window per the module doc) and the two-variant canary
   live weight-shift + forced revert (proves the DR-13 burn-rollback end to end).
@@ -237,8 +238,10 @@ the human, same safety contract as B:
   `AB_MASTERCLASS_AUDIT.md` move off Partial.
 - **Cost audit + rollback rehearsal**, each with a runbook pointer and a pass bar.
 
-Deliverable: update `docs/HONESTY.md` and the audit doc to their final measured states,
-and close the Phase 5 gate in `docs/phases/PHASE_5.md` with the real numbers.
+Deliverable: complete the post-gate production sign-off by updating
+`docs/HONESTY.md` and the audit doc to their final measured states with the real
+numbers. A successful W4 already closes the Phase 5 gate; Wave 5 does not reopen
+or re-close it.
 
 ## Guardrails to carry forward
 

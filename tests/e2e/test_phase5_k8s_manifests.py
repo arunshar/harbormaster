@@ -22,6 +22,7 @@ exists (the documented rollback path).
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import subprocess
@@ -42,6 +43,9 @@ KDA_FLINK_MAIN = REPO_ROOT / "infra" / "terraform" / "modules" / "kda_flink" / "
 BOUNDARY = REPO_ROOT / "infra" / "aws" / "harbormaster-permissions-boundary.json"
 ECS_SERVING_MAIN = REPO_ROOT / "infra" / "terraform" / "modules" / "ecs_serving" / "main.tf"
 W4_RUNBOOK = REPO_ROOT / "docs" / "runbooks" / "WAVE4_LIVE_WINDOWS.md"
+W4_OPERATOR_PLAN = REPO_ROOT / "docs" / "runbooks" / "W4_OPERATOR_PLAN_2026-07-14.md"
+PHASE5_PLAN = REPO_ROOT / "docs" / "phases" / "PHASE_5.md"
+CANONICAL_HANDOFF = REPO_ROOT / "sessions" / "CODEX_HANDOFF_2026-07-12.md"
 IMAGE_SENTINEL = "harbormaster.invalid/serving@sha256:" + "0" * 64
 
 
@@ -143,6 +147,134 @@ def test_runbook_proves_nightly_teardown_is_wet_before_eks_plan():
     assert '((.actions | index("delete")) == null)' in runbook
 
 
+def test_runbook_guards_the_expected_missing_elb_service_linked_role():
+    runbook = W4_RUNBOOK.read_text()
+    probe = runbook.index('ELB_ROLE_BEFORE="$ARTIFACT_DIR/')
+    no_such_entity = runbook.index("\\(NoSuchEntity\\)", probe)
+    create = runbook.index("aws iam create-service-linked-role", no_such_entity)
+    verify = runbook.index(
+        "aws iam get-role --role-name AWSServiceRoleForElasticLoadBalancing",
+        create,
+    )
+
+    assert probe < no_such_entity < create < verify
+    assert '2> "$ELB_ROLE_BEFORE_STDERR"' in runbook
+    assert 'exit "$ELB_ROLE_LOOKUP_STATUS"' in runbook
+    assert 'if test "$ELB_SERVICE_LINKED_ROLE_PRESENT" = false; then' in runbook
+    assert "already exists|has been taken" in runbook
+    assert '"$ARTIFACT_DIR/elb-service-linked-role.json"' in runbook[verify:]
+
+
+def test_runbook_has_an_executable_verified_iam_reconciliation_rollback():
+    runbook = W4_RUNBOOK.read_text()
+    prior_boundary = runbook.index("PRIOR_BOUNDARY_VERSION=$(jq -er")
+    prior_policy = runbook.index("platform-policy-before-document.json")
+    prior_duration = runbook.index("PRIOR_PLATFORM_MAX_SESSION_DURATION=$(jq -er")
+    rollback_start = runbook.index("rollback_iam_reconciliation()")
+    mutation = runbook.index("NEW_BOUNDARY_VERSION=$(aws iam create-policy-version")
+    rollback_end = runbook.index("rollback_incomplete_iam_reconciliation()")
+    rollback = runbook[rollback_start:rollback_end]
+
+    assert prior_boundary < prior_policy < prior_duration < rollback_start < mutation
+    restore_boundary = rollback.index("aws iam set-default-policy-version")
+    restore_policy = rollback.index("aws iam put-role-policy")
+    restore_duration = rollback.index("aws iam update-role")
+    assert restore_boundary < restore_policy < restore_duration
+    assert '"file://$ARTIFACT_DIR/platform-policy-before-document.json"' in rollback
+    assert "boundary-rollback-verification.json" in rollback
+    assert "platform-policy-rollback-verification.json" in rollback
+    assert "platform-role-rollback-verification.json" in rollback
+    assert ".[0].PolicyDocument == .[1].PolicyDocument" in rollback
+    assert "IAM_RECONCILIATION_ROLLBACK_STARTED=false" in runbook
+    assert 'test "$IAM_RECONCILIATION_ROLLBACK_STARTED" = true' in runbook
+    assert "INT) original_status=130" in runbook
+    assert "TERM) original_status=143" in runbook
+    for trigger in ("EXIT", "INT", "TERM", "ERR"):
+        assert f'rollback_incomplete_iam_reconciliation {trigger} "$iam_trap_status"' in runbook
+    assert runbook.index("IAM_RECONCILIATION_COMPLETE=true") < runbook.index(
+        "PLATFORM_SESSION=$(aws sts assume-role"
+    )
+
+
+@pytest.mark.parametrize("shell", ["bash", "zsh"])
+@pytest.mark.parametrize(
+    ("trigger", "expected_status"),
+    [("ERR", 1), ("EXIT", 1), ("INT", 130), ("TERM", 143)],
+)
+def test_iam_rollback_handler_runs_once_in_bash_and_zsh(shell, trigger, expected_status, tmp_path):
+    binary = shutil.which(shell)
+    if binary is None:
+        pytest.skip(f"{shell} is not installed")
+
+    runbook = W4_RUNBOOK.read_text()
+    handler_start = runbook.index("rollback_incomplete_iam_reconciliation()")
+    handler_end = runbook.index("\n```\n\n`ARUN RUNS`", handler_start)
+    handler = runbook[handler_start:handler_end]
+    probe = f"""
+set -euo pipefail
+IAM_RECONCILIATION_COMPLETE=false
+IAM_RECONCILIATION_ROLLBACK_STARTED=false
+rollback_iam_reconciliation() {{
+  printf 'rollback\\n' >> "$ROLLBACK_LOG"
+}}
+{handler}
+case "$TRIGGER" in
+  ERR) false ;;
+  EXIT) exit 0 ;;
+  INT) kill -INT "$$" ;;
+  TERM) kill -TERM "$$" ;;
+esac
+exit 99
+"""
+    rollback_log = tmp_path / "rollback.log"
+    env = {**os.environ, "ROLLBACK_LOG": str(rollback_log), "TRIGGER": trigger}
+    result = subprocess.run(
+        [binary, "-s"],
+        input=probe,
+        text=True,
+        capture_output=True,
+        env=env,
+        check=False,
+    )
+
+    assert result.returncode == expected_status, result.stderr
+    assert rollback_log.read_text().splitlines() == ["rollback"]
+
+
+def test_runbook_captures_exact_keda_operator_diagnostics():
+    runbook = W4_RUNBOOK.read_text()
+    stage_2 = runbook.index("## 5. Stage 2")
+    describe = runbook.index("kubectl describe deployment -n keda keda-operator", stage_2)
+    logs = runbook.index("kubectl logs -n keda deployment/keda-operator", describe)
+    scan = runbook.index("NoCredentialProviders", logs)
+    stage_3 = runbook.index("## 6. Build, push", scan)
+
+    assert stage_2 < describe < logs < scan < stage_3
+    assert '"$ARTIFACT_DIR/keda-operator-describe.txt"' in runbook[describe:logs]
+    assert "--all-containers=true --tail=500" in runbook[logs:scan]
+    assert '"$ARTIFACT_DIR/keda-operator.log"' in runbook[logs:stage_3]
+
+
+def test_runbook_requires_all_measurement_processes_to_succeed():
+    runbook = W4_RUNBOOK.read_text()
+    status = runbook.index("measurement-command-status.json")
+    all_zero = runbook.index(
+        ".load_exit == 0 and .observer_exit == 0 and .flink_capture_exit == 0",
+        status,
+    )
+    verdict = runbook.index("measurement-evidence-verdict.json", all_zero)
+    verdict_block = runbook[all_zero:verdict]
+
+    assert "MEASUREMENT_PROCESSES_SUCCEEDED=true" in verdict_block
+    assert '--argjson processes_succeeded "$MEASUREMENT_PROCESSES_SUCCEEDED"' in verdict_block
+    assert "processes_succeeded: $processes_succeeded" in verdict_block
+    assert '--argjson criterion_a "$MEASUREMENT_CRITERION_A_PASSED"' in verdict_block
+    assert '--argjson criterion_b "$MEASUREMENT_CRITERION_B_PASSED"' in verdict_block
+    assert "kinesis_metric_captured: $kinesis_metric_captured" in verdict_block
+    assert "flink_lag_captured: $flink_lag_captured" in verdict_block
+    assert "criteria: {a: $criterion_a, b: $criterion_b}" in verdict_block
+
+
 def test_runbook_simulates_platform_boundary_intersection_before_assume_role():
     runbook = W4_RUNBOOK.read_text()
     simulator = runbook.index("simulate_platform bounded-role allowed")
@@ -161,6 +293,85 @@ def test_runbook_restores_the_admin_identity_before_refreshing_an_expired_sessio
     restored_caller = runbook.index('test "$RESTORED_CALLER_ARN" = "$ADMIN_CALLER_ARN"')
 
     assert admin_capture < assume_role < unset_session < restored_caller
+
+
+def test_guard_proof_failure_uses_reviewed_terraform_cleanup_without_state_rm():
+    runbook = W4_RUNBOOK.read_text()
+    poll = runbook.index("DELETION_CONFIRMED=false")
+    verdict = runbook.index("guard-criterion-verdict.json", poll)
+    section_11 = runbook.index("## 11. Reconcile state", verdict)
+    cleanup = runbook.index("wave4-w4-guard-fallback-cleanup", section_11)
+    final_assertion = runbook.index('test "$MEASUREMENT_CRITERION_A_PASSED" != true', cleanup)
+    polling = runbook[poll:section_11]
+    reconciliation = runbook[section_11:cleanup]
+
+    assert not re.search(r'^test "\$DELETION_CONFIRMED" = true$', runbook, re.MULTILINE)
+    assert poll < verdict < section_11 < cleanup < final_assertion
+    assert 'exit "$LIST_STATUS"' not in polling
+    assert 'exit "$DESCRIBE_STATUS"' not in polling
+    assert 'GUARD_POLL_FAILURE_REASON="list-nodegroups failed' in polling
+    assert 'GUARD_POLL_FAILURE_REASON="describe-cluster failed' in polling
+    assert 'if aws logs tail "/aws/lambda/$GUARD" --since 60m' in polling
+    assert 'test -s "$ARTIFACT_DIR/guard-live-fire.log"' in polling
+    assert "final_log_captured: $final_log_captured" in polling
+    assert 'if test "$GUARD_PROOF_SUCCEEDED" = true; then' in reconciliation
+    assert "terraform -chdir=infra/terraform/envs/base state rm" in reconciliation
+    assert "guard-fallback-state-preserved.txt" in reconciliation
+    assert "preserving EKS cluster and node-group state" in reconciliation
+    assert ".add == 0" in runbook[cleanup:]
+    assert '((.actions | index("create")) == null)' in runbook[cleanup:]
+    assert '.actions == ["delete"]' in runbook[cleanup:]
+    assert "module.eks_cluster[0].aws_eks_cluster.this" in runbook[cleanup:]
+    assert "module.eks_node_group[0].aws_eks_node_group.this" in runbook[cleanup:]
+    assert 'test "$MEASUREMENT_CRITERION_B_PASSED" != true' in runbook
+    assert 'test "$GUARD_PROOF_SUCCEEDED" != true' in runbook
+    assert "W4 incomplete after safe resting cleanup" in runbook
+
+
+def test_final_verification_rechecks_identity_budget_action_and_boundary():
+    runbook = W4_RUNBOOK.read_text()
+    final = runbook[runbook.index("## 12. Final verification") :]
+
+    assert "final-platform-caller-identity.json" in final
+    assert "assumed-role/harbormaster-platform/" in final
+    assert "hard-budget-final.json" in final
+    assert "hard-budget-actions-final.json" in final
+    assert "boundary-final.json" in final
+    assert "(.Budget.BudgetLimit.Amount | tonumber) == 75" in final
+    assert '.Status == "STANDBY"' in final
+    assert '.ApprovalModel == "AUTOMATIC"' in final
+    assert '--arg version "$NEW_BOUNDARY_VERSION"' in final
+
+
+def test_sanitized_handoff_excludes_plans_and_rejects_aws_credentials():
+    runbook = W4_RUNBOOK.read_text()
+    sanitizer = runbook[runbook.index('HANDOFF_DIR="$ARTIFACT_DIR-sanitized"') :]
+
+    assert "! -name '*.plan.txt' ! -name '*.tfplan'" in sanitizer
+    assert "-type f -name '*.tfplan'" in sanitizer
+    assert "-type f -name '*.plan.txt'" in sanitizer
+    assert "AKIA[0-9A-Z]{16}" in sanitizer
+    assert "ASIA[0-9A-Z]{16}" in sanitizer
+    assert '"(AccessKeyId|SecretAccessKey|SessionToken)"' in sanitizer
+
+
+def test_w4_docs_assign_the_phase_gate_and_cold_start_claim_correctly():
+    operator = W4_OPERATOR_PLAN.read_text()
+    handoff = CANONICAL_HANDOFF.read_text()
+    phase5 = PHASE5_PLAN.read_text()
+
+    assert "operator Steps 4 through 15" in operator
+    assert "Guard assertion; Stage 0 only if dry" in operator
+    assert "On guard failure, both addresses remain" in operator
+    assert "canonical Sections 1-12" in handoff
+    assert '"Window W4"' not in handoff
+    assert "Optional same-window" not in handoff
+    assert "A successful W4 already closes the Phase 5 gate" in handoff
+    assert "Wave 5 does not reopen" in handoff
+    assert "a successful W4 closes the Phase 5 gate" in phase5
+    assert "Wave 5 is a separate" in phase5
+    assert re.search(r"grounds the observed\s+cold-start behavior", handoff)
+    assert re.search(r"only if the\s+measured value", handoff)
 
 
 def test_observer_timeout_covers_load_and_scaler_recovery_budget():
