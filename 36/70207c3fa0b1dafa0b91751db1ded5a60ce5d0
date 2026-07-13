@@ -1,0 +1,19 @@
+sessions/CODEX_HANDOFF_2026-07-12.md
+  s_a2e22b769416de::t_66e8fc42de49f1 143-209
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "3670207c3fa0b1dafa0b91751db1ded5a60ce5d0",
+  "prompts": {},
+  "sessions": {
+    "s_a2e22b769416de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e974be01-bf66-4a71-962a-97fd96d587a3",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
