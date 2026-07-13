@@ -57,6 +57,14 @@ def test_usable_windows_excludes_tiny_n_windows():
     assert baseline.usable_windows() == [BaselineWindow(rate=0.0625, n=50)]
 
 
+def test_usable_window_minimum_is_inclusive_at_20_labels():
+    below = BaselineWindow(rate=0.25, n=19)
+    at = BaselineWindow(rate=0.5, n=20)
+    baseline = baseline_of(below, at)
+
+    assert baseline.usable_windows(min_window_n=20) == [at]
+
+
 def test_derive_threshold_q95_dominates_on_a_heavy_tail():
     # Rates sorted: [1/32, 1/32, 1/32, 1/32, 1/4].
     # q95 nearest rank: ceil(0.95 * 5) = 5, so the 5th smallest = 0.25.
@@ -111,6 +119,20 @@ def test_q95_nearest_rank_at_21_windows_is_the_20th_smallest():
         BaselineWindow(rate=0.5, n=50),
     )
     assert derive_alert_threshold(baseline) == 0.25
+
+
+@pytest.mark.parametrize(
+    ("rates", "expected"),
+    [
+        ([0.0] * 18 + [0.5], 0.5),
+        ([0.0] * 18 + [0.25, 0.5], 0.25),
+    ],
+)
+def test_q95_nearest_rank_boundary_at_19_and_20_windows(rates, expected):
+    # k=19: rank 19 selects the maximum 0.5. k=20: rank 19 selects the
+    # second maximum 0.25. In both fixtures q95 dominates 2*mean and 0.05.
+    baseline = baseline_of(*(BaselineWindow(rate=rate, n=50) for rate in rates))
+    assert derive_alert_threshold(baseline) == expected
 
 
 def test_make_disagreement_alert_rate_falls_back_below_min_windows():
