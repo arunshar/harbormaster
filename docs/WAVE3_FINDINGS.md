@@ -27,6 +27,7 @@ Disposition key: **Fixed** (with a regression test) / **Deferred** (real but low
 | 10/16 | n/a | `mlops/disagreement_baseline.py`, `mlops/tests/test_disagreement_baseline.py` | The inclusive usable-window boundary and nearest-rank q95 index had surviving test mutations. | Pinned `n=20` inclusion and the `k=19` and `k=20` q95 boundaries. Changing `>=` to `>` fails `n=20`; lowering the ceil offset by one fails `k=19`; raising it by one fails `k=20`. |
 | 17 | n/a | `mlops/tenant_drift.py`, `mlops/tests/test_tenant_drift.py` | Deterministic tenant ordering had no reverse-insertion regression for either the per-tenant result map or drifted-tenant fan-out. | Pinned both order contracts with reverse-insertion fixtures. Removing either `sorted()` call independently fails its focused regression. |
 | 28 | n/a | `mlops/route_optimizer/ppo.py`, `mlops/tests/test_route_optimizer_ppo.py` | The scalar clipped surrogate had no direct value assertion across both advantage signs and both sides of the ratio clip interval. | Pinned four hand-computed cases. Replacing `minimum` with `maximum` fails all four. The earlier finite-difference claim was inaccurate and is removed; this regression proves the scalar surrogate value. |
+| 12 | low | `mlops/route_optimizer/service.py`, `mlops/tests/test_route_optimizer_service.py` | The default-disabled PPO stretch ran its synchronous CPU trainer inline in an `async def` endpoint, blocking unrelated requests on the FastAPI event loop. | Changed the endpoint to a synchronous route so FastAPI dispatches it through its worker thread pool. A deterministic held-trainer regression proves `/healthz` completes before training is released, and a failure regression proves trainer exceptions still return HTTP 500. Evidence is local only; no deployed service was exercised. |
 
 The fixes and evidence for findings 1, 3, and 5 are local only. The live AWS Postgres migration and
 tenant-qualified DynamoDB/Redis rebuild remain a human-run maintenance window;
@@ -42,9 +43,7 @@ key `-1`. A sustained malformed-input burst can therefore concentrate work in
 one key group and create a hot partition. See
 `docs/drills/FLINK_MMSI_KEY_LOCAL_2026-07-13.md`.
 
-## Deferred to the Codex production-hardening plan (real, lower-priority)
-
-Pre-existing robustness (not Phase 5): **12** (the stretch service trains inline in an `async def` handler, blocking the loop; acceptable for a demo stretch, noted).
+## Remaining production-hardening notes
 
 Finding **11** was a real explicit-zero corruption, not a redundant expression. A valid DynamoDB severity of `0` was unwrapped to `0.0`, then Python truthiness replaced it with `0.9`. The parser now preserves `0.0` while retaining `_attr`'s `0.9` default for a missing field, with a focused regression.
 
