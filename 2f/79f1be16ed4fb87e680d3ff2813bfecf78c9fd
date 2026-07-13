@@ -1,0 +1,38 @@
+serving/app/components/space_time_prism.py
+  s_87fd0589dba2e0::t_7a4e97f1f35c0c 3-4,6,83-86
+  s_87fd0589dba2e0::t_91d547fd7ec681 5,89-95,239,250
+  s_87fd0589dba2e0::t_adb96e8e50a1a9 34,254-256
+  s_87fd0589dba2e0::t_499a206ba1443d 232-234,244-245
+  s_87fd0589dba2e0::t_3fabdc8b9cef21 17-19
+  s_87fd0589dba2e0::t_bf8ebf596d9037 20-21
+  s_87fd0589dba2e0::t_a22770be8e8bed 87-88
+sessions/CODEX_HANDOFF_2026-07-12.md
+  s_87fd0589dba2e0::t_8b21683ca1d29d 142-143,172-173
+  s_87fd0589dba2e0::t_bf8ebf596d9037 144
+  s_87fd0589dba2e0::t_350a257bbd53b4 145-146
+pyproject.toml
+  s_87fd0589dba2e0::t_7a4e97f1f35c0c 120-122,147-148
+docs/WAVE3_FINDINGS.md
+  s_87fd0589dba2e0::t_8b21683ca1d29d 43
+  s_87fd0589dba2e0::t_bf8ebf596d9037 25,44-48
+serving/tests/test_space_time_prism.py
+  s_87fd0589dba2e0::t_f59e9e09466b34 9,35-50,69-74
+  s_87fd0589dba2e0::t_91d547fd7ec681 23,25,27,75-94
+  s_87fd0589dba2e0::t_6d9f6eb48966ee 1-8,10-22,24,26,28-34,51-68
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "2f79f1be16ed4fb87e680d3ff2813bfecf78c9fd",
+  "prompts": {},
+  "sessions": {
+    "s_87fd0589dba2e0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5912-4f5a-7aa3-8604-0ccba141cb86",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    }
+  }
+}
