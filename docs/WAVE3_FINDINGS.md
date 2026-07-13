@@ -25,6 +25,7 @@ Disposition key: **Fixed** (with a regression test) / **Deferred** (real but low
 | 20 | n/a | `serving/app/components/space_time_prism.py` | `mobr` and `ellipse_polygon` centered a supplied ellipse on the prism's anchor pair instead of the supplied ellipse's own foci. | Within the kernel's documented local projection domain, centered each active ellipse on its own foci with its own projection. Direct geometry, dynamic-merge, and meter-scale-at-latitude regressions cover the fix. The module is now a maintained GeoTrace-derived fork. |
 | 9/31 | n/a | `serving/app/bedrock_explainer.py`, `serving/tests/test_bedrock_explainer.py` | The forbidden-vocabulary list and inclusive score endpoints had surviving test mutations. | Pinned every forbidden token independently and both score endpoints. Removing `coordinate` and making the upper bound exclusive now produces two focused-test failures. |
 | 10/16 | n/a | `mlops/disagreement_baseline.py`, `mlops/tests/test_disagreement_baseline.py` | The inclusive usable-window boundary and nearest-rank q95 index had surviving test mutations. | Pinned `n=20` inclusion and the `k=19` and `k=20` q95 boundaries. Changing `>=` to `>` fails `n=20`; lowering the ceil offset by one fails `k=19`; raising it by one fails `k=20`. |
+| 17 | n/a | `mlops/tenant_drift.py`, `mlops/tests/test_tenant_drift.py` | Deterministic tenant ordering had no reverse-insertion regression for either the per-tenant result map or drifted-tenant fan-out. | Pinned both order contracts with reverse-insertion fixtures. Removing either `sorted()` call independently fails its focused regression. |
 
 The fixes and evidence for findings 1, 3, and 5 are local only. The live AWS Postgres migration and
 tenant-qualified DynamoDB/Redis rebuild remain a human-run maintenance window;
@@ -53,7 +54,7 @@ it does not close those broader geographic edge cases.
 
 **21** (`streaming/ingestor/ingest.py`) was a false positive. The production putter has mapped every `PutRecords` response against the current pending list since commit `5cb5a01`, so later retry rounds do not re-send records that already succeeded. The real issue was test strength: the two-call regression never exercised a failure after the pending list shrank. A three-round noncontiguous regression now pins `[0,1,2,3,4,5,6] -> [1,4,6] -> [1,6]`. A mutation that maps the second response against the original batch fails that regression. No production retry-mapping defect was fixed.
 
-Remaining test-strength (surviving mutants, new modules): **17** (`tenant_drift.py` `sorted()` output order untested against an unsorted-insertion fixture); **28** (`ppo.py` clipped surrogate has no unit assertion, though the full gradient is numerically verified against finite differences in `test_route_optimizer_ppo` and by the Wave 2 review).
+Remaining test-strength (surviving mutants, new modules): **28** (`ppo.py` clipped surrogate has no unit assertion, though the full gradient is numerically verified against finite differences in `test_route_optimizer_ppo` and by the Wave 2 review).
 
 ## Note: mutation testing on a shared tree
 
