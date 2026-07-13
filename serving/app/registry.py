@@ -129,12 +129,23 @@ class PostgresRegistryBackend:
             await conn.execute("SELECT set_config('app.tenant_id', $1, false)", tenant_id)
 
         pool = await asyncpg.create_pool(dsn=dsn, min_size=1, max_size=2, setup=_set_tenant)
-        async with pool.acquire() as conn:
-            for stmt in ddl.statements():
-                await conn.execute(stmt)
-            for table in ddl.CDC_TABLES:
-                for stmt in tenancy.statements_for(table):
-                    await conn.execute(stmt)
+        try:
+            async with pool.acquire() as conn:
+                # Use the same transaction-scoped lock as the HITL backend so
+                # every schema bootstrap path serializes across processes.
+                async with conn.transaction():
+                    await conn.execute(
+                        "SELECT pg_advisory_xact_lock($1)",
+                        tenancy.SCHEMA_BOOTSTRAP_LOCK_ID,
+                    )
+                    for stmt in ddl.statements():
+                        await conn.execute(stmt)
+                    for table in ddl.CDC_TABLES:
+                        for stmt in tenancy.statements_for(table):
+                            await conn.execute(stmt)
+        except BaseException:
+            await pool.close()
+            raise
         return cls(pool)
 
     async def upsert_vessel(self, mmsi: int, fields: dict[str, str]) -> dict[str, Any]:

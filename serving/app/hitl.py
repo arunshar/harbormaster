@@ -129,13 +129,24 @@ class PostgresHitlBackend:
         pool = await asyncpg.create_pool(
             dsn=dsn, min_size=1, max_size=4, init=cls._init_conn, setup=_set_tenant
         )
-        async with pool.acquire() as conn:
-            await conn.execute(_DDL)
-            # Lazy cdc import on the Postgres-only path, mirroring registry.py.
-            from cdc.schema import tenancy
+        try:
+            async with pool.acquire() as conn:
+                # CREATE TABLE IF NOT EXISTS can still race in PostgreSQL's
+                # system catalogs. One transaction-scoped advisory lock makes
+                # bootstrap safe across Uvicorn workers and separate pods.
+                from cdc.schema import tenancy
 
-            for stmt in tenancy.statements_for("hitl_queue"):
-                await conn.execute(stmt)
+                async with conn.transaction():
+                    await conn.execute(
+                        "SELECT pg_advisory_xact_lock($1)",
+                        tenancy.SCHEMA_BOOTSTRAP_LOCK_ID,
+                    )
+                    await conn.execute(_DDL)
+                    for stmt in tenancy.statements_for("hitl_queue"):
+                        await conn.execute(stmt)
+        except BaseException:
+            await pool.close()
+            raise
         return cls(pool)
 
     async def enqueue(self, trace_id: str, out: AisScoreOut, ts: datetime) -> None:
@@ -148,15 +159,23 @@ class PostgresHitlBackend:
                 VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)
                 ON CONFLICT (trace_id) DO NOTHING
                 """,
-                r["id"], r["trace_id"], r["mmsi"], r["ts"], r["score"],
-                r["reasons"], r["confidence"], r["created_at"],
+                r["id"],
+                r["trace_id"],
+                r["mmsi"],
+                r["ts"],
+                r["score"],
+                r["reasons"],
+                r["confidence"],
+                r["created_at"],
             )
 
     async def label(self, payload: FeedbackIn) -> int:
         async with self._pool.acquire() as conn:
             status = await conn.execute(
                 "UPDATE hitl_queue SET label=$1, reviewer=$2 WHERE trace_id=$3",
-                payload.label, payload.reviewer, payload.trace_id,
+                payload.label,
+                payload.reviewer,
+                payload.trace_id,
             )
             if status.endswith(" 0"):
                 raise HitlTraceNotFound("no queued review for trace_id", trace_id=payload.trace_id)

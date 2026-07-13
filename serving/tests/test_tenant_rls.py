@@ -21,6 +21,7 @@ cannot write at all.
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import os
 import uuid
@@ -107,6 +108,100 @@ async def _apply_full_schema(conn) -> None:
 
 async def _set_tenant(conn, tenant_id: str) -> None:
     await conn.execute("SELECT set_config('app.tenant_id', $1, false)", tenant_id)
+
+
+async def test_each_backend_waits_on_the_shared_schema_bootstrap_lock():
+    """Both DDL paths must participate in the same cross-process lock."""
+    import asyncpg
+
+    from cdc.schema import tenancy
+
+    async with fresh_tenant_db() as owner_dsn:
+        for connect in (
+            lambda: PostgresHitlBackend.connect(owner_dsn, TENANT_A),
+            lambda: PostgresRegistryBackend.connect(owner_dsn, TENANT_B),
+        ):
+            blocker = await asyncpg.connect(dsn=owner_dsn)
+            observer = await asyncpg.connect(dsn=owner_dsn)
+            task = None
+            try:
+                async with blocker.transaction():
+                    await blocker.execute(
+                        "SELECT pg_advisory_xact_lock($1)",
+                        tenancy.SCHEMA_BOOTSTRAP_LOCK_ID,
+                    )
+                    lock = await blocker.fetchrow(
+                        "SELECT classid::bigint AS classid, objid::bigint AS objid, objsubid "
+                        "FROM pg_locks WHERE pid = pg_backend_pid() "
+                        "AND locktype = 'advisory' AND granted"
+                    )
+                    assert lock is not None
+
+                    task = asyncio.create_task(connect())
+                    waiting = 0
+                    for _ in range(200):
+                        waiting = await observer.fetchval(
+                            "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' "
+                            "AND NOT granted AND classid = $1::oid AND objid = $2::oid "
+                            "AND objsubid = $3",
+                            lock["classid"],
+                            lock["objid"],
+                            lock["objsubid"],
+                        )
+                        if waiting:
+                            break
+                        await asyncio.sleep(0.01)
+                    assert waiting >= 1
+                    assert not task.done()
+
+                await asyncio.wait_for(asyncio.shield(task), timeout=5)
+            finally:
+                if task is not None:
+                    if not task.done():
+                        task.cancel()
+                    result = (await asyncio.gather(task, return_exceptions=True))[0]
+                    if not isinstance(result, BaseException):
+                        await result.close()
+                await observer.close()
+                await blocker.close()
+
+
+async def test_parallel_backend_connects_serialize_schema_bootstrap():
+    """Concurrent workers and pods must not race in PostgreSQL catalogs."""
+    import asyncpg
+
+    from cdc.schema import tenancy
+
+    async with fresh_tenant_db() as owner_dsn:
+        results = await asyncio.gather(
+            *(PostgresHitlBackend.connect(owner_dsn, TENANT_A) for _ in range(4)),
+            *(PostgresRegistryBackend.connect(owner_dsn, TENANT_B) for _ in range(4)),
+            return_exceptions=True,
+        )
+        backends = [result for result in results if not isinstance(result, BaseException)]
+        try:
+            failures = [result for result in results if isinstance(result, BaseException)]
+            assert failures == []
+
+            conn = await asyncpg.connect(dsn=owner_dsn)
+            try:
+                table_rows = await conn.fetch(
+                    "SELECT tablename FROM pg_tables "
+                    "WHERE schemaname = current_schema() AND tablename = ANY($1::text[])",
+                    list(tenancy.TENANT_TABLES),
+                )
+                policy_rows = await conn.fetch(
+                    "SELECT tablename, policyname FROM pg_policies "
+                    "WHERE schemaname = current_schema()"
+                )
+                assert {row["tablename"] for row in table_rows} == set(tenancy.TENANT_TABLES)
+                assert {(row["tablename"], row["policyname"]) for row in policy_rows} == {
+                    (table, tenancy.policy_name(table)) for table in tenancy.TENANT_TABLES
+                }
+            finally:
+                await conn.close()
+        finally:
+            await asyncio.gather(*(backend.close() for backend in backends))
 
 
 async def test_fail_closed_a_session_with_no_tenant_reads_zero_rows_and_cannot_write():
