@@ -2,6 +2,9 @@ mlops/tests/test_tenant_drift.py
   s_87fd0589dba2e0::t_7a611bf820b72b 17,78-86,92-103
 docs/WAVE3_FINDINGS.md
   s_87fd0589dba2e0::t_e729ece09fe3c3 56
+  s_87fd0589dba2e0::t_151db1ddc004c6 28,57
+sessions/CODEX_HANDOFF_2026-07-12.md
+  s_87fd0589dba2e0::t_39166ba00d6eb3 148,175-176
 ---
 {
   "schema_version": "authorship/3.0.0",
