@@ -1,6 +1,6 @@
 # Harbormaster
 
-A production-grade maritime anomaly-detection platform on AWS. Harbormaster ingests live AIS vessel traffic (~150K ships, ~600 GB historical AIS), serves spatial anomaly detectors over a streaming feature plane, and trains heavy models off-cloud on MSI. Phase 0 builds the foundations and the FinOps cost guardrails before any spend.
+A production-grade maritime anomaly-detection platform on AWS. Harbormaster ingests live AIS vessel traffic, serves spatial anomaly detectors over a streaming feature plane, and trains heavy models off-cloud on MSI. It is designed against two public sources: AISStream live traffic covering roughly 150K vessels, and roughly 600 GB of historical MarineCadastre AIS. Those figures describe the upstream sources, not volumes this repository has ingested. Committed AIS data is limited to a checksum-pinned, deterministically generated 311 KB replay fixture with 2,709 events (`streaming/fixtures/ais_recorded.jsonl`) and a 10-row MarineCadastre validation sample (`lake/fixtures/marinecadastre_sample.jsonl`). Phase 0 builds the foundations and the FinOps cost guardrails before any spend.
 
 > **HONEST FRAMING**
 >
@@ -42,9 +42,9 @@ See `docs/ARCHITECTURE.md` for the full diagram and the opinionated tradeoffs.
 | `infra/terraform/envs/base/` | The base environment that wires the modules together. |
 | `infra/terraform/envs/demo/` | The demo environment (ephemeral, teardown-friendly). |
 | `infra/lambda/teardown/` | Teardown Lambda invoked by the cost guardrail. |
-| `deploy/helm/` | Kubernetes / EKS Helm charts (Phase 5, not yet built). |
+| `deploy/helm/` | Kubernetes / EKS Helm charts (Phase 5, built and locally tested; live W4 validation pending). |
 | `streaming/flink/` | Flink streaming jobs (Phase 1, built and run live on AWS). |
-| `cdc/` | Change-data-capture pipeline (Phase 2, local-stack accepted; AWS showcase not yet run). |
+| `cdc/` | Change-data-capture pipeline (Phase 2, local-stack accepted; AWS W3 leg partially run and stopped at connector registration). |
 | `serving/` | Model serving and the inference front door (Phase 1, built and run live on AWS). |
 | `lake/` | EMR Spark backfill + Iceberg lake + training-set export (Phase 3, built and run live on AWS). |
 | `mlops/` | Model registry, promotion pipeline, drift/HITL/preference flywheel (Phases 3-4). |
@@ -59,7 +59,7 @@ originally predated it); per-phase detail lives in `docs/phases/`.
 | --- | --- | --- |
 | Phase 0 | Foundations: networking, state stores, FinOps guardrails, $75 hard cap. | Deployed (live in AWS since 2026-07-03) |
 | Phase 1 | Streaming + serving vertical slice: ingestor, Kinesis, Flink features, ECS front door, HITL console, observability. | AWS showcase run live 2026-07-04: a real planted anomaly reached the HITL queue end to end |
-| Phase 2 | CDC: Postgres -> Debezium -> Kafka -> online store, slot-lag monitoring. | Local stack accepted (e2e 5/5, 0.57s smoke); AWS MSK showcase not yet run |
+| Phase 2 | CDC: Postgres -> Debezium -> Kafka -> online store, slot-lag monitoring. | Local kind stack accepted (e2e 5/5, 0.57s smoke). AWS leg partially run in the W3 window: MSK cluster and Connect worker authenticated via IAM and joined, consumer running, RDS logical replication live. The run stopped at Debezium connector registration. The corrected command was verified locally on 2026-07-12 and has never been retried on AWS |
 | Phase 3 | Lake + promotion: EMR backfill -> Iceberg, Feast export, SageMaker async Pi-DPM endpoint, holdout/shadow/canary promotion. | AWS showcase run live 2026-07-04 (EMR backfill, SageMaker scale-to-zero both directions, live promotion pipeline); torn down clean |
 | Phase 4 | Drift -> HITL -> RL flywheel: drift taxonomy, preference triples, reward-hacking probe. | Code-complete (gates 4.0-4.7, `phase4-flywheel`, local-plane only); adversarially reviewed |
 | Phase 5 | Multi-tenant + scale: EKS/KEDA, tenant isolation, FDE case studies, explanation layer. | Built and merged (PR #4, gates 5.-1..5.9, `docs/phases/PHASE_5.md`); phase gate OPEN pending the W4 live window (measured cold-start, backpressure, live teardown) |
