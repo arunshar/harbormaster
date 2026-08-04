@@ -314,7 +314,8 @@ resource "aws_iam_role_policy" "scheduler_invoke" {
 }
 
 resource "aws_scheduler_schedule" "guard" {
-  name = "${local.name_prefix}-eks-teardown-guard"
+  name  = "${local.name_prefix}-eks-teardown-guard"
+  state = "ENABLED"
 
   flexible_time_window {
     mode = "OFF"

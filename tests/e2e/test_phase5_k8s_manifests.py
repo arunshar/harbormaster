@@ -39,6 +39,7 @@ GOLDEN_DIR = SERVING_DIR / "golden"
 APIGW_MODULE = REPO_ROOT / "infra" / "terraform" / "modules" / "apigw"
 ENV_MAIN = REPO_ROOT / "infra" / "terraform" / "envs" / "base" / "main.tf"
 EKS_FRONTDOOR = REPO_ROOT / "infra" / "terraform" / "modules" / "eks_frontdoor"
+EKS_TEARDOWN_GUARD = REPO_ROOT / "infra" / "terraform" / "modules" / "eks_teardown_guard"
 KDA_FLINK_MAIN = REPO_ROOT / "infra" / "terraform" / "modules" / "kda_flink" / "main.tf"
 BOUNDARY = REPO_ROOT / "infra" / "aws" / "harbormaster-permissions-boundary.json"
 ECS_SERVING_MAIN = REPO_ROOT / "infra" / "terraform" / "modules" / "ecs_serving" / "main.tf"
@@ -149,6 +150,15 @@ def test_runbook_proves_nightly_teardown_is_wet_before_eks_plan():
         in runbook[guard_only_plan:wet_recheck]
     )
     assert '((.actions | index("delete")) == null)' in runbook
+
+
+def test_phase5_teardown_schedule_is_explicitly_enabled():
+    guard = (EKS_TEARDOWN_GUARD / "main.tf").read_text()
+    schedule = guard.split('resource "aws_scheduler_schedule" "guard"', 1)[1].split(
+        'resource "aws_lambda_permission" "allow_scheduler"', 1
+    )[0]
+
+    assert 'state = "ENABLED"' in schedule
 
 
 def test_runbook_guards_the_expected_missing_elb_service_linked_role():
