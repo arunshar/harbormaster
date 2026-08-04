@@ -161,6 +161,18 @@ def test_phase5_teardown_schedule_is_explicitly_enabled():
     assert 'state = "ENABLED"' in schedule
 
 
+def test_phase5_guard_does_not_require_unsupported_reserved_concurrency():
+    guard = (EKS_TEARDOWN_GUARD / "main.tf").read_text()
+    lambda_block = guard.split('resource "aws_lambda_function" "guard"', 1)[1].split(
+        "# -----------------------------------------------------------------------------\n"
+        "# Recurring schedule",
+        1,
+    )[0]
+
+    assert "reserved_concurrent_executions" not in lambda_block
+    assert "checkov:skip=CKV_AWS_115" in lambda_block
+
+
 def test_runbook_guards_the_expected_missing_elb_service_linked_role():
     runbook = W4_RUNBOOK.read_text()
     probe = runbook.index('ELB_ROLE_BEFORE="$ARTIFACT_DIR/')
