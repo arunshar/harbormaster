@@ -482,10 +482,15 @@ jq -e '.Role.MaxSessionDuration == 28800' \
   "$ARTIFACT_DIR/platform-role-after.json"
 ```
 
-Use the read-only IAM simulator against the deployed role and its new default
-boundary version. These calls do not execute the requested IAM actions. They
-must prove both the required path and the boundary's negative controls before
-the role is assumed.
+Use the read-only IAM simulator against the deployed role. These calls do not
+execute the requested IAM actions. The platform role deliberately does not
+carry the permissions boundary itself. Its identity policy instead requires
+the boundary on every role it creates or modifies. Supply the
+`iam:PermissionsBoundary` request context only when simulating one of those
+bounded target roles. In particular, omit that context for the platform role's
+own unbounded ARN: `iam:PutRolePolicy` must then be `implicitDeny`. Injecting
+the context for that self-mutation would model a boundary the target does not
+have and would manufacture an `allowed` result.
 
 ```bash
 PLATFORM_ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/harbormaster-platform"
@@ -542,12 +547,10 @@ simulate_platform service-linked-role allowed \
     "$PLATFORM_PRINCIPAL_CONTEXT" \
     "ContextKeyName=iam:AWSServiceName,ContextKeyValues=eks.amazonaws.com,ContextKeyType=string"
 
-simulate_platform self-mutation explicitDeny \
+simulate_platform self-mutation implicitDeny \
   --action-names iam:PutRolePolicy \
   --resource-arns "$PLATFORM_ROLE_ARN" \
-  --context-entries \
-    "$PLATFORM_PRINCIPAL_CONTEXT" \
-    "ContextKeyName=iam:PermissionsBoundary,ContextKeyValues=$BOUNDARY_ARN,ContextKeyType=string"
+  --context-entries "$PLATFORM_PRINCIPAL_CONTEXT"
 
 simulate_platform unrelated-role implicitDeny \
   --action-names iam:CreateRole \
@@ -569,9 +572,12 @@ printf 'IAM reconciliation verified; rollback handler disarmed\n' \
 
 Stop unless every assertion matches its named decision. The simulator is a
 read-only authorization check; the saved policy documents and these results
-remain the evidence for the exact role and boundary used in W4.
+remain the evidence for the exact role and boundary used in W4. The boundary's
+own self-mutation deny remains covered by the local policy tests; it is not
+part of the platform principal's live evaluation because that principal does
+not have the boundary attached.
 
-Now assume the bounded deployment identity. Replace the MFA device ARN, then
+Now assume the scoped deployment identity. Replace the MFA device ARN, then
 enter a fresh six-digit code. If the current administrator session is itself an
 assumed role, AWS role chaining limits this session to one hour; use a direct
 MFA-backed administrator identity for the eight-hour window.
