@@ -144,6 +144,10 @@ def test_runbook_proves_nightly_teardown_is_wet_before_eks_plan():
     assert '--function-name "$TEARDOWN_LAMBDA_ARN"' in runbook
     assert runbook.count('.Environment.Variables.DRY_RUN == "false"') >= 3
     assert '(.address | startswith("module.finops."))' in runbook
+    assert (
+        '.address == "module.kda_flink[0].aws_iam_role_policy.flink"'
+        in runbook[guard_only_plan:wet_recheck]
+    )
     assert '((.actions | index("delete")) == null)' in runbook
 
 

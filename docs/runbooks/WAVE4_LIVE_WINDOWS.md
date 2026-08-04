@@ -639,8 +639,11 @@ enable_phase5           = false
 ```
 
 The separate saved plan may update the existing nightly teardown Lambda and
-its FinOps IAM resources. It must contain no Phase 5 resource address. Arun
-runs the mutation only when the read-only preflight found the Lambda dry.
+its FinOps IAM resources. It may also update exactly the existing Managed
+Flink role policy so the already-created application can invoke the signed
+serving route during W4. It must contain no other non-FinOps address and no
+Phase 5 resource address. Arun runs the mutation only when the read-only
+preflight found the Lambda dry.
 
 `ARUN RUNS`:
 
@@ -658,7 +661,10 @@ if test "$NIGHTLY_TEARDOWN_WET" = false; then
     all(.resource_changes[]?;
       if .actions == ["no-op"] then true
       else
-        (.address | startswith("module.finops.")) and
+        (
+          (.address | startswith("module.finops.")) or
+          .address == "module.kda_flink[0].aws_iam_role_policy.flink"
+        ) and
         ((.actions | index("delete")) == null)
       end
     )
