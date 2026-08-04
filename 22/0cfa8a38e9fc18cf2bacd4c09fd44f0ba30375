@@ -1,0 +1,26 @@
+docs/runbooks/W4_OPERATOR_PLAN_2026-07-14.md
+  s_87fd0589dba2e0::t_b21e5e957292b2 162-164,187
+tests/e2e/test_permissions_boundary.py
+  s_87fd0589dba2e0::t_b21e5e957292b2 417-431
+docs/runbooks/WAVE4_LIVE_WINDOWS.md
+  s_87fd0589dba2e0::t_b21e5e957292b2 485-493,550,553,575-578
+  s_87fd0589dba2e0::t_4778a119ed0c5d 580
+tests/e2e/test_phase5_k8s_manifests.py
+  s_87fd0589dba2e0::t_b21e5e957292b2 278,281-282,287-288
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "220cfa8a38e9fc18cf2bacd4c09fd44f0ba30375",
+  "prompts": {},
+  "sessions": {
+    "s_87fd0589dba2e0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5912-4f5a-7aa3-8604-0ccba141cb86",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
