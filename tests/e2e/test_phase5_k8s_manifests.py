@@ -496,10 +496,20 @@ def test_golden_with_cdc_has_both_triggers_and_zero_floor():
 # --------------------------------------------------------------------------- #
 # apigw retarget: authored, defaulted to ECS, rollback intact
 # --------------------------------------------------------------------------- #
-def test_apigw_eks_integration_is_authored_but_gated():
+def test_apigw_eks_integration_uses_a_plan_time_known_gate():
     main = (APIGW_MODULE / "main.tf").read_text()
+    variables = (APIGW_MODULE / "variables.tf").read_text()
+    root = ENV_MAIN.read_text()
+    enable_block = variables.split('variable "enable_eks_integration"', 1)[1].split("\n}", 1)[0]
     assert 'resource "aws_apigatewayv2_integration" "serving_eks"' in main
-    assert 'count = var.eks_integration_uri != "" ? 1 : 0' in main
+    assert 'variable "enable_eks_integration"' in variables
+    assert "type        = bool" in enable_block
+    assert "default     = false" in enable_block
+    assert main.count("count = var.enable_eks_integration ? 1 : 0") == 2
+    assert 'count = var.eks_integration_uri != "" ? 1 : 0' not in main
+    assert 'count = var.eks_nlb_security_group_id != "" ? 1 : 0' not in main
+    assert "enable_eks_integration = var.enable_phase5" in root
+    assert 'var.serving_target != "eks" || var.enable_eks_integration' in variables
 
 
 def test_apigw_route_defaults_to_the_ecs_path():
@@ -524,7 +534,7 @@ def test_root_wires_the_terraform_owned_nlb_listener_into_apigw():
     assert 'source = "../../modules/eks_frontdoor"' in main
     assert "module.eks_frontdoor[0].listener_arn" in main
     assert "module.eks_frontdoor[0].security_group_id" in main
-    assert "serving_target = var.serving_target" in main
+    assert re.search(r"serving_target\s*=\s*var\.serving_target", main)
 
 
 def test_frontdoor_is_an_internal_nlb_attached_to_the_managed_node_group():

@@ -294,7 +294,8 @@ module "apigw" {
   # Phase 5 keeps the ECS integration as rollback while adding a second
   # integration backed by the Terraform-owned internal NLB. At the default
   # target and with Phase 5 disabled, these values preserve the ECS route.
-  serving_target = var.serving_target
+  serving_target         = var.serving_target
+  enable_eks_integration = var.enable_phase5
   eks_integration_uri = (
     var.enable_phase5 ? module.eks_frontdoor[0].listener_arn : ""
   )
