@@ -45,6 +45,7 @@ BOUNDARY = REPO_ROOT / "infra" / "aws" / "harbormaster-permissions-boundary.json
 ECS_SERVING_MAIN = REPO_ROOT / "infra" / "terraform" / "modules" / "ecs_serving" / "main.tf"
 W4_RUNBOOK = REPO_ROOT / "docs" / "runbooks" / "WAVE4_LIVE_WINDOWS.md"
 W4_OPERATOR_PLAN = REPO_ROOT / "docs" / "runbooks" / "W4_OPERATOR_PLAN_2026-07-14.md"
+W4_PARTIAL_APPLY_DRILL = REPO_ROOT / "docs" / "drills" / "W4_STAGE1_PARTIAL_APPLY_2026-08-04.md"
 PHASE5_PLAN = REPO_ROOT / "docs" / "phases" / "PHASE_5.md"
 CANONICAL_HANDOFF = REPO_ROOT / "sessions" / "CODEX_HANDOFF_2026-07-12.md"
 IMAGE_SENTINEL = "harbormaster.invalid/serving@sha256:" + "0" * 64
@@ -171,6 +172,114 @@ def test_phase5_guard_does_not_require_unsupported_reserved_concurrency():
 
     assert "reserved_concurrent_executions" not in lambda_block
     assert "checkov:skip=CKV_AWS_115" in lambda_block
+
+
+def test_stage1_partial_apply_requires_reconciliation_untaint_checkpoint_and_fresh_plan():
+    runbook = W4_RUNBOOK.read_text()
+    start = runbook.index("### Stage 1 apply failure or interruption: preserve state and re-plan")
+    end = runbook.index("Read-only verification:", start)
+    recovery = runbook[start:end]
+    flat_recovery = re.sub(r"\s+", " ", recovery)
+    bash_blocks = "\n".join(re.findall(r"```bash\n(.*?)```", recovery, flags=re.DOTALL))
+    flat_bash_blocks = re.sub(r"\\\s*\n\s*", " ", bash_blocks)
+
+    anchors = [
+        "do not retry the command and do not reuse its plan",
+        "If the 07:00 UTC nightly sweep ran, or could have run",
+        "Only when fresh state and live AWS prove",
+        "`ARUN RUNS`, only after Codex has reviewed",
+        "After read-only post-untaint verification",
+        'RECOVERY_PLAN_LABEL="wave4-w4-eks-recovery-$RECOVERY_STAMP"',
+        'scripts/plan_artifact.sh "$RECOVERY_PLAN_LABEL" "$RECOVERY_PLAN_FILE"',
+        'make apply-plan PLAN="$RECOVERY_PLAN_FILE"',
+    ]
+    positions = [flat_recovery.index(anchor) for anchor in anchors]
+    assert positions == sorted(positions)
+
+    assert (
+        "A state-only change is still a Terraform mutation and remains human-run" in flat_recovery
+    )
+    assert "Codex prepares" in flat_recovery
+    assert 'make apply-plan PLAN="$PLAN_FILE"' not in recovery
+    assert "22 creates" not in recovery
+    assert "audit the actual" in flat_recovery
+    assert not re.search(
+        r"\bterraform(?:\s+-\S+)*\s+(?:"
+        r"state\s+(?:rm|mv|push|replace-provider)|force-unlock|apply|destroy|"
+        r"import|taint|untaint)\b",
+        flat_bash_blocks,
+    )
+    assert not re.search(
+        r"(?im)^\s*aws\b[^\n]*\b(?:create|delete|modify|put|update|attach|"
+        r"detach|associate|disassociate|release|register|deregister|start|stop|"
+        r"terminate|set|enable|disable|tag|untag|invoke|run|reboot)"
+        r"[a-z0-9-]*\b",
+        flat_bash_blocks,
+    )
+    assert "make destroy" not in flat_bash_blocks
+    assert re.search(
+        r"independent action review may Arun apply the exact new checksum-bound "
+        r"plan:\n\n`ARUN RUNS`:\n\n```bash\n"
+        r'make apply-plan PLAN="\$RECOVERY_PLAN_FILE"\n```',
+        recovery,
+    )
+
+    assert "### Resume checkpoint after the 2026-08-04 partial apply" in runbook
+    assert "They are complete and must not be\nrerun" in runbook
+    assert "The IAM permissions boundary is applied at version v3" in runbook
+    assert '.Policy.DefaultVersionId == "v2"' in runbook
+    section_2 = runbook.index("## 2. Historical initial AWS preflight")
+    section_2_guard = runbook.index('test "$PRIOR_BOUNDARY_VERSION" = "v2"', section_2)
+    service_role_mutation = runbook.index("aws iam create-service-linked-role", section_2_guard)
+    assert section_2_guard < service_role_mutation
+
+    section_3 = runbook.index("## 3. Historical IAM reconciliation")
+    section_3_guard = runbook.index('test "$PRIOR_BOUNDARY_VERSION" = "v2"', section_3)
+    rollback_handler = runbook.index("rollback_iam_reconciliation()", section_3)
+    trap_arming = runbook.index("trap 'iam_trap_status=$?", rollback_handler)
+    boundary_mutation = runbook.index(
+        "NEW_BOUNDARY_VERSION=$(aws iam create-policy-version", trap_arming
+    )
+    assert section_3_guard < rollback_handler < trap_arming < boundary_mutation
+
+    assert 'export EXPECTED_BOUNDARY_VERSION="v3"' in runbook
+    resume_entry = runbook[runbook.index("### Current resume identity entry point") :]
+    for required in (
+        'export AWS_REGION="us-east-1"',
+        "ACCOUNT_ID=$(aws sts get-caller-identity",
+        "resume-admin-caller-identity.json",
+        '"arn:aws:iam::${ACCOUNT_ID}:user/arun-admin"',
+        "export ACCOUNT_ID ADMIN_CALLER_ARN",
+        'BOUNDARY_ARN="arn:aws:iam::${ACCOUNT_ID}:policy/',
+        'SPEND_FREEZE_ARN="arn:aws:iam::${ACCOUNT_ID}:policy/',
+        "resume-boundary.json",
+        ".Policy.DefaultVersionId == $version",
+        "resume-platform-role.json",
+        ".Role.MaxSessionDuration == 28800",
+    ):
+        assert required in resume_entry
+
+    handoff = CANONICAL_HANDOFF.read_text()
+    structural = handoff.index("### 4. Structural / low-priority")
+    live_checkpoint = handoff.index("## Live checkpoint added 2026-08-04")
+    execution_plan = handoff.index("## Execution plan for the rest")
+    assert structural < live_checkpoint < execution_plan
+
+    operator = W4_OPERATOR_PLAN.read_text()
+    flat_operator = re.sub(r"\s+", " ", operator)
+    assert "Historical checklist warning, added 2026-08-04" in operator
+    assert "the absence of an EKS cluster does not prove that nothing was created" in flat_operator
+
+    drill = W4_PARTIAL_APPLY_DRILL.read_text()
+    assert "VERDICT: PARTIAL APPLY, RECOVERY DEFERRED" in drill
+    assert "No Phase 5 gate criterion closed" in drill
+    assert re.search(r"must be rechecked after the\s+07:00 UTC sweep", drill)
+    for expected_hash in (
+        "ef22a26c87c34788dfab7471b51c3a59a485b71303f09a3d0c841d76c448779f",
+        "8d86b56221ef8447d3429845fe4f80daec77dc620143e5f5110b1e4330f9049b",
+        "152a9600315f97e2d8467f1652f323e11d3c4d0bc9523ec9f1a12f891ed21a25",
+    ):
+        assert expected_hash in drill
 
 
 def test_runbook_guards_the_expected_missing_elb_service_linked_role():
@@ -369,7 +478,7 @@ def test_final_verification_rechecks_identity_budget_action_and_boundary():
     assert "(.Budget.BudgetLimit.Amount | tonumber) == 75" in final
     assert '.Status == "STANDBY"' in final
     assert '.ApprovalModel == "AUTOMATIC"' in final
-    assert '--arg version "$NEW_BOUNDARY_VERSION"' in final
+    assert '--arg version "$EXPECTED_BOUNDARY_VERSION"' in final
 
 
 def test_sanitized_handoff_excludes_plans_and_rejects_aws_credentials():
