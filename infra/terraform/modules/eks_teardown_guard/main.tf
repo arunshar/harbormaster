@@ -24,11 +24,11 @@
 #
 # Checkov posture (new resources pass outright, never baselined): a
 # module-local CMK encrypts the Lambda environment, the log group, and the
-# schedule payload; the function carries X-Ray tracing, a reserved
-# concurrency of 1 (the guard is a singleton by design), and an SNS
-# dead-letter target. The two deliberate exceptions carry inline skips with
-# reasons (no VPC attachment, no code-signing pipeline), matching the repo's
-# narrow per-line nosec discipline rather than the baseline.
+# schedule payload; the function carries X-Ray tracing and an SNS dead-letter
+# target. It deliberately uses account-level unreserved concurrency because
+# accounts at the 10-execution quota floor cannot reserve even one execution.
+# The deliberate exceptions carry inline skips with reasons, matching the
+# repo's narrow per-line nosec discipline rather than the baseline.
 
 locals {
   name_prefix = "${var.project}-${var.environment}"
@@ -223,6 +223,7 @@ resource "aws_cloudwatch_log_group" "guard" {
 resource "aws_lambda_function" "guard" {
   # checkov:skip=CKV_AWS_117:Deliberately not VPC-attached. The handler calls only the EKS/SNS management APIs on public AWS endpoints; the platform runs with enable_nat = false, so a VPC attachment would leave the guard with no egress and silently disarm it, the exact failure it exists to prevent (mirrors modules/drift_watch's documented no-VPC stance).
   # checkov:skip=CKV_AWS_272:No code-signing pipeline exists in this repo. The artifact is first-party source zipped from infra/lambda/eks_teardown by archive_file and pinned by source_code_hash; a Signer profile with a Warn-on-untrusted policy would satisfy the check without enforcing anything, which is check-gaming, not security.
+  # checkov:skip=CKV_AWS_115:Accounts at the 10-execution Lambda quota floor cannot reserve one execution because AWS requires all 10 to remain unreserved. The recurring 30-minute schedule is much slower than the 120-second timeout, and the teardown handler converges safely on AWS retries.
   function_name = local.function_name
   role          = aws_iam_role.guard.arn
   handler       = "handler.lambda_handler"
@@ -231,9 +232,6 @@ resource "aws_lambda_function" "guard" {
 
   filename         = data.archive_file.guard.output_path
   source_code_hash = data.archive_file.guard.output_base64sha256
-
-  # The guard is a singleton by design: one cluster, one evaluation at a time.
-  reserved_concurrent_executions = 1
 
   kms_key_arn = aws_kms_key.guard.arn
 
