@@ -414,6 +414,21 @@ def test_platform_cannot_mutate_its_own_role_but_budget_freeze_can_attach():
     )
 
 
+def test_platform_identity_cannot_put_policy_on_its_unbounded_self_role():
+    identity = json.loads(PLATFORM_POLICY.read_text())
+    platform_role = f"arn:aws:iam::{_ACCOUNT_ID}:role/harbormaster-platform"
+
+    assert (
+        _policy_decision(
+            identity,
+            action="iam:PutRolePolicy",
+            resource=platform_role,
+            context={"aws:PrincipalArn": _PLATFORM_PRINCIPAL},
+        )
+        == "implicitDeny"
+    )
+
+
 def test_boundary_policy_version_and_deletion_actions_are_explicitly_denied():
     boundary = json.loads(BOUNDARY.read_text())
     context = {"aws:PrincipalArn": _PLATFORM_PRINCIPAL}

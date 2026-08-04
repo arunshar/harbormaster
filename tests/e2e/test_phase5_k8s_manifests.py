@@ -275,14 +275,17 @@ def test_runbook_requires_all_measurement_processes_to_succeed():
     assert "criteria: {a: $criterion_a, b: $criterion_b}" in verdict_block
 
 
-def test_runbook_simulates_platform_boundary_intersection_before_assume_role():
+def test_runbook_simulates_platform_guardrails_before_assume_role():
     runbook = W4_RUNBOOK.read_text()
     simulator = runbook.index("simulate_platform bounded-role allowed")
-    self_deny = runbook.index("simulate_platform self-mutation explicitDeny")
+    self_deny = runbook.index("simulate_platform self-mutation implicitDeny")
+    unrelated_deny = runbook.index("simulate_platform unrelated-role implicitDeny")
     boundary_deny = runbook.index("simulate_platform boundary-mutation explicitDeny")
     assume_role = runbook.index("PLATFORM_SESSION=$(aws sts assume-role")
     assert simulator < self_deny < boundary_deny < assume_role
     assert "aws iam simulate-principal-policy" in runbook
+    assert "deliberately does not\ncarry the permissions boundary itself" in runbook
+    assert "iam:PermissionsBoundary" not in runbook[self_deny:unrelated_deny]
 
 
 def test_runbook_restores_the_admin_identity_before_refreshing_an_expired_session():

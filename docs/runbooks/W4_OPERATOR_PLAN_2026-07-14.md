@@ -159,7 +159,9 @@ Checkpoint: budget and guard evidence is saved, no W4 cluster exists, and the EL
 
 ## Step 3: reconcile the boundary and platform role
 
-Run Section 3 as administrator. This is not optional because W4 depends on the new effective-permission intersection.
+Run Section 3 as administrator. This is not optional because W4 depends on the
+new boundary version for bounded service roles and the reconciled, scoped
+platform identity policy.
 
 Perform these substeps in order:
 
@@ -182,7 +184,7 @@ The expected simulation decisions are encoded in each helper invocation:
 - EKS OIDC provider: `allowed`;
 - instance profile: `allowed`;
 - required service-linked role: `allowed`;
-- platform self-mutation: `explicitDeny`;
+- platform self-mutation without a fabricated target-boundary context: `implicitDeny`;
 - unrelated role creation: `implicitDeny`;
 - boundary mutation: `explicitDeny`.
 
