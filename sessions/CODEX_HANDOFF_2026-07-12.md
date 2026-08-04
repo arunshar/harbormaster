@@ -23,6 +23,8 @@ Its live Postgres migration and tenant-qualified DynamoDB/Redis rebuild have not
 The Flink malformed-key defect and the `PutRecords` finding-21 test-strength gap
 are also fixed and verified locally. The final near-pole prism projection debt is
 fixed and locally regression-tested as well. None establishes new live AWS behavior.
+The time-specific 2026-08-04 W4 partial-apply checkpoint below supersedes the
+older live-footprint snapshot in the original handoff.
 
 ## Repo facts
 
@@ -30,7 +32,9 @@ fixed and locally regression-tested as well. None establishes new live AWS behav
 - Branch: `master`. Commit stack of note: Wave 1 merged (PR #3, `864562f`), Phase 5
   build merged (PR #4, `1ebd2e0`), Wave 3 pressure test merged (PR #5, `d38d8a5`),
   and the W3 live-window fixes merged as PR #6 (`86f3d63`). The current master also
-  contains the local connector-registration fix described below. Check
+  contains the local connector-registration fix described below, the W4 API
+  Gateway plan-time count fix (PR #37), and the Lambda quota-floor fix (PR #38,
+  merge `76c4522`). Check
   `git log --oneline -8` and `gh pr list` for the live state.
 - Test command: `make serve-test` (`.venv/bin/python -m pytest -q`). There is NO
   `make test` target; do not invent one. cdc tests: `.venv/bin/python -m pytest cdc/tests -q`.
@@ -39,10 +43,10 @@ fixed and locally regression-tested as well. None establishes new live AWS behav
 - War stories: numbered P1-P46 in `PLATFORM_WAR_STORIES.md` on master. P41-P46
   preserve the six W3 findings below with their live-versus-local evidence boundaries.
   All 46 platform stories have been ported to `arunshar/debug-war-stories`.
-- Live AWS: account 645322802947, us-east-1. After the W3 window, the stack is at
-  **Phase 0/1-only standing** (serving on ECS Fargate + RDS + Kinesis + DynamoDB;
-  no MSK, no CDC, no Redis; nothing billing beyond the small Phase 1 baseline). The
-  `$75/mo` FinOps hard cap + nightly teardown Lambda are in force. **All AWS
+- Live AWS: account 645322802947, us-east-1. The original 2026-07-12 snapshot was
+  **Phase 0/1-only standing**. The 2026-08-04 checkpoint below records a tracked
+  partial W4 network and guard footprint after a failed Stage 1 apply. The
+  `$75/mo` FinOps hard cap and nightly teardown Lambda remain in force. **All AWS
   mutation is a human-run window, never unattended.**
 
 ## What is already applied live (do not re-derive)
@@ -50,8 +54,9 @@ fixed and locally regression-tested as well. None establishes new live AWS behav
 - **IAM permissions boundary + API Gateway hardening** (the long-deferred item from
   the old handoff): APPLIED. `bootstrap.sh` created the boundary policy; the module
   roles carry `permissions_boundary`; the apigw route is `AWS_IAM` (SigV4) with
-  throttling + access logging. The boundary policy is at **version v2** (added
-  `kafka-cluster:*` and `ssmmessages:*` in the W3 window; see fix #4). Part C
+  throttling + access logging. The boundary policy reached **version v3** during
+  the 2026-08-04 W4 IAM reconciliation. Version v2 added `kafka-cluster:*` and
+  `ssmmessages:*` in the W3 window; see fix #4. Part C
   (switching the deploy identity to the boundary-gated `harbormaster-platform` role
   to prove least-privilege) is still NOT done and is the remaining honest gap on
   that row in `AB_MASTERCLASS_AUDIT.md` (keep it Partial until Part C).
@@ -172,6 +177,55 @@ CMK is authored behind `enable_cmk` (default false, never applied); a Phase 2 MS
 showcase and two-variant live SageMaker canary were set up but not fully exercised
 (the canary actuator code is real and unit-tested); ECR `hm-pidpm-demo` cleanup; the
 `~18 May 2027`-style FinOps discipline stands.
+
+## Live checkpoint added 2026-08-04
+
+This checkpoint supersedes the older Phase 0/1-only AWS footprint statements
+elsewhere in this handoff. Those statements remain historical context for the
+2026-07-12 snapshot.
+Every AWS fact in this section is time-specific and must be rechecked before the
+next live mutation, especially after the wet 07:00 UTC nightly sweep.
+
+- IAM reconciliation completed with permissions-boundary version `v3` as the
+  default and `harbormaster-platform` maximum session duration set to 28,800
+  seconds. Positive least-privilege simulations passed and self, unrelated-role,
+  and boundary mutation remained denied.
+- The first W4 Stage 1 plan failed before deployment because two API Gateway
+  resource counts depended on apply-time values. PR #37 made those counts
+  plan-time known. A new saved plan at merge commit `a1b60fa` contained 50
+  creates, 0 updates, and 0 deletes.
+- The human-run apply of that reviewed plan started, then exited nonzero after a
+  Lambda `PutFunctionConcurrency` call tried to reserve one execution in an
+  account whose quota floor requires all 10 executions to remain unreserved.
+  Terraform had already created and recorded part of the footprint. PR #38,
+  merged as `76c4522`, removed the unsupported reserved-concurrency setting and
+  added regression coverage.
+- The last verified pre-sweep checkpoint had remote state serial `68`, lineage
+  `419a8985-87a0-4470-0b20-25f2ef23f7d4`, and S3 VersionId
+  `d4Peikpxyi7mLw5NvB4fcVXdJVRXGOXL`. Exactly 28 of the plan's 50 creates were
+  tracked. The guard Lambda was the sole tainted instance but was live,
+  `Active`, wet, and configuration-matched. No EKS cluster or Phase 5 guard
+  schedule existed. The tracked partial footprint included the NAT gateway,
+  Elastic IP, internal NLB, target group, supporting security/IAM/KMS resources,
+  and a dormant EKS API integration. The active API route still targeted ECS.
+- A separately reviewed human-run untaint helper passed every read-only check but
+  reached its 13:20 PDT cutoff while waiting for approval. Arun interrupted it.
+  Post-abort verification proved that no `terraform untaint` ran: serial `68`,
+  the taint, the state VersionId, and the absent backend lock were unchanged.
+  The strict read-only checkpoint is local at
+  `artifacts/w4/20260804T204056Z-post-abort-readonly`; its `checkpoint.json`
+  SHA-256 is
+  `ef22a26c87c34788dfab7471b51c3a59a485b71303f09a3d0c841d76c448779f`.
+- The old saved plan and apply helper are permanently consumed and must never be
+  retried. The next window starts with a new read-only reconciliation. Only if
+  current state and live AWS still satisfy the exact guarded preconditions may
+  Arun run a newly reviewed state-only untaint checkpoint. Any subsequent plan
+  must use a new label, binary path, summary, checksum, and full action review.
+
+Evidence and the generic recovery procedure are in
+`docs/drills/W4_STAGE1_PARTIAL_APPLY_2026-08-04.md` and the Stage 1 recovery
+subsection of `docs/runbooks/WAVE4_LIVE_WINDOWS.md`. Phase 5 remains OPEN; none
+of criteria (a), (b), or (f) gained live evidence from this partial attempt.
 
 ## Execution plan for the rest of the implementation (Codex)
 

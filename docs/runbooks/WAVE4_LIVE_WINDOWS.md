@@ -1,7 +1,9 @@
 # Runbook: W4 EKS, KEDA, Flink backpressure, and teardown proof
 
-W4 is one scheduled, Arun-run AWS window. Its purpose is to close the three
-remaining Phase 5 live criteria with run artifacts:
+W4 began as one scheduled, Arun-run AWS window. The 2026-08-04 partial apply
+requires a separate bounded recovery window before measurement can continue.
+Its purpose remains to close the three remaining Phase 5 live criteria with
+run artifacts:
 
 1. KEDA serving scale from 0 to N and back to 0, including first successful
    signed inference latency.
@@ -17,17 +19,18 @@ must not run an AWS, Terraform, ECR, S3, or Kubernetes mutation.
 Account: `645322802947`. Region: `us-east-1`. The $75 monthly FinOps cap and
 the nightly teardown Lambda remain active throughout the window.
 
-Use the administrator identity only for Sections 2 and 3. After the IAM
-reconciliation, assume `harbormaster-platform` and use that role for every
-Terraform, AWS data-plane, ECR, S3, and Kubernetes action in Sections 4 onward.
-The budget action attaches the spend freeze to that role.
+Use the administrator identity only for a fresh read-only recovery preflight
+and to assume `harbormaster-platform`. Use that role for every Terraform, AWS
+data-plane, ECR, S3, and Kubernetes action. The budget action attaches the
+spend freeze to that role.
 
 ## Current state and boundaries
 
-- The IAM permissions boundary is applied at version v2. W4 adds
-  `execute-api:Invoke` plus an exact platform-principal IAM ceiling, so Arun
-  creates one new managed-policy version. Do not rerun
-  `infra/aws/bootstrap.sh`.
+- The IAM permissions boundary is applied at version v3. It contains
+  `execute-api:Invoke` plus the exact platform-principal IAM ceiling, and the
+  platform role has an eight-hour maximum session. This reconciliation
+  completed on 2026-08-04. Do not create another policy version and do not
+  rerun `infra/aws/bootstrap.sh`.
 - Phase 1 is live. No EKS cluster, MSK cluster, or SageMaker endpoint was live
   at the 2026-07-12 handoff.
 - The local Debezium connector registration leg is fixed and proven locally.
@@ -47,6 +50,19 @@ The budget action attaches the spend freeze to that role.
 - The wet nightly sweep runs at 07:00 UTC and intentionally removes tagged
   Flink, EKS front-door NLB, NAT, and worker capacity. Schedule W4 to finish at
   least 30 minutes before that sweep, or start after it. Do not disable it.
+
+### Resume checkpoint after the 2026-08-04 partial apply
+
+Sections 2 and 3 below preserve the initial-window preflight and IAM
+reconciliation as a historical record. They are complete and must not be
+rerun. The original Stage 1 plan and apply helper are also consumed.
+
+For the next window, finish Section 1, obtain a fresh read-only partial-apply
+checkpoint in a new artifact directory, use the "Current resume identity entry
+point" in Section 3 to assume the platform role, and continue only at "Stage 1
+apply failure or interruption: preserve state and re-plan." Do not run Stage 0
+or the original Stage 1 plan/apply blocks. If the 07:00 UTC sweep ran or could
+have run, no earlier live inventory authorizes a recovery action.
 
 Stop immediately if any preflight identity, budget, plan, or guard check is
 unexpected. Never use `make destroy`.
@@ -93,7 +109,12 @@ printf '%s\n' "$ARTIFACT_DIR"
 Do not pre-create `docs/drills/M3_backpressure_loadtest.md` with estimated
 numbers. It is written after this window from the artifacts above.
 
-## 2. Read-only AWS preflight
+## 2. Historical initial AWS preflight, completed 2026-08-04
+
+Do not rerun this section during partial-apply recovery. It is retained to
+interpret the initial-window artifacts. The fresh recovery checkpoint replaces
+it and must verify the current v3 boundary, budget, wet nightly teardown,
+backend state, partial resources, and active API route without mutation.
 
 `ARUN RUNS`:
 
@@ -162,6 +183,8 @@ aws iam get-policy --policy-arn "$BOUNDARY_ARN" \
 PRIOR_BOUNDARY_VERSION=$(jq -er '.Policy.DefaultVersionId' \
   "$ARTIFACT_DIR/boundary-before.json")
 export PRIOR_BOUNDARY_VERSION
+EXPECTED_BOUNDARY_VERSION="$PRIOR_BOUNDARY_VERSION"
+export EXPECTED_BOUNDARY_VERSION
 
 aws eks list-clusters | tee "$ARTIFACT_DIR/eks-before.json"
 aws kafka list-clusters-v2 | tee "$ARTIFACT_DIR/msk-before.json"
@@ -177,7 +200,7 @@ Required preflight verdicts:
 - The hard budget limit is 75 USD, current spend is below it, and at least one
   automatic IAM freeze action is armed in `STANDBY` for the exact
   `harbormaster-base-spend-freeze` policy and `harbormaster-platform` role.
-- The boundary exists and reports v2 as its current default.
+- The boundary existed at v2 before the completed IAM reconciliation.
 - No Harbormaster EKS cluster exists.
 - The nightly teardown schedule is enabled at 07:00 UTC. Its Lambda reports
   `DRY_RUN=false`, or the guard-only Stage 0 apply below must complete before
@@ -207,12 +230,14 @@ fi
 export ELB_SERVICE_LINKED_ROLE_PRESENT
 ```
 
-If and only if the guarded probe records `NoSuchEntity`, this one bootstrap
-action is required. This entire block is a human-run mutation boundary. A
-create race that reports an existing role is followed by the same mandatory
-read-only verification; every other create failure is fatal. `ARUN RUNS`:
+The following block is retained only for the original v2 preflight. The first
+assertion rejects the current v3 checkpoint before the historical mutation can
+run. Do not execute it during recovery. In the original window, if and only if
+the guarded probe recorded `NoSuchEntity`, this one bootstrap action was
+required. `HISTORICAL ARUN-RUN BLOCK, DO NOT RUN`:
 
 ```bash
+test "$PRIOR_BOUNDARY_VERSION" = "v2"
 if test "$ELB_SERVICE_LINKED_ROLE_PRESENT" = false; then
   ELB_ROLE_CREATE_STDOUT="$ARTIFACT_DIR/elb-service-linked-role-create.json"
   ELB_ROLE_CREATE_STDERR="$ARTIFACT_DIR/elb-service-linked-role-create.stderr.txt"
@@ -237,7 +262,12 @@ jq -e '.Role.RoleName == "AWSServiceRoleForElasticLoadBalancing"' \
   "$ARTIFACT_DIR/elb-service-linked-role.json"
 ```
 
-## 3. Update the existing permissions boundary
+## 3. Historical IAM reconciliation, completed 2026-08-04
+
+Do not run the IAM mutation blocks in this section. They document the consumed
+v2-to-v3 reconciliation and its rollback design. The current account is already
+at v3. The pre-handler assertion below deliberately rejects the current v3
+checkpoint before any rollback handler or IAM mutation can be armed.
 
 The Flink service role now has a resource-scoped `execute-api:Invoke` identity
 policy. The platform role also needs tightly scoped IAM lifecycle actions for
@@ -278,6 +308,7 @@ PRIOR_PLATFORM_MAX_SESSION_DURATION=$(jq -er '.Role.MaxSessionDuration' \
   "$ARTIFACT_DIR/platform-role-before.json")
 export PRIOR_PLATFORM_MAX_SESSION_DURATION
 test -n "$PRIOR_BOUNDARY_VERSION"
+test "$PRIOR_BOUNDARY_VERSION" = "v2"
 ```
 
 The next human-run block arms an exit and interrupt rollback before changing
@@ -392,6 +423,8 @@ NEW_BOUNDARY_VERSION=$(aws iam create-policy-version \
   --set-as-default \
   --query 'PolicyVersion.VersionId' \
   --output text)
+EXPECTED_BOUNDARY_VERSION="$NEW_BOUNDARY_VERSION"
+export EXPECTED_BOUNDARY_VERSION
 
 aws iam get-policy-version \
   --policy-arn "$BOUNDARY_ARN" \
@@ -441,12 +474,13 @@ jq -e '
 ' "$ARTIFACT_DIR/budget-action-effective-policy.json"
 ```
 
-Stop unless the returned policy document contains `execute-api:Invoke` and the
+Historically, the operator stopped unless the returned policy document contained
+`execute-api:Invoke` and the
 tightly conditioned `AllowBudgetActionSpendFreeze` statement. Its principal
 must be the base or demo budget-action role, its target must be
 `harbormaster-platform`, and its policy must be the matching spend-freeze
-policy. Do not delete v2 during this window. It is the immediate rollback
-policy version.
+policy. Version v2 was retained as the immediate rollback policy during that
+completed reconciliation. Do not apply this historical instruction now.
 
 Reconcile the already-existing platform role's inline policy so its deferred
 least-privilege path can create EKS roles, service-linked roles, and the
@@ -577,15 +611,47 @@ own self-mutation deny remains covered by the local policy tests; it is not
 part of the platform principal's live evaluation because that principal does
 not have the boundary attached.
 
-Now assume the scoped deployment identity. Replace the MFA device ARN, then
-enter a fresh six-digit code. If the current administrator session is itself an
-assumed role, AWS role chaining limits this session to one hour; use a direct
-MFA-backed administrator identity for the eight-hour window.
+### Current resume identity entry point
+
+This is the only executable subsection of Section 3 during partial-apply
+recovery. It initializes every persistent variable used by the recovery and
+final-verification paths, proves the direct administrator identity and current
+v3 boundary without mutation, and then prompts for a fresh six-digit code. If
+the current administrator session is itself an assumed role, AWS role chaining
+limits this session to one hour; use a direct MFA-backed administrator identity
+for the eight-hour window.
 
 `ARUN RUNS`:
 
 ```bash
-export MFA_SERIAL="arn:aws:iam::${ACCOUNT_ID}:mfa/REPLACE_WITH_DEVICE_NAME"
+set -euo pipefail
+export AWS_REGION="us-east-1"
+export AWS_DEFAULT_REGION="$AWS_REGION"
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+test "$ACCOUNT_ID" = "645322802947"
+aws sts get-caller-identity \
+  | tee "$ARTIFACT_DIR/resume-admin-caller-identity.json"
+ADMIN_CALLER_ARN=$(jq -er .Arn \
+  "$ARTIFACT_DIR/resume-admin-caller-identity.json")
+test "$ADMIN_CALLER_ARN" = \
+  "arn:aws:iam::${ACCOUNT_ID}:user/arun-admin"
+export ACCOUNT_ID ADMIN_CALLER_ARN
+
+BOUNDARY_ARN="arn:aws:iam::${ACCOUNT_ID}:policy/harbormaster-permissions-boundary"
+SPEND_FREEZE_ARN="arn:aws:iam::${ACCOUNT_ID}:policy/harbormaster-base-spend-freeze"
+export EXPECTED_BOUNDARY_VERSION="v3"
+export BOUNDARY_ARN SPEND_FREEZE_ARN EXPECTED_BOUNDARY_VERSION
+aws iam get-policy --policy-arn "$BOUNDARY_ARN" \
+  | tee "$ARTIFACT_DIR/resume-boundary.json"
+jq -e --arg version "$EXPECTED_BOUNDARY_VERSION" \
+  '.Policy.DefaultVersionId == $version' \
+  "$ARTIFACT_DIR/resume-boundary.json"
+aws iam get-role --role-name harbormaster-platform \
+  | tee "$ARTIFACT_DIR/resume-platform-role.json"
+jq -e '.Role.MaxSessionDuration == 28800' \
+  "$ARTIFACT_DIR/resume-platform-role.json"
+
+export MFA_SERIAL="arn:aws:iam::${ACCOUNT_ID}:mfa/arun-admin-cli-totp"
 MFA_TOKEN=$(python3 -c 'import getpass; print(getpass.getpass("MFA code: "))')
 
 PLATFORM_SESSION=$(aws sts assume-role \
@@ -738,6 +804,102 @@ stores. It must leave the API Gateway route on ECS.
 ```bash
 make apply-plan PLAN="$PLAN_FILE"
 ```
+
+### Stage 1 apply failure or interruption: preserve state and re-plan
+
+Entering the Stage 1 apply permanently consumes that saved binary plan. If the
+command exits nonzero, the terminal disappears, or the outcome is unknown, do
+not retry the command and do not reuse its plan, summary, label, or apply
+helper. Stop all mutation. Do not destroy, import, remove or push state, force
+an unlock, manually delete an AWS object, or manually change Lambda
+concurrency. Preserve the binary plan and complete terminal log locally as
+evidence.
+
+Begin with read-only reconciliation in a new mode-700 artifact directory. Save
+files mode 600 and check all of the following before choosing a recovery path:
+
+1. Exact caller identity, the 75 USD budget and automatic spend-freeze action,
+   plus the enabled and wet nightly schedule and Lambda.
+2. No live Terraform writer and no backend lock.
+3. Versioning and encryption metadata for the exact S3 state object, followed
+   by an atomic `terraform state pull` snapshot with lineage, serial, all taint
+   and deposed-instance statuses, and a SHA-256 fingerprint. The raw state can
+   contain secrets, so never print, commit, or share it.
+4. The saved plan's managed address set compared with the exact address set now
+   tracked in state. Do not infer completion from terminal lines alone.
+5. The exact live AWS inventory for every planned address, including partially
+   created objects, the guard Lambda configuration and tags, reserved
+   concurrency, EKS and Scheduler absence or presence, NAT, Elastic IP, load
+   balancer, target group, IAM/KMS prerequisites, and the active API route
+   target.
+
+If the 07:00 UTC nightly sweep ran, or could have run, discard the prior live
+inventory as authorization evidence. Start another artifact directory after
+the sweep and repeat the entire read-only reconciliation. The prior resource
+list, state serial, S3 VersionId, Lambda revision, and address counts are
+time-specific observations, not reusable preconditions.
+
+Only when fresh state and live AWS prove all of the following may state-only
+reconciliation be considered:
+
+- the exact guard Lambda is tracked once and is the sole tainted instance;
+- its live identity, code hash, role, KMS key, handler, runtime, timeout,
+  tracing, dead-letter target, environment, and tags match state and current
+  configuration, except for the failed post-create setting that current code
+  removed;
+- no writer or lock exists, EKS cluster and node-group presence or absence
+  agrees between Terraform state and live AWS, the API route remains on ECS,
+  and both cost guards pass.
+
+Any mismatch stops the window for a newly reviewed path. A state-only change is
+still a Terraform mutation and remains human-run. Codex prepares a separate,
+date-locked helper that snapshots and fingerprints state immediately before and
+after the exact untaint operation, rejects inherited lock overrides, uses zero
+lock wait, proves the live Lambda did not change, and stops after reconciliation.
+That helper must not contain a plan or apply command.
+
+`ARUN RUNS`, only after Codex has reviewed the fresh helper and its read-only
+mode has passed:
+
+```bash
+test -n "${RECOVERY_HELPER:-}"
+test -f "$RECOVERY_HELPER"
+test "$(stat -f %Lp "$RECOVERY_HELPER")" = 700
+bash "$RECOVERY_HELPER"
+```
+
+After read-only post-untaint verification, create a brand-new saved plan. Use a
+new timestamped recovery label, binary path, summary path, and checksum. Never
+encode the previously observed remainder as a pass criterion; audit the actual
+refreshed actions.
+
+`ARUN RUNS`:
+
+```bash
+RECOVERY_STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+RECOVERY_PLAN_LABEL="wave4-w4-eks-recovery-$RECOVERY_STAMP"
+RECOVERY_PLAN_FILE="$ARTIFACT_DIR/$RECOVERY_PLAN_LABEL.tfplan"
+RECOVERY_PLAN_SUMMARY="docs/plan-artifacts/$(date -u +%F)-$RECOVERY_PLAN_LABEL.json"
+scripts/plan_artifact.sh "$RECOVERY_PLAN_LABEL" "$RECOVERY_PLAN_FILE"
+terraform -chdir=infra/terraform/envs/base show -no-color "$RECOVERY_PLAN_FILE" \
+  | tee "$ARTIFACT_DIR/$RECOVERY_PLAN_LABEL.plan.txt"
+test "$(shasum -a 256 "$RECOVERY_PLAN_FILE" | awk '{print $1}')" = \
+  "$(jq -r .plan_sha256 "$RECOVERY_PLAN_SUMMARY")"
+```
+
+Reject any unexpected delete or replacement, any Phase 1 data-store change,
+an API route switch away from ECS, a dry guard, a public endpoint CIDR wider
+than the operator's current `/32`, or more than one desired worker. Only after
+an independent action review may Arun apply the exact new checksum-bound plan:
+
+`ARUN RUNS`:
+
+```bash
+make apply-plan PLAN="$RECOVERY_PLAN_FILE"
+```
+
+Then resume the normal Stage 1 read-only verification below. Do not borrow the
+later scheduled-guard state-removal procedure from Section 11 for this recovery.
 
 Read-only verification:
 
@@ -1653,7 +1815,7 @@ jq -e --arg policy "$SPEND_FREEZE_ARN" --arg role harbormaster-platform '
     (.Definition.IamActionDefinition.Roles | index($role)) != null
   )
 ' "$ARTIFACT_DIR/hard-budget-actions-final.json"
-jq -e --arg version "$NEW_BOUNDARY_VERSION" \
+jq -e --arg version "$EXPECTED_BOUNDARY_VERSION" \
   '.Policy.DefaultVersionId == $version' \
   "$ARTIFACT_DIR/boundary-final.json"
 

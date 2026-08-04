@@ -2,6 +2,13 @@
 
 This is the chronological checklist for Arun's W4 AWS window on Tuesday, 2026-07-14 in `America/Los_Angeles`. The canonical command source remains `docs/runbooks/WAVE4_LIVE_WINDOWS.md`. Use this plan to control timing, identity, approvals, stop conditions, and evidence. Copy each `ARUN RUNS` block from the canonical runbook only when this checklist reaches that step.
 
+> **Historical checklist warning, added 2026-08-04:** Stage 1 later exited
+> after partially creating tracked network, IAM, KMS, API integration, and
+> guard resources even though no EKS cluster existed. Do not use this dated
+> checklist to resume that attempt. The saved plan is consumed. Start from the
+> canonical runbook's "Stage 1 apply failure or interruption" subsection and a
+> fresh read-only reconciliation.
+
 ## Outcome
 
 W4 is complete only when all of the following are true:
@@ -83,7 +90,11 @@ Reserve 08:30 through 16:30 PDT. This leaves a large margin before the 00:00 PDT
 | 13:30 | ECS rollback, KEDA removal, and guard live-fire | 90 minutes |
 | 15:00 | State reconciliation, final cleanup, and evidence handoff | 90 minutes |
 
-Do not compress a plan review to meet the schedule. If EKS has not been created, it is safe to stop and reschedule. Once EKS or NAT exists, reserve enough time to finish cleanup in the same window.
+Do not compress a plan review to meet the schedule. Before any Stage 1 apply
+starts, it is safe to stop and reschedule. After an apply starts, the absence of
+an EKS cluster does not prove that nothing was created. Use the canonical
+partial-apply recovery subsection. Once EKS or NAT exists, reserve enough time
+to finish cleanup in the same window.
 
 ## Terminal discipline
 
