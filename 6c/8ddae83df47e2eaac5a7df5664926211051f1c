@@ -1,0 +1,45 @@
+sessions/CODEX_HANDOFF_2026-07-12.md
+  s_87fd0589dba2e0::t_2effd796764e5b 215-218
+  s_87fd0589dba2e0::t_3b2ebd482e3df2 26-27,35-37,46-49,57-59,184-185
+  s_87fd0589dba2e0::t_cb1e042fb4f909 181-183,186-214,219-228
+  s_87fd0589dba2e0::t_1a09ddd8819a6a 229
+docs/runbooks/W4_OPERATOR_PLAN_2026-07-14.md
+  s_87fd0589dba2e0::t_c59ee4716d93e1 5-11,93-97
+tests/e2e/test_phase5_k8s_manifests.py
+  s_87fd0589dba2e0::t_b632d6abdbf704 186,202,205-209,212,292
+  s_87fd0589dba2e0::t_7444a8c8c8c2d9 187-190,213-214,217-221,224-236,258,497
+  s_87fd0589dba2e0::t_e0a443da0c2852 264
+  s_87fd0589dba2e0::t_5e903acbb62cc8 215-216,222-223
+  s_87fd0589dba2e0::t_8c27d29eb2ea3e 282,284-287
+  s_87fd0589dba2e0::t_cfd318df64bc43 275-280,293-298
+  s_87fd0589dba2e0::t_9c536af82291fe 48-50,179-185,191-201,203-204,210-211,274,281,283,288-291
+  s_87fd0589dba2e0::t_d0ca6d77d66652 237-257,259-263,265-273
+  s_87fd0589dba2e0::t_514eb6a6084115 299-300
+docs/drills/W4_STAGE1_PARTIAL_APPLY_2026-08-04.md
+  s_87fd0589dba2e0::t_021bdeedeea494 88,92-94
+  s_87fd0589dba2e0::t_2effd796764e5b 72-87,89-91,95
+  s_87fd0589dba2e0::t_5712f478970b48 1-71,96-217
+docs/runbooks/WAVE4_LIVE_WINDOWS.md
+  s_87fd0589dba2e0::t_e0a443da0c2852 636-637
+  s_87fd0589dba2e0::t_3594fd3dfe4911 233-237,240
+  s_87fd0589dba2e0::t_d0ca6d77d66652 203,617-622,627-635,638-641,643-653
+  s_87fd0589dba2e0::t_a2314dcdd7cb31 22-25,29-33,54-66,112-117,186-187,265-270,311,426-427,477-478,482-483,614-616,642,654,850-852,895-896,1818
+  s_87fd0589dba2e0::t_5e903acbb62cc8 3-6
+  s_87fd0589dba2e0::t_21a2fd7ac575bf 808-849,853-894,897-903
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "6c8ddae83df47e2eaac5a7df5664926211051f1c",
+  "prompts": {},
+  "sessions": {
+    "s_87fd0589dba2e0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5912-4f5a-7aa3-8604-0ccba141cb86",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
