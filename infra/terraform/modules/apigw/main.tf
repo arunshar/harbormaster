@@ -69,12 +69,13 @@ resource "aws_apigatewayv2_integration" "serving" {
 }
 
 # Phase 5 (gate 5.2): the EKS-path integration over the SAME VPC Link,
-# authored behind eks_integration_uri (empty default = not created = zero
-# diff). The ECS integration above and the aws_ecs_service it fronts are NOT
-# deleted: they are the documented rollback path until a live demo proves the
-# EKS path (PHASE_5.md gate 5.2's no-untested-cutover decision).
+# authored behind the plan-time-known enable_eks_integration flag. The URI is
+# produced by the NLB in the same apply, so it cannot safely determine count.
+# The ECS integration above and the aws_ecs_service it fronts are NOT deleted:
+# they are the documented rollback path until a live demo proves the EKS path
+# (PHASE_5.md gate 5.2's no-untested-cutover decision).
 resource "aws_apigatewayv2_integration" "serving_eks" {
-  count = var.eks_integration_uri != "" ? 1 : 0
+  count = var.enable_eks_integration ? 1 : 0
 
   api_id             = aws_apigatewayv2_api.this.id
   integration_type   = "HTTP_PROXY"
@@ -88,7 +89,7 @@ resource "aws_apigatewayv2_integration" "serving_eks" {
 # The frontdoor module owns the NLB SG; this module owns the source VPC-link SG.
 resource "aws_vpc_security_group_ingress_rule" "eks_nlb_from_vpc_link" {
   # checkov:skip=CKV_AWS_260:The rule uses only the VPC-link security group as its source; it has no IPv4 CIDR ingress.
-  count = var.eks_nlb_security_group_id != "" ? 1 : 0
+  count = var.enable_eks_integration ? 1 : 0
 
   security_group_id            = var.eks_nlb_security_group_id
   description                  = "API Gateway VPC link to the Phase 5 internal NLB"

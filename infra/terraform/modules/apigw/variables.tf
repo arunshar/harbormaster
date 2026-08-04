@@ -121,6 +121,12 @@ variable "jwt_audience" {
 # ARN of a Cloud Map service (or internal NLB listener) that fronts the EKS
 # Service, registered by the demo runbook.
 
+variable "enable_eks_integration" {
+  description = "Create the Phase 5 API Gateway integration and NLB ingress rule. This plan-time-known flag must control resource count because the listener ARN and security-group ID are unknown until apply."
+  type        = bool
+  default     = false
+}
+
 variable "serving_target" {
   description = "Which integration the proxy route points at: ecs (default, the Fargate/Cloud Map path) or eks (the Phase 5 front door; requires eks_integration_uri)."
   type        = string
@@ -132,19 +138,24 @@ variable "serving_target" {
   }
 
   validation {
+    condition     = var.serving_target != "eks" || var.enable_eks_integration
+    error_message = "serving_target = eks requires enable_eks_integration = true."
+  }
+
+  validation {
     condition     = var.serving_target != "eks" || var.eks_integration_uri != ""
     error_message = "serving_target = eks requires eks_integration_uri (a Cloud Map service ARN or ELB listener ARN fronting the EKS serving Service)."
   }
 }
 
 variable "eks_integration_uri" {
-  description = "Integration URI for the EKS serving path: a Cloud Map service ARN or internal NLB listener ARN reachable through the existing VPC Link. Empty (the default) authors no EKS integration and leaves the plan a zero diff."
+  description = "Integration URI for the EKS serving path: a Cloud Map service ARN or internal NLB listener ARN reachable through the existing VPC Link. Used when enable_eks_integration is true."
   type        = string
   default     = ""
 }
 
 variable "eks_nlb_security_group_id" {
-  description = "Security group on the Phase 5 internal NLB. Empty with Phase 5 disabled."
+  description = "Security group on the Phase 5 internal NLB. Used when enable_eks_integration is true."
   type        = string
   default     = ""
 }
