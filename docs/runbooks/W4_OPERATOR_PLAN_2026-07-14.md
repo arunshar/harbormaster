@@ -216,7 +216,9 @@ enable_phase5           = false
 Create `wave4-w4-nightly-guard.tfplan` through `scripts/plan_artifact.sh`. Before applying, require all of the following:
 
 - plan SHA-256 equals the saved summary SHA-256;
-- every changed address starts with `module.finops.`;
+- every changed address starts with `module.finops.`, except the exact existing
+  `module.kda_flink[0].aws_iam_role_policy.flink` address required for signed
+  W4 inference;
 - no changed action contains `delete`;
 - no Phase 5 address appears;
 - no Phase 1 data store is deleted or replaced.
