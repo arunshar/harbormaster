@@ -1,0 +1,23 @@
+tests/e2e/test_phase5_k8s_manifests.py
+  s_87fd0589dba2e0::t_a5ad6f75021c6c 42,155-161
+  s_87fd0589dba2e0::t_7b0b1dfe8c99cd 162-163
+infra/terraform/modules/eks_teardown_guard/main.tf
+  s_87fd0589dba2e0::t_a5ad6f75021c6c 318
+  s_87fd0589dba2e0::t_bee658d958a0ce 317
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "3b8fc8ebd9be16ad701c946b908004d34d2f675c",
+  "prompts": {},
+  "sessions": {
+    "s_87fd0589dba2e0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5912-4f5a-7aa3-8604-0ccba141cb86",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
