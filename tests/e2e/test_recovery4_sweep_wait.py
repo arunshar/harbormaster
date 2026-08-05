@@ -60,8 +60,14 @@ def _run_classifier(classifier_src: str, events: list[dict]) -> dict[str, str]:
     fixture.write_text(json.dumps({"events": events}))
     try:
         result = subprocess.run(
-            [sys.executable, "-c", classifier_src, str(fixture),
-             str(SWEEP_START_MS), str(SWEEP_LATEST_START_MS)],
+            [
+                sys.executable,
+                "-c",
+                classifier_src,
+                str(fixture),
+                str(SWEEP_START_MS),
+                str(SWEEP_LATEST_START_MS),
+            ],
             capture_output=True,
             text=True,
             check=True,
@@ -78,16 +84,17 @@ def _run_classifier(classifier_src: str, events: list[dict]) -> dict[str, str]:
 
 def _complete_wet_events(dry_run: bool, start_ts: int) -> list[dict]:
     return [
-        {"timestamp": start_ts,
-         "message": f"START RequestId: {REQUEST_ID} Version: $LATEST\n"},
-        {"timestamp": start_ts + 1000,
-         "message": json.dumps(
-             {"event": "teardown_complete", "dry_run": dry_run}
-         ) + f" {REQUEST_ID}\n"},
-        {"timestamp": start_ts + 2000,
-         "message": f"END RequestId: {REQUEST_ID}\n"},
-        {"timestamp": start_ts + 3000,
-         "message": f"REPORT RequestId: {REQUEST_ID}\tDuration: 1 ms\n"},
+        {"timestamp": start_ts, "message": f"START RequestId: {REQUEST_ID} Version: $LATEST\n"},
+        {
+            "timestamp": start_ts + 1000,
+            "message": json.dumps({"event": "teardown_complete", "dry_run": dry_run})
+            + f" {REQUEST_ID}\n",
+        },
+        {"timestamp": start_ts + 2000, "message": f"END RequestId: {REQUEST_ID}\n"},
+        {
+            "timestamp": start_ts + 3000,
+            "message": f"REPORT RequestId: {REQUEST_ID}\tDuration: 1 ms\n",
+        },
     ]
 
 
@@ -139,10 +146,11 @@ def test_wait_classifier_rejects_a_sweep_that_logged_a_service_failure():
     events = _complete_wet_events(dry_run=False, start_ts=SWEEP_START_MS + 60_000)
     events.insert(
         2,
-        {"timestamp": events[0]["timestamp"] + 500,
-         "message": json.dumps(
-             {"event": "eks_delete_failed", "error": "boom"}
-         ) + f" {REQUEST_ID}\n"},
+        {
+            "timestamp": events[0]["timestamp"] + 500,
+            "message": json.dumps({"event": "eks_delete_failed", "error": "boom"})
+            + f" {REQUEST_ID}\n",
+        },
     )
     verdict = _run_classifier(classifier, events)
     assert verdict["valid"] == "0"
