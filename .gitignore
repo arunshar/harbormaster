@@ -72,6 +72,8 @@ docs/internship/
 
 # live W4 evidence stays local; reviewed drill documents cite its paths
 artifacts/w4/
+# live Wave 5 load and soak evidence stays local; reviewed summaries cite paths
+artifacts/w5/
 # slot-lag Lambda build dir (make cdc-lambda-package)
 infra/lambda/cdc_slot_lag/build/
 infra/terraform/modules/cdc_monitoring/.build/

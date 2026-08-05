@@ -305,7 +305,10 @@ def open_no_redirect(request: urllib.request.Request, timeout_seconds: float = 5
     """Open one signed request while refusing every HTTP redirect."""
     if not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
         raise ValueError("timeout_seconds must be finite and > 0")
-    opener = urllib.request.build_opener(_RejectRedirects())
+    opener = urllib.request.build_opener(
+        urllib.request.ProxyHandler({}),
+        _RejectRedirects(),
+    )
     return opener.open(request, timeout=timeout_seconds)  # nosec B310
 
 
