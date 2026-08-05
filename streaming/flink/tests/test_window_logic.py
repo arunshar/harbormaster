@@ -301,6 +301,7 @@ def test_open_no_redirect_rejects_unbounded_timeout(timeout_seconds):
 
 def test_open_no_redirect_uses_redirect_rejecting_opener(monkeypatch):
     calls = []
+    handlers = []
     response = object()
 
     class Opener:
@@ -309,11 +310,21 @@ def test_open_no_redirect_uses_redirect_rejecting_opener(monkeypatch):
             calls.append((request, timeout))
             return response
 
-    monkeypatch.setattr(urllib.request, "build_opener", lambda handler: Opener())
+    def build_opener(*captured_handlers):
+        handlers.extend(captured_handlers)
+        return Opener()
+
+    monkeypatch.setattr(urllib.request, "build_opener", build_opener)
     request = urllib.request.Request("https://example.com")
 
     assert open_no_redirect(request, 1.5) is response
     assert calls == [(request, 1.5)]
+    proxy_handlers = [
+        handler for handler in handlers if isinstance(handler, urllib.request.ProxyHandler)
+    ]
+    assert len(proxy_handlers) == 1
+    assert proxy_handlers[0].proxies == {}
+    assert any(isinstance(handler, _RejectRedirects) for handler in handlers)
 
 
 def test_signed_request_redirects_are_rejected_without_forwarding_headers():
