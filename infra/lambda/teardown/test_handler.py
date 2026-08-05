@@ -290,6 +290,78 @@ class FakeEc2Client:
         self._rec.note("ec2.release_address", **kwargs)
 
 
+class FakeClock:
+    def __init__(self):
+        self.now = 0.0
+        self.sleeps = []
+
+    def monotonic(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.sleeps.append(seconds)
+        self.now += seconds
+
+
+class FakeNatDetachEc2Client:
+    """Expose one exact-scoped NAT EIP through a controlled detach sequence."""
+
+    ALLOCATION_ID = "eipalloc-nat"
+
+    def __init__(
+        self,
+        recorder,
+        detach_after_direct_checks=3,
+        scope_mismatch_after_direct_check=False,
+    ):
+        self._rec = recorder
+        self.detach_after_direct_checks = detach_after_direct_checks
+        self.scope_mismatch_after_direct_check = scope_mismatch_after_direct_check
+        self.direct_checks = 0
+
+    def describe_nat_gateways(self, **kwargs):
+        assert kwargs == {"Filter": [{"Name": "tag:Project", "Values": ["harbormaster"]}]}
+        return {
+            "NatGateways": [
+                {
+                    "NatGatewayId": "nat-hb",
+                    "State": "available",
+                    "Tags": NETWORK_TAGGED,
+                    "NatGatewayAddresses": [{"AllocationId": self.ALLOCATION_ID}],
+                }
+            ]
+        }
+
+    def delete_nat_gateway(self, **kwargs):
+        self._rec.note("ec2.delete_nat_gateway", **kwargs)
+
+    def describe_addresses(self, **kwargs):
+        assert kwargs == {"Filters": [{"Name": "tag:Project", "Values": ["harbormaster"]}]}
+        self.direct_checks += 1
+        if self.scope_mismatch_after_direct_check and self.direct_checks > 1:
+            return {"Addresses": [self._address(attached=True, tags=WRONG_MODULE_TAGGED)]}
+        attached = (
+            self.detach_after_direct_checks is None
+            or self.direct_checks < self.detach_after_direct_checks
+        )
+        return {"Addresses": [self._address(attached=attached)]}
+
+    def release_address(self, **kwargs):
+        self._rec.note("ec2.release_address", **kwargs)
+
+    def _address(self, attached, tags=NETWORK_TAGGED):
+        address = {"AllocationId": self.ALLOCATION_ID, "Tags": tags}
+        if attached:
+            address.update(
+                {
+                    "AssociationId": "eipassoc-nat",
+                    "NetworkInterfaceId": "eni-nat",
+                    "PrivateIpAddress": "10.0.0.9",
+                }
+            )
+        return address
+
+
 class FakeAsgClient:
     def __init__(self, recorder):
         self._rec = recorder
@@ -492,6 +564,321 @@ def test_wet_run_performs_actions_and_publishes():
     os.environ.pop("ALERT_TOPIC_ARN", None)
 
 
+def _load_handler_with_nat_detach_client(
+    detach_after_direct_checks=3,
+    scope_mismatch_after_direct_check=False,
+):
+    handler = _load_handler({"PROJECT_TAG": "harbormaster", "ENVIRONMENT": "base"})
+    recorder = _Recorder()
+    client = FakeNatDetachEc2Client(
+        recorder,
+        detach_after_direct_checks=detach_after_direct_checks,
+        scope_mismatch_after_direct_check=scope_mismatch_after_direct_check,
+    )
+    handler.boto3.client = lambda service_name, **kwargs: client
+    return handler, recorder, client
+
+
+def test_nat_eip_released_after_later_bounded_detach_pass():
+    handler, recorder, client = _load_handler_with_nat_detach_client()
+    clock = FakeClock()
+    results = {}
+
+    handler.delete_nat_gateways(False, results)
+    candidates = results["nat_gateways"]["delete_requested_allocation_ids"]
+    handler.release_unattached_elastic_ips(
+        False,
+        results,
+        convergence_allocation_ids=candidates,
+        convergence_timeout_seconds=5,
+        convergence_poll_seconds=1,
+        monotonic=clock.monotonic,
+        sleep=clock.sleep,
+    )
+
+    assert candidates == [client.ALLOCATION_ID]
+    assert [name for name, _ in recorder.calls] == [
+        "ec2.delete_nat_gateway",
+        "ec2.release_address",
+    ]
+    assert clock.sleeps == [1, 1]
+    assert client.direct_checks == 3
+    assert results["elastic_ips"]["converged_after_wait"] == [client.ALLOCATION_ID]
+    assert results["elastic_ips"]["convergence_timed_out"] == []
+    assert results["elastic_ips"]["error"] is None
+
+
+def test_nat_eip_timeout_never_releases_still_attached_address():
+    handler, recorder, client = _load_handler_with_nat_detach_client(
+        detach_after_direct_checks=None
+    )
+    clock = FakeClock()
+    results = {}
+    events = []
+    handler._log = lambda event, **fields: events.append((event, fields))
+
+    handler.delete_nat_gateways(False, results)
+    handler.release_unattached_elastic_ips(
+        False,
+        results,
+        convergence_allocation_ids=results["nat_gateways"]["delete_requested_allocation_ids"],
+        convergence_timeout_seconds=3,
+        convergence_poll_seconds=1,
+        monotonic=clock.monotonic,
+        sleep=clock.sleep,
+    )
+
+    assert [name for name, _ in recorder.calls] == ["ec2.delete_nat_gateway"]
+    assert clock.sleeps == [1, 1, 1]
+    assert results["elastic_ips"]["convergence_timed_out"] == [client.ALLOCATION_ID]
+    assert "timed out waiting" in results["elastic_ips"]["error"]
+    failure_events = [(event, fields) for event, fields in events if event.endswith("_failed")]
+    assert failure_events == [
+        (
+            "elastic_ip_convergence_failed",
+            {
+                "error": ("timed out waiting for NAT Elastic IP detach: " + client.ALLOCATION_ID),
+                "not_visible": [],
+                "scope_mismatch": [],
+                "timed_out": [client.ALLOCATION_ID],
+                "timeout_seconds": 3.0,
+            },
+        )
+    ]
+
+
+def test_nat_eip_scope_change_fails_closed_without_release():
+    handler, recorder, client = _load_handler_with_nat_detach_client(
+        scope_mismatch_after_direct_check=True
+    )
+    clock = FakeClock()
+    results = {}
+
+    handler.delete_nat_gateways(False, results)
+    handler.release_unattached_elastic_ips(
+        False,
+        results,
+        convergence_allocation_ids=results["nat_gateways"]["delete_requested_allocation_ids"],
+        convergence_timeout_seconds=3,
+        convergence_poll_seconds=1,
+        monotonic=clock.monotonic,
+        sleep=clock.sleep,
+    )
+
+    assert [name for name, _ in recorder.calls] == ["ec2.delete_nat_gateway"]
+    assert clock.sleeps == [1]
+    assert results["elastic_ips"]["convergence_scope_mismatch"] == [client.ALLOCATION_ID]
+    assert "scope mismatch" in results["elastic_ips"]["error"]
+
+
+def test_nat_eip_dry_run_never_polls_or_mutates():
+    handler, recorder, client = _load_handler_with_nat_detach_client()
+    clock = FakeClock()
+    results = {}
+
+    handler.delete_nat_gateways(True, results)
+    candidates = results["nat_gateways"]["would_detach_allocation_ids"]
+    handler.release_unattached_elastic_ips(
+        True,
+        results,
+        convergence_allocation_ids=candidates,
+        convergence_timeout_seconds=5,
+        convergence_poll_seconds=1,
+        monotonic=clock.monotonic,
+        sleep=clock.sleep,
+    )
+
+    assert candidates == [client.ALLOCATION_ID]
+    assert recorder.calls == []
+    assert clock.sleeps == []
+    assert client.direct_checks == 1
+    assert results["elastic_ips"]["release_requested"] == []
+
+
+def test_lambda_handler_wires_dry_run_nat_eip_candidates_end_to_end():
+    os.environ["DRY_RUN"] = "true"
+    os.environ.pop("ALERT_TOPIC_ARN", None)
+    handler = _load_handler({"PROJECT_TAG": "harbormaster", "ENVIRONMENT": "base"})
+    recorder = _Recorder()
+    ec2 = FakeNatDetachEc2Client(recorder)
+    fallback = make_fake_boto3_client(recorder)
+
+    def _factory(service_name, **kwargs):
+        if service_name == "ec2":
+            return ec2
+        return fallback(service_name, **kwargs)
+
+    handler.boto3.client = _factory
+    result = handler.lambda_handler({"source": "dry-run-regression"}, None)
+
+    assert recorder.calls == []
+    assert result["results"]["nat_gateways"]["would_detach_allocation_ids"] == [ec2.ALLOCATION_ID]
+    assert result["results"]["elastic_ips"]["convergence_targets"] == [ec2.ALLOCATION_ID]
+    assert ec2.direct_checks == 1
+
+
+def test_initial_eip_inventory_latency_consumes_convergence_budget():
+    handler, recorder, client = _load_handler_with_nat_detach_client(
+        detach_after_direct_checks=None
+    )
+    clock = FakeClock()
+    results = {}
+    original_describe_addresses = client.describe_addresses
+
+    def _slow_initial_inventory(**kwargs):
+        if client.direct_checks == 0:
+            clock.now += 4
+        return original_describe_addresses(**kwargs)
+
+    client.describe_addresses = _slow_initial_inventory
+    handler.delete_nat_gateways(False, results)
+    handler.release_unattached_elastic_ips(
+        False,
+        results,
+        convergence_allocation_ids=results["nat_gateways"]["delete_requested_allocation_ids"],
+        convergence_timeout_seconds=3,
+        convergence_poll_seconds=1,
+        monotonic=clock.monotonic,
+        sleep=clock.sleep,
+    )
+
+    assert [name for name, _ in recorder.calls] == ["ec2.delete_nat_gateway"]
+    assert client.direct_checks == 1
+    assert clock.sleeps == []
+    assert results["elastic_ips"]["convergence_timed_out"] == [client.ALLOCATION_ID]
+
+
+def test_nat_eip_convergence_budget_preserves_lambda_completion_reserve():
+    handler = _load_handler({"PROJECT_TAG": "harbormaster", "ENVIRONMENT": "base"})
+
+    class _Context:
+        def __init__(self, remaining_millis):
+            self.remaining_millis = remaining_millis
+
+        def get_remaining_time_in_millis(self):
+            return self.remaining_millis
+
+    assert handler._eip_convergence_timeout(_Context(120_000)) == 90
+    assert handler._eip_convergence_timeout(_Context(20_000)) == 5
+    assert handler._eip_convergence_timeout(_Context(10_000)) == 0
+    assert handler._eip_convergence_timeout(object()) == 0
+    assert handler._eip_convergence_timeout(_Context("invalid")) == 0
+    os.environ.pop("HM_TEST_UNSET_BOOL", None)
+    assert handler._env_bool("HM_TEST_UNSET_BOOL", False) is False
+    assert handler._tag_matches([]) is False
+    assert handler._tag_matches(["malformed", {"key": "Project", "value": "harbormaster"}]) is True
+
+
+def test_nat_cleanup_surfaces_api_failure_and_skips_non_active_state():
+    handler = _load_handler({"PROJECT_TAG": "harbormaster", "ENVIRONMENT": "base"})
+
+    class _DeletingNatClient:
+        def describe_nat_gateways(self, **kwargs):
+            return {
+                "NatGateways": [
+                    {
+                        "NatGatewayId": "nat-deleting",
+                        "State": "deleting",
+                        "Tags": NETWORK_TAGGED,
+                    }
+                ]
+            }
+
+    handler.boto3.client = lambda service_name, **kwargs: _DeletingNatClient()
+    results = {}
+    handler.delete_nat_gateways(False, results)
+    assert results["nat_gateways"]["delete_requested"] == []
+    assert results["nat_gateways"]["error"] is None
+
+    class _FailedNatClient:
+        def describe_nat_gateways(self, **kwargs):
+            raise RuntimeError("describe NAT failed")
+
+    handler.boto3.client = lambda service_name, **kwargs: _FailedNatClient()
+    results = {}
+    handler.delete_nat_gateways(False, results)
+    assert results["nat_gateways"]["delete_requested_allocation_ids"] == []
+    assert results["nat_gateways"]["error"] == "describe NAT failed"
+
+
+def test_nat_eip_candidates_cover_absence_scope_and_immediate_detach_paths():
+    handler = _load_handler({"PROJECT_TAG": "harbormaster", "ENVIRONMENT": "base"})
+    recorder = _Recorder()
+    clock = FakeClock()
+
+    class _MixedEipClient:
+        def __init__(self):
+            self.calls = 0
+
+        def describe_addresses(self, **kwargs):
+            self.calls += 1
+            if self.calls == 1:
+                return {
+                    "Addresses": [
+                        {"Tags": NETWORK_TAGGED},
+                        {"AllocationId": "eipalloc-wrong-filter", "Tags": WRONG_MODULE_TAGGED},
+                        {"AllocationId": "eipalloc-detached-filter", "Tags": NETWORK_TAGGED},
+                        {
+                            "AllocationId": "eipalloc-attached-then-missing",
+                            "AssociationId": "eipassoc-pending",
+                            "Tags": NETWORK_TAGGED,
+                        },
+                    ]
+                }
+            return {"Addresses": []}
+
+        def release_address(self, **kwargs):
+            recorder.note("ec2.release_address", **kwargs)
+
+    client = _MixedEipClient()
+    handler.boto3.client = lambda service_name, **kwargs: client
+    targets = [
+        "eipalloc-attached-then-missing",
+        "eipalloc-detached-filter",
+        "eipalloc-missing",
+        "eipalloc-wrong-filter",
+    ]
+    results = {}
+
+    handler.release_unattached_elastic_ips(
+        False,
+        results,
+        convergence_allocation_ids=targets,
+        convergence_timeout_seconds=2,
+        convergence_poll_seconds=1,
+        monotonic=clock.monotonic,
+        sleep=clock.sleep,
+    )
+
+    released = [kwargs["AllocationId"] for _, kwargs in recorder.calls]
+    assert released == ["eipalloc-detached-filter"]
+    assert results["elastic_ips"]["convergence_not_visible"] == [
+        "eipalloc-attached-then-missing",
+        "eipalloc-missing",
+    ]
+    assert results["elastic_ips"]["convergence_scope_mismatch"] == [
+        "eipalloc-wrong-filter",
+    ]
+    assert results["elastic_ips"]["convergence_timed_out"] == []
+    assert clock.sleeps == [1]
+
+
+def test_elastic_ip_api_failure_is_accumulated_without_raise():
+    handler = _load_handler({"PROJECT_TAG": "harbormaster", "ENVIRONMENT": "base"})
+
+    class _FailedEipClient:
+        def describe_addresses(self, **kwargs):
+            raise RuntimeError("describe EIP failed")
+
+    handler.boto3.client = lambda service_name, **kwargs: _FailedEipClient()
+    results = {}
+    handler.release_unattached_elastic_ips(False, results)
+
+    assert results["elastic_ips"]["release_requested"] == []
+    assert results["elastic_ips"]["convergence_timed_out"] == []
+    assert results["elastic_ips"]["error"] == "describe EIP failed"
+
+
 # --------------------------------------------------------------------------- #
 # Built-in runner fallback (works without pytest installed).
 # --------------------------------------------------------------------------- #
@@ -502,6 +889,16 @@ def _run_all():
         test_per_service_failure_does_not_abort_run,
         test_network_failure_does_not_abort_later_cleanup_blocks,
         test_wet_run_performs_actions_and_publishes,
+        test_nat_eip_released_after_later_bounded_detach_pass,
+        test_nat_eip_timeout_never_releases_still_attached_address,
+        test_nat_eip_scope_change_fails_closed_without_release,
+        test_nat_eip_dry_run_never_polls_or_mutates,
+        test_lambda_handler_wires_dry_run_nat_eip_candidates_end_to_end,
+        test_initial_eip_inventory_latency_consumes_convergence_budget,
+        test_nat_eip_convergence_budget_preserves_lambda_completion_reserve,
+        test_nat_cleanup_surfaces_api_failure_and_skips_non_active_state,
+        test_nat_eip_candidates_cover_absence_scope_and_immediate_detach_paths,
+        test_elastic_ip_api_failure_is_accumulated_without_raise,
     ]
     failures = 0
     for t in tests:

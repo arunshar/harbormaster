@@ -29,8 +29,19 @@ require the exact `Environment=<ENVIRONMENT>` and owner `Module` tags.
 5. Requests deletion of scoped Network Load Balancers owned by the
    `eks_frontdoor` module.
 6. Requests deletion of scoped NAT gateways and release of scoped Elastic IPs
-   once they are unattached. A NAT gateway deletion is asynchronous, so its
-   Elastic IP can be released by the next nightly run.
+   once they are unattached. For a wet run, the handler carries only the
+   allocation IDs reported by exact-scoped NAT gateways selected in that same
+   invocation into a bounded convergence attempt. It polls every 5 seconds for
+   at most 90 seconds and targets 15 seconds of headroom within the 120-second
+   Lambda runtime for reporting. The deadline starts before the initial EIP
+   inventory call, so that call consumes the bounded budget. AWS API latency is
+   not bounded, which makes the 15-second headroom a best-effort target rather
+   than a guarantee. Every pass rechecks `Project`, `Environment`, and `Module`
+   before release. This does not guarantee that EC2 will detach the address
+   within the same invocation. A timeout or ownership-tag mismatch emits a structured
+   `elastic_ip_convergence_failed` event, is surfaced as a per-service error,
+   and never causes a release. A timed-out address remains available to the
+   ordinary unattached-EIP pass in the next scheduled wet run.
 7. Queries Cost Explorer for unblended month-to-date spend.
 8. Publishes a single human-readable summary to the SNS topic in
    `ALERT_TOPIC_ARN`.
@@ -131,5 +142,7 @@ DRY_RUN=true python handler.py
 
 The tests cover: the DRY_RUN path makes zero mutating calls; only
 `Project=harbormaster` resources are selected; only the `eks_frontdoor` NLB is
-selected; a simulated single-service outage does not abort the run; and the
-wet-run path performs the actions and publishes to SNS.
+selected; a simulated single-service outage does not abort the run; the wet-run
+path performs the actions and publishes to SNS; and NAT-backed Elastic IP
+convergence releases only after a later observation proves detach, while
+timeout, tag-drift, and dry-run paths remain non-mutating.
