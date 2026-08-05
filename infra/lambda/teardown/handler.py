@@ -34,6 +34,7 @@ import datetime
 import json
 import logging
 import os
+import time
 
 try:
     import boto3
@@ -75,6 +76,20 @@ def _log(event_name, **fields):
 PROJECT_TAG_VALUE = os.environ.get("PROJECT_TAG", "harbormaster")
 ENVIRONMENT_VALUE = os.environ.get("ENVIRONMENT", "base")
 
+# NAT gateway deletion is asynchronous. The Lambda has a 120-second timeout, so
+# keep the convergence window bounded and target headroom for Cost Explorer,
+# SNS, and final logging. AWS API latency is not bounded, so the headroom is
+# best-effort. Tests inject a clock and sleeper rather than waiting.
+EIP_CONVERGENCE_TIMEOUT_SECONDS = 90.0
+EIP_CONVERGENCE_POLL_SECONDS = 5.0
+EIP_CONVERGENCE_LAMBDA_RESERVE_SECONDS = 15.0
+EIP_ATTACHMENT_FIELDS = (
+    "AssociationId",
+    "NetworkInterfaceId",
+    "InstanceId",
+    "PrivateIpAddress",
+)
+
 
 def _tag_matches(tags, key="Project", value=None):
     """Return True if the supplied tag collection contains key=value.
@@ -105,6 +120,25 @@ def _network_scope_matches(tags, module):
         and _tag_matches(tags, key="Environment", value=ENVIRONMENT_VALUE)
         and _tag_matches(tags, key="Module", value=module)
     )
+
+
+def _address_is_attached(address):
+    """Return whether EC2 still reports any attachment for an Elastic IP."""
+    return any(address.get(field) for field in EIP_ATTACHMENT_FIELDS)
+
+
+def _eip_convergence_timeout(context):
+    """Cap polling to target best-effort completion headroom."""
+    if context is None:
+        return EIP_CONVERGENCE_TIMEOUT_SECONDS
+    remaining = getattr(context, "get_remaining_time_in_millis", None)
+    if not callable(remaining):
+        return 0.0
+    try:
+        available = (float(remaining()) / 1000.0) - EIP_CONVERGENCE_LAMBDA_RESERVE_SECONDS
+    except (TypeError, ValueError):
+        return 0.0
+    return max(0.0, min(EIP_CONVERGENCE_TIMEOUT_SECONDS, available))
 
 
 # --------------------------------------------------------------------------- #
@@ -371,6 +405,8 @@ def delete_nat_gateways(dry_run, results):
     service = "nat_gateways"
     would_delete = []
     delete_requested = []
+    would_detach_allocation_ids = []
+    delete_requested_allocation_ids = []
     try:
         client = boto3.client("ec2")
         gateways = []
@@ -392,17 +428,28 @@ def delete_nat_gateways(dry_run, results):
             if state not in {"available", "pending"}:
                 _log("nat_gateway_skip_state", nat_gateway_id=gateway_id, state=state)
                 continue
+            allocation_ids = sorted(
+                {
+                    item.get("AllocationId")
+                    for item in gateway.get("NatGatewayAddresses", [])
+                    if isinstance(item, dict) and item.get("AllocationId")
+                }
+            )
             if dry_run:
                 _log("nat_gateway_would_delete", nat_gateway_id=gateway_id, state=state)
                 would_delete.append(gateway_id)
+                would_detach_allocation_ids.extend(allocation_ids)
                 continue
             client.delete_nat_gateway(NatGatewayId=gateway_id)
             _log("nat_gateway_delete_requested", nat_gateway_id=gateway_id, prior_state=state)
             delete_requested.append(gateway_id)
+            delete_requested_allocation_ids.extend(allocation_ids)
 
         results[service] = {
             "would_delete": would_delete,
             "delete_requested": delete_requested,
+            "would_detach_allocation_ids": sorted(set(would_detach_allocation_ids)),
+            "delete_requested_allocation_ids": sorted(set(delete_requested_allocation_ids)),
             "error": None,
         }
     except Exception as err:  # noqa: BLE001
@@ -410,6 +457,8 @@ def delete_nat_gateways(dry_run, results):
         results[service] = {
             "would_delete": would_delete,
             "delete_requested": delete_requested,
+            "would_detach_allocation_ids": sorted(set(would_detach_allocation_ids)),
+            "delete_requested_allocation_ids": sorted(set(delete_requested_allocation_ids)),
             "error": str(err),
         }
     return results
@@ -418,31 +467,68 @@ def delete_nat_gateways(dry_run, results):
 # --------------------------------------------------------------------------- #
 # Unattached Elastic IPs
 # --------------------------------------------------------------------------- #
-def release_unattached_elastic_ips(dry_run, results):
-    """Release project-tagged VPC Elastic IPs after they are unattached."""
+def release_unattached_elastic_ips(
+    dry_run,
+    results,
+    convergence_allocation_ids=None,
+    convergence_timeout_seconds=EIP_CONVERGENCE_TIMEOUT_SECONDS,
+    convergence_poll_seconds=EIP_CONVERGENCE_POLL_SECONDS,
+    monotonic=None,
+    sleep=None,
+):
+    """Release scoped EIPs, then bound polling to NAT deletion candidates.
+
+    A convergence candidate must come from an exact-scoped NAT gateway whose
+    deletion was requested in this invocation. The EIP's exact ownership tags
+    are rechecked on every pass before release.
+    """
     service = "elastic_ips"
     would_release = []
     release_requested = []
+    convergence_targets = sorted(set(convergence_allocation_ids or []))
+    convergence_observed_attached = []
+    converged_after_wait = []
+    convergence_not_visible = []
+    convergence_scope_mismatch = []
+    convergence_timed_out = []
+    error = None
     try:
+        clock = monotonic or time.monotonic
+        sleeper = sleep or time.sleep
+        timeout = max(0.0, float(convergence_timeout_seconds))
+        poll = max(0.1, float(convergence_poll_seconds))
+        # Start before the first EC2 inventory call. Initial API latency is part
+        # of the bounded convergence attempt, not free time outside it.
+        deadline = clock() + timeout
+
         client = boto3.client("ec2")
         response = client.describe_addresses(
             Filters=[{"Name": "tag:Project", "Values": [PROJECT_TAG_VALUE]}]
         )
         addresses = response.get("Addresses", [])
+        pending = set()
+        handled_targets = set()
+
         for address in addresses:
             allocation_id = address.get("AllocationId")
-            if not allocation_id or not _network_scope_matches(
-                address.get("Tags", []), module="network"
-            ):
+            if not allocation_id:
                 continue
-            attachment_fields = (
-                "AssociationId",
-                "NetworkInterfaceId",
-                "InstanceId",
-                "PrivateIpAddress",
-            )
-            if any(address.get(field) for field in attachment_fields):
+            is_target = allocation_id in convergence_targets
+            if not _network_scope_matches(address.get("Tags", []), module="network"):
+                if is_target:
+                    handled_targets.add(allocation_id)
+                    convergence_scope_mismatch.append(allocation_id)
+                    _log(
+                        "elastic_ip_convergence_scope_mismatch",
+                        allocation_id=allocation_id,
+                    )
+                continue
+            if _address_is_attached(address):
                 _log("elastic_ip_skip_attached", allocation_id=allocation_id)
+                if is_target and not dry_run:
+                    handled_targets.add(allocation_id)
+                    pending.add(allocation_id)
+                    convergence_observed_attached.append(allocation_id)
                 continue
             if dry_run:
                 _log("elastic_ip_would_release", allocation_id=allocation_id)
@@ -451,17 +537,119 @@ def release_unattached_elastic_ips(dry_run, results):
             client.release_address(AllocationId=allocation_id)
             _log("elastic_ip_release_requested", allocation_id=allocation_id)
             release_requested.append(allocation_id)
+            if is_target:
+                handled_targets.add(allocation_id)
+
+        # A candidate sourced from the just-deleted NAT must remain visible in
+        # the exact Project-filtered inventory until this function releases it.
+        # Missing candidates are ambiguous, so they fail closed without a
+        # release rather than being treated as proof of absence.
+        if not dry_run:
+            for allocation_id in sorted(set(convergence_targets) - handled_targets):
+                convergence_not_visible.append(allocation_id)
+                _log(
+                    "elastic_ip_convergence_not_visible",
+                    allocation_id=allocation_id,
+                )
+
+        while pending:
+            remaining = deadline - clock()
+            if remaining <= 0:
+                break
+            sleeper(min(poll, remaining))
+            response = client.describe_addresses(
+                Filters=[{"Name": "tag:Project", "Values": [PROJECT_TAG_VALUE]}]
+            )
+            addresses_by_id = {
+                address.get("AllocationId"): address
+                for address in response.get("Addresses", [])
+                if address.get("AllocationId")
+            }
+            for allocation_id in sorted(pending):
+                address = addresses_by_id.get(allocation_id)
+                if address is None:
+                    pending.remove(allocation_id)
+                    convergence_not_visible.append(allocation_id)
+                    _log(
+                        "elastic_ip_convergence_not_visible",
+                        allocation_id=allocation_id,
+                    )
+                    continue
+                if not _network_scope_matches(address.get("Tags", []), module="network"):
+                    pending.remove(allocation_id)
+                    convergence_scope_mismatch.append(allocation_id)
+                    _log(
+                        "elastic_ip_convergence_scope_mismatch",
+                        allocation_id=allocation_id,
+                    )
+                    continue
+                if _address_is_attached(address):
+                    _log(
+                        "elastic_ip_convergence_still_attached",
+                        allocation_id=allocation_id,
+                    )
+                    continue
+                client.release_address(AllocationId=allocation_id)
+                pending.remove(allocation_id)
+                release_requested.append(allocation_id)
+                converged_after_wait.append(allocation_id)
+                _log(
+                    "elastic_ip_release_requested_after_nat_detach",
+                    allocation_id=allocation_id,
+                )
+
+        convergence_timed_out = sorted(pending)
+        issues = []
+        if convergence_not_visible:
+            issues.append(
+                "NAT Elastic IPs not visible in scoped inventory: "
+                + ", ".join(sorted(set(convergence_not_visible)))
+            )
+        if convergence_scope_mismatch:
+            issues.append(
+                "scope mismatch for NAT Elastic IPs: "
+                + ", ".join(sorted(set(convergence_scope_mismatch)))
+            )
+        if convergence_timed_out:
+            issues.append(
+                "timed out waiting for NAT Elastic IP detach: " + ", ".join(convergence_timed_out)
+            )
+        if issues:
+            error = "; ".join(issues)
+            # Recovery classifiers reject any structured event containing
+            # "_failed". Keep convergence failure visible in CloudWatch even
+            # though the handler still finishes its defensive service sweep.
+            _log(
+                "elastic_ip_convergence_failed",
+                error=error,
+                not_visible=sorted(set(convergence_not_visible)),
+                scope_mismatch=sorted(set(convergence_scope_mismatch)),
+                timed_out=convergence_timed_out,
+                timeout_seconds=timeout,
+            )
 
         results[service] = {
             "would_release": would_release,
             "release_requested": release_requested,
-            "error": None,
+            "convergence_targets": convergence_targets,
+            "convergence_observed_attached": sorted(set(convergence_observed_attached)),
+            "converged_after_wait": sorted(set(converged_after_wait)),
+            "convergence_not_visible": sorted(set(convergence_not_visible)),
+            "convergence_scope_mismatch": sorted(set(convergence_scope_mismatch)),
+            "convergence_timed_out": convergence_timed_out,
+            "error": error,
         }
     except Exception as err:  # noqa: BLE001
         _log("elastic_ip_block_failed", error=str(err))
         results[service] = {
             "would_release": would_release,
             "release_requested": release_requested,
+            "convergence_targets": convergence_targets,
+            "convergence_observed_attached": sorted(set(convergence_observed_attached)),
+            "converged_after_wait": sorted(set(converged_after_wait)),
+            "convergence_not_visible": sorted(set(convergence_not_visible)),
+            "convergence_scope_mismatch": sorted(set(convergence_scope_mismatch)),
+            "convergence_timed_out": sorted(set(convergence_timed_out)),
             "error": str(err),
         }
     return results
@@ -537,6 +725,10 @@ def publish_summary(dry_run, results):
     lines.append("NAT gateway dry-run targets: {}".format(nat.get("would_delete", [])))
     lines.append("Elastic IP release requests: {}".format(eip.get("release_requested", [])))
     lines.append("Elastic IP dry-run targets: {}".format(eip.get("would_release", [])))
+    lines.append(
+        "Elastic IP releases after NAT detach: {}".format(eip.get("converged_after_wait", []))
+    )
+    lines.append("Elastic IP detach timeouts: {}".format(eip.get("convergence_timed_out", [])))
     if cost.get("amount") is not None:
         lines.append(
             "Month-to-date spend: {} {} (through {})".format(
@@ -599,15 +791,24 @@ def lambda_handler(event, context):
     )
 
     results = {}
-    # Each step is independent and catches its own exceptions, so the order is
-    # only about reporting clarity, not correctness.
+    # Service blocks catch their own exceptions. Network cleanup is deliberately
+    # ordered NLB, NAT, then EIP because NAT deletion can detach its EIP later in
+    # the same invocation.
     stop_flink_applications(dry_run, results)
     terminate_emr_clusters(dry_run, results)
     delete_msk_serverless_clusters(dry_run, results)
     zero_auto_scaling_groups(dry_run, results)
     delete_network_load_balancers(dry_run, results)
     delete_nat_gateways(dry_run, results)
-    release_unattached_elastic_ips(dry_run, results)
+    nat_result = results.get("nat_gateways", {})
+    allocation_key = "would_detach_allocation_ids" if dry_run else "delete_requested_allocation_ids"
+    nat_allocation_ids = nat_result.get(allocation_key, [])
+    release_unattached_elastic_ips(
+        dry_run,
+        results,
+        convergence_allocation_ids=nat_allocation_ids,
+        convergence_timeout_seconds=_eip_convergence_timeout(context),
+    )
     get_month_to_date_spend(results)
     publish_summary(dry_run, results)
 
