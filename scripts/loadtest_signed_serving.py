@@ -2560,9 +2560,17 @@ def _pending_supervisor_signals() -> set[signal.Signals]:
     return set(signal.sigpending()).intersection(_supervisor_signals())
 
 
-def _drain_pending_supervisor_signals() -> None:
-    while pending := _pending_supervisor_signals():
-        signal.sigwait(pending)
+def _restore_supervisor_signal_state(
+    previous_handlers: dict[int, Any],
+    prior_signal_mask: set[signal.Signals],
+) -> None:
+    """Discard late interrupts before restoring the caller's signal policy."""
+    _block_supervisor_signals()
+    for signum in _supervisor_signals():
+        signal.signal(signum, signal.SIG_IGN)
+    _restore_signal_mask(prior_signal_mask)
+    for signum, previous in previous_handlers.items():
+        signal.signal(signum, previous)
 
 
 def _close_supervisor_fd(fd: int) -> None:
@@ -2652,21 +2660,20 @@ def _supervise_child(
     read_fd = -1
     write_fd = -1
     child: subprocess.Popen | None = None
-    previous_handlers: dict[int, Any] = {}
     interrupt_state = _SupervisorInterruptState()
+    previous_handlers = {signum: signal.getsignal(signum) for signum in _supervisor_signals()}
     environment = environment.copy()
     environment.pop("HM_W5_SUPERVISOR_PARENT_PID", None)
 
     try:
         for signum in _supervisor_signals():
-            previous_handlers[signum] = signal.signal(signum, interrupt_state.handle)
+            signal.signal(signum, interrupt_state.handle)
         read_fd, write_fd = os.pipe()
         environment["HM_W5_SUPERVISOR_FD"] = str(read_fd)
         payload = json.dumps(asdict(grant), separators=(",", ":"), sort_keys=True).encode() + b"\n"
         if len(payload) > 4096:
             raise ValueError("supervisor capability payload exceeds 4096 bytes")
         if interrupt_state.interrupted or _pending_supervisor_signals():
-            _drain_pending_supervisor_signals()
             _write_supervisor_stop(
                 artifact_dir,
                 grant=grant,
@@ -2685,7 +2692,6 @@ def _supervise_child(
             start_new_session=True,
         )
         if interrupt_state.interrupted or _pending_supervisor_signals():
-            _drain_pending_supervisor_signals()
             _close_supervisor_fd(read_fd)
             read_fd = -1
             _close_supervisor_fd(write_fd)
@@ -2708,7 +2714,6 @@ def _supervise_child(
         read_fd = -1
         os.write(write_fd, payload)
         if interrupt_state.interrupted or _pending_supervisor_signals():
-            _drain_pending_supervisor_signals()
             _close_supervisor_fd(write_fd)
             write_fd = -1
             _stop_and_reap(
@@ -2767,7 +2772,6 @@ def _supervise_child(
                 )
             _block_supervisor_signals()
             if interrupt_state.interrupted or _pending_supervisor_signals():
-                _drain_pending_supervisor_signals()
                 _close_supervisor_fd(write_fd)
                 write_fd = -1
                 _stop_and_reap(
@@ -2786,8 +2790,9 @@ def _supervise_child(
                 return 130
             break
         evidence_valid = evidence_validator()
+        # This blocked check is the terminal-verdict linearization point. Signals
+        # observed before it invalidate the run; later signals are post-verdict.
         if interrupt_state.interrupted or _pending_supervisor_signals():
-            _drain_pending_supervisor_signals()
             _close_supervisor_fd(write_fd)
             write_fd = -1
             _stop_and_reap(
@@ -2891,14 +2896,13 @@ def _supervise_child(
         raise
     finally:
         _block_supervisor_signals()
-        if read_fd >= 0:
-            _close_supervisor_fd(read_fd)
-        if write_fd >= 0:
-            _close_supervisor_fd(write_fd)
-        for signum, previous in previous_handlers.items():
-            signal.signal(signum, previous)
-        _drain_pending_supervisor_signals()
-        _restore_signal_mask(prior_signal_mask)
+        try:
+            if read_fd >= 0:
+                _close_supervisor_fd(read_fd)
+            if write_fd >= 0:
+                _close_supervisor_fd(write_fd)
+        finally:
+            _restore_supervisor_signal_state(previous_handlers, prior_signal_mask)
 
 
 def supervise_cli(raw_argv: list[str], config: RunConfig) -> int:
