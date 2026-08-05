@@ -2537,6 +2537,82 @@ def test_interrupt_during_process_launch_terminates_claim_with_stop_verdict(tmp_
     assert stop["claim_id"] == claim.claim_id
 
 
+def test_signal_after_pipe_close_before_sentinel_does_not_double_close(monkeypatch, tmp_path):
+    artifact_dir = tmp_path / "close-signal-run"
+    cfg = config(tmp_path, artifact_dir=artifact_dir)
+    claim = loadtest._claim_supervisor_evidence(cfg)
+    grant = loadtest._build_supervisor_grant(cfg, claim)
+    now = time.monotonic()
+    plan = loadtest.SupervisorPlan(
+        cutoff_utc=datetime.now(UTC) + timedelta(seconds=3),
+        started_utc=datetime.now(UTC),
+        started_monotonic=now,
+        graceful_stop_monotonic=now + 2.0,
+        hard_stop_monotonic=now + 3.0,
+        required_window_seconds=1.0,
+        termination_grace_seconds=1.0,
+    )
+    closed_fds = []
+    interrupt_state = loadtest._SupervisorInterruptState()
+
+    class CloseSignalChild:
+        def __init__(self):
+            self.returncode = None
+            self.capability_fd = -1
+
+        def wait(self, timeout=None):
+            del timeout
+            self.returncode = -15
+            return self.returncode
+
+        def poll(self):
+            return self.returncode
+
+        def terminate(self):
+            self.returncode = -15
+
+        def kill(self):
+            raise AssertionError("close-signal cleanup should not need SIGKILL")
+
+    child = CloseSignalChild()
+    real_close = loadtest._close_supervisor_fd
+
+    def close_fd(fd):
+        real_close(fd)
+        closed_fds.append(fd)
+        if len(closed_fds) == 1:
+            interrupt_state.handle(signal.SIGTERM, None)
+
+    def child_factory(*_args, **kwargs):
+        child.capability_fd = os.dup(kwargs["pass_fds"][0])
+        return child
+
+    monkeypatch.setattr(loadtest, "_SupervisorInterruptState", lambda: interrupt_state)
+    monkeypatch.setattr(loadtest, "_close_supervisor_fd", close_fd)
+
+    try:
+        exit_code = loadtest._supervise_child(
+            ["ignored"],
+            environment=os.environ.copy(),
+            artifact_dir=artifact_dir,
+            grant=grant,
+            plan=plan,
+            evidence_validator=lambda: True,
+            popen_factory=child_factory,
+        )
+    finally:
+        if child.capability_fd >= 0:
+            os.close(child.capability_fd)
+
+    assert exit_code == 130
+    assert len(closed_fds) == 2
+    assert len(closed_fds) == len(set(closed_fds))
+    stop = json.loads(
+        artifact_dir.with_name(f"{artifact_dir.name}.supervisor-stop.json").read_text()
+    )
+    assert stop["reason"] == "supervisor_interrupted"
+
+
 def test_signal_after_real_child_creation_before_launch_return_is_reaped(tmp_path):
     artifact_dir = tmp_path / "post-fork-signal-run"
     cfg = config(tmp_path, artifact_dir=artifact_dir)
@@ -2583,6 +2659,48 @@ def test_signal_after_real_child_creation_before_launch_return_is_reaped(tmp_pat
     )
     assert stop["reason"] == "supervisor_interrupted"
     assert stop["terminate_sent"] is True
+
+
+def test_signal_during_evidence_validation_prevents_complete_verdict(monkeypatch, tmp_path):
+    artifact_dir = tmp_path / "evidence-signal-run"
+    cfg = config(tmp_path, artifact_dir=artifact_dir)
+    claim = loadtest._claim_supervisor_evidence(cfg)
+    grant = loadtest._build_supervisor_grant(cfg, claim)
+    now = time.monotonic()
+    plan = loadtest.SupervisorPlan(
+        cutoff_utc=datetime.now(UTC) + timedelta(seconds=3),
+        started_utc=datetime.now(UTC),
+        started_monotonic=now,
+        graceful_stop_monotonic=now + 2.0,
+        hard_stop_monotonic=now + 3.0,
+        required_window_seconds=1.0,
+        termination_grace_seconds=1.0,
+    )
+    interrupt_state = loadtest._SupervisorInterruptState()
+    monkeypatch.setattr(loadtest, "_SupervisorInterruptState", lambda: interrupt_state)
+
+    def interrupting_validator():
+        interrupt_state.handle(signal.SIGTERM, None)
+        return True
+
+    exit_code = loadtest._supervise_child(
+        [
+            sys.executable,
+            "-c",
+            "import os; os.read(int(os.environ['HM_W5_SUPERVISOR_FD']), 4096)",
+        ],
+        environment=os.environ.copy(),
+        artifact_dir=artifact_dir,
+        grant=grant,
+        plan=plan,
+        evidence_validator=interrupting_validator,
+    )
+
+    assert exit_code == 130
+    stop_path = artifact_dir.with_name(f"{artifact_dir.name}.supervisor-stop.json")
+    complete_path = artifact_dir.with_name(f"{artifact_dir.name}.supervisor-complete.json")
+    assert json.loads(stop_path.read_text())["reason"] == "supervisor_interrupted"
+    assert not complete_path.exists()
 
 
 def test_normal_child_with_unbound_evidence_gets_controlling_invalid_verdict(tmp_path):
