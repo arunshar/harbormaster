@@ -1,0 +1,22 @@
+scripts/loadtest_signed_serving.py
+  s_87fd0589dba2e0::t_196f00b50e6804 2563-2573,2664,2670,2793-2794,2899-2905
+tests/e2e/test_signed_serving_load.py
+  s_87fd0589dba2e0::t_196f00b50e6804 2083,2090-2102,2105-2107,2113,2115-2120,2122-2124,2126-2127,2140-2185,2715-2720
+  s_87fd0589dba2e0::t_f576ce0b4246c1 2740
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "ca673bbee0e6b73d4cdb50fd065859de7e306f1d",
+  "prompts": {},
+  "sessions": {
+    "s_87fd0589dba2e0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5912-4f5a-7aa3-8604-0ccba141cb86",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
