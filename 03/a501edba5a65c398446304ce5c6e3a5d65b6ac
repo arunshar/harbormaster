@@ -1,0 +1,14 @@
+tests/e2e/test_recovery4_sweep_wait.py
+  h_8abe3741bb28a3 1-166
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "03a501edba5a65c398446304ce5c6e3a5d65b6ac",
+  "prompts": {},
+  "humans": {
+    "h_8abe3741bb28a3": {
+      "author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
