@@ -227,6 +227,35 @@ Evidence and the generic recovery procedure are in
 subsection of `docs/runbooks/WAVE4_LIVE_WINDOWS.md`. Phase 5 remains OPEN; none
 of criteria (a), (b), or (f) gained live evidence from this partial attempt.
 
+## Recovery4 failure and local comparator fix recorded 2026-08-05
+
+This record does not provide authorization evidence. Recovery3 and Recovery4
+remain consumed evidence only. Recovery3's reviewed plan expired before TOTP,
+plan consumption, apply, or any mutation.
+
+Recovery4 was a fresh, single-use read-only reconciliation after the 07:00 UTC
+wet sweep. It verified a complete wet invocation with no logged service failure,
+then stopped at a local state comparison. The helper used `jq -S -c` followed by
+`cmp`; `jq -S` sorted object keys but preserved the different serialization
+orders of Terraform's 34 `check_results` records. Exact local comparison proved
+that all records and every other state value were identical after stable address
+ordering. Recovery4 stopped safely on the false-positive comparison and did not
+reach its later state-object, inventory, and readiness gates. No TOTP, plan,
+Terraform mutation, or AWS mutation occurred.
+
+The tracked `scripts/compare_terraform_state.py` now performs the strict
+comparison without writing another state copy. It rejects malformed or duplicate
+check identities, preserves `null` versus empty collections and every other array
+order, and writes only a private hash-only report. Its always-running regression
+suite includes a sanitized projection of the exact 34-record Recovery4
+permutation. Full details and local evidence are in
+`docs/drills/W4_RECOVERY4_STATE_COMPARISON_2026-08-05.md`.
+
+Recovery4 is consumed and must not be edited, retried, or treated as a completed
+checkpoint. After this comparator fix is merged with green CI, prepare and
+independently review a fresh checksum-bound Recovery5 read-only package. Only a
+successful fresh checkpoint can authorize a new saved plan. Phase 5 remains OPEN.
+
 ## Execution plan for the rest of the implementation (Codex)
 
 This is the full remaining work, split by SAFETY. The split is the contract, not a

@@ -825,6 +825,24 @@ files mode 600 and check all of the following before choosing a recovery path:
    by an atomic `terraform state pull` snapshot with lineage, serial, all taint
    and deposed-instance statuses, and a SHA-256 fingerprint. The raw state can
    contain secrets, so never print, commit, or share it.
+   Compare the downloaded object with the pulled snapshot through
+   `scripts/compare_terraform_state.py`. The comparator validates and stably
+   orders only Terraform's order-insensitive `check_results` and nested
+   `objects` collections, preserves every other value for exact comparison,
+   and writes a mode-600 hash-only report. Keep both raw hashes as evidence.
+   Plain `jq -S` is insufficient because it sorts object keys but not arrays.
+
+   Invoke the tracked comparator in isolated Python mode:
+
+   ```bash
+   python3 -I -B scripts/compare_terraform_state.py \
+     "$PINNED_STATE_JSON" "$PULLED_STATE_JSON" "$STATE_COMPARISON_REPORT"
+   ```
+
+   Exit 0 means the strictly validated states are equivalent. Exit 1 means a
+   valid state mismatch and is a STOP. Exit 2 means malformed input or an
+   unsafe invocation and is also a STOP. The comparator parses decimal numbers
+   losslessly and requires the expected Terraform-v4 top-level state fields.
 4. The saved plan's managed address set compared with the exact address set now
    tracked in state. Do not infer completion from terminal lines alone.
 5. The exact live AWS inventory for every planned address, including partially
