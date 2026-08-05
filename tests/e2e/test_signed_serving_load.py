@@ -25,6 +25,8 @@ from scripts import loadtest_signed_serving as loadtest
 
 RUN_ID = "12345678-1234-4234-9234-123456789abc"
 URL = "https://abc123.execute-api.us-east-1.amazonaws.com/v1/score-ais"
+INTEGRATION_ID = "int123"
+INTEGRATION_URI = "arn:aws:servicediscovery:us-east-1:645322802947:service/srv-wave5target"
 FIXTURE = Path("bench/fixtures/wave5_score_request.json")
 REAL_VALIDATE_REVIEWED_SOURCE = loadtest.validate_reviewed_source
 REAL_VALIDATE_LIVE_OWNERSHIP = loadtest.validate_live_ownership
@@ -121,6 +123,8 @@ def config(tmp_path: Path, **overrides) -> loadtest.RunConfig:
         "api_url": URL,
         "region": "us-east-1",
         "expected_api_id": "abc123",
+        "expected_integration_id": INTEGRATION_ID,
+        "expected_integration_uri": INTEGRATION_URI,
         "expected_git_head": "a" * 40,
         "expected_harness_sha256": "b" * 64,
         "expected_window_logic_sha256": "c" * 64,
@@ -155,6 +159,10 @@ def valid_argv(tmp_path: Path) -> list[str]:
         "us-east-1",
         "--expected-api-id",
         "abc123",
+        "--expected-integration-id",
+        INTEGRATION_ID,
+        "--expected-integration-uri",
+        INTEGRATION_URI,
         "--expected-git-head",
         "a" * 40,
         "--expected-harness-sha256",
@@ -209,6 +217,8 @@ def supervisor_grant(tmp_path: Path) -> loadtest.SupervisorGrant:
         parent_pid=os.getppid(),
         run_id=RUN_ID,
         expected_api_id="abc123",
+        expected_integration_id=INTEGRATION_ID,
+        expected_integration_uri=INTEGRATION_URI,
         expected_git_head="a" * 40,
         expected_harness_sha256="b" * 64,
         expected_window_logic_sha256="c" * 64,
@@ -254,10 +264,23 @@ def isolate_live_guards(monkeypatch):
     monkeypatch.setattr(
         loadtest,
         "validate_live_ownership",
-        lambda _config: {
+        lambda cfg: {
             "account": loadtest.EXPECTED_ACCOUNT_ID,
             "caller_arn": ("arn:aws:sts::645322802947:assumed-role/harbormaster-platform/test"),
             "api_id": "abc123",
+            "route": {
+                "route_id": "route-1",
+                "route_key": loadtest.EXPECTED_ROUTE_KEY,
+                "authorization_type": loadtest.EXPECTED_ROUTE_AUTHORIZATION,
+                "target": f"integrations/{cfg.expected_integration_id}",
+            },
+            "integration": {
+                "integration_id": cfg.expected_integration_id,
+                "integration_uri": cfg.expected_integration_uri,
+                "integration_type": loadtest.EXPECTED_INTEGRATION_TYPE,
+                "integration_method": loadtest.EXPECTED_INTEGRATION_METHOD,
+                "connection_type": loadtest.EXPECTED_CONNECTION_TYPE,
+            },
         },
     )
 
@@ -1544,6 +1567,7 @@ def test_ownership_clients_use_official_endpoints_no_proxy_and_exact_route(
 ):
     cfg = config(tmp_path)
     captured: dict[str, dict] = {}
+    integration_calls: list[dict] = []
 
     class Meta:
         def __init__(self, endpoint_url):
@@ -1585,9 +1609,20 @@ def test_ownership_clients_use_official_endpoints_no_proxy_and_exact_route(
                         "RouteId": "route-1",
                         "RouteKey": loadtest.EXPECTED_ROUTE_KEY,
                         "AuthorizationType": loadtest.EXPECTED_ROUTE_AUTHORIZATION,
-                        "Target": "integrations/integration-1",
+                        "Target": f"integrations/{INTEGRATION_ID}",
                     }
                 ]
+            }
+
+        @staticmethod
+        def get_integration(**kwargs):
+            integration_calls.append(kwargs)
+            return {
+                "IntegrationId": INTEGRATION_ID,
+                "IntegrationUri": INTEGRATION_URI,
+                "IntegrationType": loadtest.EXPECTED_INTEGRATION_TYPE,
+                "IntegrationMethod": loadtest.EXPECTED_INTEGRATION_METHOD,
+                "ConnectionType": loadtest.EXPECTED_CONNECTION_TYPE,
             }
 
     class Session:
@@ -1610,8 +1645,17 @@ def test_ownership_clients_use_official_endpoints_no_proxy_and_exact_route(
         assert kwargs["verify"] is True
         assert kwargs["config"].proxies == {}
         assert kwargs["config"].ignore_configured_endpoint_urls is True
+    assert integration_calls == [{"ApiId": "abc123", "IntegrationId": INTEGRATION_ID}]
     assert attestation["route"]["route_key"] == loadtest.EXPECTED_ROUTE_KEY
     assert attestation["route"]["authorization_type"] == "AWS_IAM"
+    assert attestation["route"]["target"] == f"integrations/{INTEGRATION_ID}"
+    assert attestation["integration"] == {
+        "integration_id": INTEGRATION_ID,
+        "integration_uri": INTEGRATION_URI,
+        "integration_type": "HTTP_PROXY",
+        "integration_method": "ANY",
+        "connection_type": "VPC_LINK",
+    }
     assert attestation["configured_endpoint_urls_ignored"] is True
 
 
@@ -1636,16 +1680,23 @@ def test_ownership_guard_requires_exact_account_role_api_and_tags(tmp_path):
             "RouteId": "route-1",
             "RouteKey": loadtest.EXPECTED_ROUTE_KEY,
             "AuthorizationType": loadtest.EXPECTED_ROUTE_AUTHORIZATION,
-            "Target": "integrations/integration-1",
+            "Target": f"integrations/{INTEGRATION_ID}",
         }
     ]
-    attestation = loadtest._validate_ownership_records(cfg, caller, api, routes)
+    integration = {
+        "IntegrationId": INTEGRATION_ID,
+        "IntegrationUri": INTEGRATION_URI,
+        "IntegrationType": loadtest.EXPECTED_INTEGRATION_TYPE,
+        "IntegrationMethod": loadtest.EXPECTED_INTEGRATION_METHOD,
+        "ConnectionType": loadtest.EXPECTED_CONNECTION_TYPE,
+    }
+    attestation = loadtest._validate_ownership_records(cfg, caller, api, routes, integration)
     assert attestation["account"] == loadtest.EXPECTED_ACCOUNT_ID
     assert attestation["api_id"] == "abc123"
 
     with pytest.raises(ValueError, match="account"):
         loadtest._validate_ownership_records(
-            cfg, {**caller, "Account": "000000000000"}, api, routes
+            cfg, {**caller, "Account": "000000000000"}, api, routes, integration
         )
     with pytest.raises(ValueError, match="caller ARN"):
         loadtest._validate_ownership_records(
@@ -1653,26 +1704,95 @@ def test_ownership_guard_requires_exact_account_role_api_and_tags(tmp_path):
             {**caller, "Arn": "arn:aws:iam::645322802947:user/arun-admin"},
             api,
             routes,
+            integration,
         )
     with pytest.raises(ValueError, match="name"):
-        loadtest._validate_ownership_records(cfg, caller, {**api, "Name": "other-api"}, routes)
+        loadtest._validate_ownership_records(
+            cfg, caller, {**api, "Name": "other-api"}, routes, integration
+        )
     with pytest.raises(ValueError, match="tags"):
-        loadtest._validate_ownership_records(cfg, caller, {**api, "Tags": {}}, routes)
+        loadtest._validate_ownership_records(cfg, caller, {**api, "Tags": {}}, routes, integration)
     with pytest.raises(ValueError, match="AWS_IAM"):
         loadtest._validate_ownership_records(
             cfg,
             caller,
             api,
             [{**routes[0], "AuthorizationType": "NONE"}],
+            integration,
         )
     with pytest.raises(ValueError, match="exactly one"):
-        loadtest._validate_ownership_records(cfg, caller, api, routes + routes)
+        loadtest._validate_ownership_records(cfg, caller, api, routes + routes, integration)
     with pytest.raises(ValueError, match="exactly one"):
         loadtest._validate_ownership_records(
             cfg,
             caller,
             api,
             [{**routes[0], "RouteKey": "GET /v1/score-ais"}],
+            integration,
+        )
+
+    with pytest.raises(ValueError, match="route target"):
+        loadtest._validate_ownership_records(
+            cfg,
+            caller,
+            api,
+            [{**routes[0], "Target": "integrations/other1"}],
+            integration,
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("IntegrationId", "other1"),
+        (
+            "IntegrationUri",
+            "arn:aws:servicediscovery:us-east-1:645322802947:service/srv-other",
+        ),
+        ("IntegrationType", "AWS_PROXY"),
+        ("IntegrationMethod", "POST"),
+        ("ConnectionType", "INTERNET"),
+    ),
+)
+def test_ownership_guard_rejects_private_integration_drift(tmp_path, field, value):
+    cfg = config(tmp_path)
+    caller = {
+        "Account": loadtest.EXPECTED_ACCOUNT_ID,
+        "Arn": "arn:aws:sts::645322802947:assumed-role/harbormaster-platform/w5-load",
+    }
+    api = {
+        "Name": loadtest.EXPECTED_API_NAME,
+        "ProtocolType": "HTTP",
+        "ApiEndpoint": "https://abc123.execute-api.us-east-1.amazonaws.com",
+        "Tags": {
+            "Project": "harbormaster",
+            "Environment": "base",
+            "ManagedBy": "terraform",
+        },
+    }
+    routes = [
+        {
+            "RouteId": "route-1",
+            "RouteKey": loadtest.EXPECTED_ROUTE_KEY,
+            "AuthorizationType": loadtest.EXPECTED_ROUTE_AUTHORIZATION,
+            "Target": f"integrations/{INTEGRATION_ID}",
+        }
+    ]
+    integration = {
+        "IntegrationId": INTEGRATION_ID,
+        "IntegrationUri": INTEGRATION_URI,
+        "IntegrationType": loadtest.EXPECTED_INTEGRATION_TYPE,
+        "IntegrationMethod": loadtest.EXPECTED_INTEGRATION_METHOD,
+        "ConnectionType": loadtest.EXPECTED_CONNECTION_TYPE,
+    }
+
+    with pytest.raises(ValueError, match="private integration"):
+        loadtest._validate_ownership_records(
+            cfg,
+            caller,
+            api,
+            routes,
+            {**integration, field: value},
         )
 
 
@@ -1808,7 +1928,70 @@ def test_config_from_valid_cli_arguments(tmp_path):
     args = loadtest.build_parser().parse_args(valid_argv(tmp_path))
     cfg = loadtest.config_from_args(args)
     assert cfg.run_id == RUN_ID
+    assert cfg.expected_integration_id == INTEGRATION_ID
+    assert cfg.expected_integration_uri == INTEGRATION_URI
     assert cfg.planned_request_count == 8
+
+
+def test_config_accepts_reviewed_nlb_listener_integration_uri(tmp_path):
+    nlb_listener_uri = (
+        "arn:aws:elasticloadbalancing:us-east-1:645322802947:"
+        "listener/net/harbormaster-serving/50dc6c495c0c9188/f2f7dc8efc522ab2"
+    )
+
+    cfg = config(tmp_path, expected_integration_uri=nlb_listener_uri)
+
+    assert cfg.expected_integration_uri == nlb_listener_uri
+
+
+def test_route_key_matches_terraform_proxy_while_request_url_keeps_score_path():
+    terraform = Path("infra/terraform/modules/apigw/main.tf").read_text()
+    start = terraform.index('resource "aws_apigatewayv2_route" "proxy"')
+    next_resource = terraform.find('\nresource "', start + 1)
+    proxy_block = terraform[start : next_resource if next_resource >= 0 else None]
+
+    assert loadtest.EXPECTED_ROUTE_KEY == "ANY /{proxy+}"
+    assert f'route_key = "{loadtest.EXPECTED_ROUTE_KEY}"' in proxy_block
+    assert loadtest.EXPECTED_SCORE_PATH == "/v1/score-ais"
+    assert URL.endswith(loadtest.EXPECTED_SCORE_PATH)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    (
+        ("expected_integration_id", "INVALID", "integration ID"),
+        (
+            "expected_integration_uri",
+            "arn:aws:servicediscovery:us-west-2:645322802947:service/srv-wrong",
+            "account and region",
+        ),
+        (
+            "expected_integration_uri",
+            "arn:aws:s3:us-east-1:645322802947:bucket/wrong",
+            "Cloud Map service or load balancer listener",
+        ),
+    ),
+)
+def test_config_rejects_unreviewable_integration_binding(tmp_path, field, value, message):
+    with pytest.raises(ValueError, match=message):
+        config(tmp_path, **{field: value})
+
+
+def test_runbook_prepares_private_parent_and_requires_integration_pins():
+    runbook = Path("docs/runbooks/WAVE5_SIGNED_SERVING_LOAD.md").read_text()
+    blocks = []
+    for heading in ("## 5. Proposed bounded load command", "## 6. Proposed bounded soak command"):
+        section = runbook.split(heading, 1)[1]
+        block = section.split("```bash", 1)[1].split("```", 1)[0]
+        blocks.append(block)
+
+    for block in blocks:
+        assert "install -d -m 700 artifacts/w5" in block
+        assert "stat -f '%Lp' artifacts/w5" in block
+        assert "W5_INTEGRATION_ID" in block
+        assert "W5_INTEGRATION_URI" in block
+        assert '--expected-integration-id "$W5_INTEGRATION_ID"' in block
+        assert '--expected-integration-uri "$W5_INTEGRATION_URI"' in block
 
 
 def test_inherited_pipe_grant_is_required_consumed_once_and_claim_bound(tmp_path, monkeypatch):
@@ -1857,6 +2040,31 @@ def test_inherited_pipe_grant_rejects_closed_fd_and_claim_tamper(tmp_path):
             environment={"HM_W5_SUPERVISOR_FD": str(read_fd)},
         )
     os.close(write_fd)
+
+
+def test_claim_target_tamper_fails_after_attacker_rehashes_files(tmp_path):
+    cfg = config(tmp_path)
+    claim = loadtest._claim_supervisor_evidence(cfg)
+    claim_payload = json.loads(claim.claim_path.read_text())
+    claim_payload["target_binding"]["integration_id"] = "other1"
+    claim.claim_path.write_text(json.dumps(claim_payload, indent=2, sort_keys=True) + "\n")
+    tampered_sha256 = loadtest._sha256(claim.claim_path)
+    claim.claim_manifest_path.write_text(f"{tampered_sha256}  {claim.claim_path.name}\n")
+    grant = replace(
+        loadtest._build_supervisor_grant(cfg, claim),
+        parent_pid=os.getppid(),
+        claim_sha256=tampered_sha256,
+    )
+    read_fd, write_fd = os.pipe()
+    os.write(write_fd, json.dumps(loadtest.asdict(grant)).encode() + b"\n")
+    try:
+        with pytest.raises(ValueError, match="claim binding"):
+            loadtest._consume_supervisor_grant(
+                cfg,
+                environment={"HM_W5_SUPERVISOR_FD": str(read_fd)},
+            )
+    finally:
+        os.close(write_fd)
 
 
 def test_parent_liveness_pipe_eof_requests_child_stop(monkeypatch):
@@ -1933,8 +2141,23 @@ def test_supervised_run_spec_and_manifest_bind_the_immutable_claim(tmp_path, mon
     assert exit_code == 0
     assert summary["valid_for_measurement"] is True
     run_spec = json.loads((cfg.artifact_dir / "run-spec.json").read_text())
+    claim_payload = json.loads(claim.claim_path.read_text())
+    expected_binding = loadtest._expected_target_binding(cfg)
+    assert claim_payload["target_binding"] == expected_binding
+    assert grant.expected_integration_id == INTEGRATION_ID
+    assert grant.expected_integration_uri == INTEGRATION_URI
     assert run_spec["evidence_binding"]["claim_id"] == claim.claim_id
     assert run_spec["evidence_binding"]["claim_sha256"] == claim.claim_sha256
+    assert run_spec["target"]["reviewed_binding"] == expected_binding
+    assert run_spec["target"]["ownership"]["integration"] == {
+        "integration_id": INTEGRATION_ID,
+        "integration_uri": INTEGRATION_URI,
+        "integration_type": "HTTP_PROXY",
+        "integration_method": "ANY",
+        "connection_type": "VPC_LINK",
+    }
+    assert run_spec["config"]["expected_integration_id"] == INTEGRATION_ID
+    assert run_spec["config"]["expected_integration_uri"] == INTEGRATION_URI
     assert loadtest._verify_evidence_binding(cfg, grant) is True
     assert loadtest._verify_supervisor_complete(cfg.artifact_dir, grant) is False
     now = datetime.now(UTC)
@@ -1946,6 +2169,72 @@ def test_supervised_run_spec_and_manifest_bind_the_immutable_claim(tmp_path, mon
         completed_at=now,
     )
     assert loadtest._verify_supervisor_complete(cfg.artifact_dir, grant) is True
+
+
+def test_supervisor_grant_rejects_integration_binding_tamper(tmp_path):
+    cfg = config(tmp_path)
+    claim = loadtest._claim_supervisor_evidence(cfg)
+    grant = replace(loadtest._build_supervisor_grant(cfg, claim), parent_pid=os.getppid())
+
+    with pytest.raises(ValueError, match="reviewed run configuration"):
+        loadtest._validate_supervisor_grant(
+            cfg,
+            replace(grant, expected_integration_id="other1"),
+        )
+    with pytest.raises(ValueError, match="reviewed run configuration"):
+        loadtest._validate_supervisor_grant(
+            cfg,
+            replace(
+                grant,
+                expected_integration_uri=(
+                    "arn:aws:servicediscovery:us-east-1:645322802947:service/srv-other"
+                ),
+            ),
+        )
+
+
+def test_semantically_tampered_target_evidence_fails_even_with_fresh_file_hash(
+    tmp_path, monkeypatch
+):
+    clock = FakeClock()
+    cfg = config(tmp_path)
+    workload = loadtest.load_workload(FIXTURE)
+    claim = loadtest._claim_supervisor_evidence(cfg)
+    grant = replace(loadtest._build_supervisor_grant(cfg, claim), parent_pid=os.getppid())
+    monkeypatch.setattr(loadtest, "_ACTIVE_SUPERVISOR_GRANT", grant)
+    transport, _calls = unique_success_transport(clock)
+    summary, exit_code = loadtest.execute_run(
+        cfg,
+        workload,
+        live_confirmation=loadtest.CONFIRM_PHRASE,
+        transport=transport,
+        monotonic=clock.monotonic,
+        sleep=clock.sleep,
+        utc_now=clock.utc_now,
+        executor_factory=ImmediateExecutor,
+        supervisor_grant=grant,
+    )
+    assert exit_code == 0
+    assert summary["valid_for_measurement"] is True
+    assert loadtest._verify_evidence_binding(cfg, grant) is True
+
+    run_spec_path = cfg.artifact_dir / "run-spec.json"
+    run_spec = json.loads(run_spec_path.read_text())
+    run_spec["target"]["reviewed_binding"]["integration_uri"] = (
+        "arn:aws:servicediscovery:us-east-1:645322802947:service/srv-tampered"
+    )
+    run_spec_path.write_text(json.dumps(run_spec, indent=2, sort_keys=True) + "\n")
+    manifest_path = cfg.artifact_dir / "evidence-files.sha256"
+    lines = manifest_path.read_text().splitlines()
+    lines = [
+        f"{loadtest._sha256(run_spec_path)}  run-spec.json"
+        if line.endswith("  run-spec.json")
+        else line
+        for line in lines
+    ]
+    manifest_path.write_text("\n".join(lines) + "\n")
+
+    assert loadtest._verify_evidence_binding(cfg, grant) is False
 
 
 def test_supervisor_complete_and_stop_verdicts_are_mutually_exclusive(tmp_path):
@@ -1975,6 +2264,9 @@ def test_supervisor_complete_and_stop_verdicts_are_mutually_exclusive(tmp_path):
         completed_at=now,
     )
     assert complete_path.is_file()
+    assert json.loads(complete_path.read_text())["target_binding"] == (
+        loadtest._expected_target_binding(grant)
+    )
     with pytest.raises(ValueError, match="complete verdict"):
         loadtest._write_supervisor_stop(
             artifact_dir,
@@ -1991,7 +2283,7 @@ def test_supervisor_complete_and_stop_verdicts_are_mutually_exclusive(tmp_path):
     stop_cfg = config(tmp_path, artifact_dir=stop_artifact)
     stop_claim = loadtest._claim_supervisor_evidence(stop_cfg)
     stop_grant = loadtest._build_supervisor_grant(stop_cfg, stop_claim)
-    loadtest._write_supervisor_stop(
+    stop_path = loadtest._write_supervisor_stop(
         stop_artifact,
         grant=stop_grant,
         reason="test_stop",
@@ -2000,6 +2292,9 @@ def test_supervisor_complete_and_stop_verdicts_are_mutually_exclusive(tmp_path):
         kill_sent=False,
         started_at=now,
         stopped_at=now,
+    )
+    assert json.loads(stop_path.read_text())["target_binding"] == (
+        loadtest._expected_target_binding(stop_grant)
     )
     stop_artifact.mkdir(mode=0o700)
     (stop_artifact / "summary.json").write_text("{}\n")

@@ -70,8 +70,14 @@ POST_KILL_REAP_SECONDS = 5.0
 EXPECTED_ACCOUNT_ID = "645322802947"
 EXPECTED_REGION = "us-east-1"
 EXPECTED_API_NAME = "harbormaster-base-serving-api"
-EXPECTED_ROUTE_KEY = "POST /v1/score-ais"
+EXPECTED_SCORE_PATH = "/v1/score-ais"
+# Pinned to aws_apigatewayv2_route.proxy.route_key in
+# infra/terraform/modules/apigw/main.tf. A regression test keeps the two exact.
+EXPECTED_ROUTE_KEY = "ANY /{proxy+}"
 EXPECTED_ROUTE_AUTHORIZATION = "AWS_IAM"
+EXPECTED_INTEGRATION_TYPE = "HTTP_PROXY"
+EXPECTED_INTEGRATION_METHOD = "ANY"
+EXPECTED_CONNECTION_TYPE = "VPC_LINK"
 OFFICIAL_STS_ENDPOINT = "https://sts.us-east-1.amazonaws.com"
 OFFICIAL_APIGATEWAYV2_ENDPOINT = "https://apigateway.us-east-1.amazonaws.com"
 MAX_ROUTE_PAGES = 20
@@ -149,6 +155,8 @@ class SupervisorGrant:
     parent_pid: int
     run_id: str
     expected_api_id: str
+    expected_integration_id: str
+    expected_integration_uri: str
     expected_git_head: str
     expected_harness_sha256: str
     expected_window_logic_sha256: str
@@ -170,6 +178,8 @@ class RunConfig:
     api_url: str
     region: str
     expected_api_id: str
+    expected_integration_id: str
+    expected_integration_uri: str
     expected_git_head: str
     expected_harness_sha256: str
     expected_window_logic_sha256: str
@@ -203,6 +213,13 @@ class RunConfig:
             raise ValueError("expected_api_id must be a lowercase API Gateway API ID")
         if actual_api_id != self.expected_api_id:
             raise ValueError("expected_api_id does not match api_url")
+        if urllib.parse.urlsplit(self.api_url).path != EXPECTED_SCORE_PATH:
+            raise ValueError(f"api_url path must equal {EXPECTED_SCORE_PATH}")
+        if not re.fullmatch(r"[a-z0-9]{6,32}", self.expected_integration_id):
+            raise ValueError(
+                "expected_integration_id must be a lowercase API Gateway integration ID"
+            )
+        _validate_expected_integration_uri(self.expected_integration_uri)
         if not GIT_SHA_RE.fullmatch(self.expected_git_head):
             raise ValueError("expected_git_head must be a full lowercase Git SHA")
         for name, value in (
@@ -346,6 +363,40 @@ class RunConfig:
             if trial_index < self.trials and self.cooldown_seconds > 0:
                 phases.append(Phase("cooldown", trial_index, self.cooldown_seconds))
         return phases
+
+
+def _validate_expected_integration_uri(value: str) -> str:
+    """Require one reviewed regional integration ARN owned by this account."""
+    if not isinstance(value, str) or any(character.isspace() for character in value):
+        raise ValueError("expected_integration_uri must be one integration ARN")
+    parts = value.split(":", 5)
+    if len(parts) != 6:
+        raise ValueError("expected_integration_uri must be one integration ARN")
+    arn, partition, service, region, account, resource = parts
+    if (
+        arn != "arn"
+        or partition != "aws"
+        or region != EXPECTED_REGION
+        or account != EXPECTED_ACCOUNT_ID
+    ):
+        raise ValueError("expected_integration_uri must belong to the reviewed account and region")
+    if service == "servicediscovery":
+        valid_resource = re.fullmatch(r"service/srv-[A-Za-z0-9]+", resource) is not None
+    elif service == "elasticloadbalancing":
+        valid_resource = (
+            re.fullmatch(
+                r"listener/(?:app|net)/[A-Za-z0-9-]{1,32}/[0-9a-f]+/[0-9a-f]+",
+                resource,
+            )
+            is not None
+        )
+    else:
+        valid_resource = False
+    if not valid_resource:
+        raise ValueError(
+            "expected_integration_uri must be a Cloud Map service or load balancer listener ARN"
+        )
+    return value
 
 
 def _bounded_float(
@@ -1372,6 +1423,24 @@ def validate_reviewed_source(config: RunConfig) -> dict[str, Any]:
     }
 
 
+def _expected_target_binding(
+    config: RunConfig | SupervisorGrant,
+) -> dict[str, str]:
+    """Return the exact route and private integration reviewed for this run."""
+    return {
+        "api_id": config.expected_api_id,
+        "score_path": EXPECTED_SCORE_PATH,
+        "route_key": EXPECTED_ROUTE_KEY,
+        "route_authorization": EXPECTED_ROUTE_AUTHORIZATION,
+        "route_target": f"integrations/{config.expected_integration_id}",
+        "integration_id": config.expected_integration_id,
+        "integration_uri": config.expected_integration_uri,
+        "integration_type": EXPECTED_INTEGRATION_TYPE,
+        "integration_method": EXPECTED_INTEGRATION_METHOD,
+        "connection_type": EXPECTED_CONNECTION_TYPE,
+    }
+
+
 def validate_live_ownership(config: RunConfig) -> dict[str, Any]:
     """Read-only AWS identity and API ownership checks before any scoring POST."""
     import botocore.session
@@ -1409,7 +1478,11 @@ def validate_live_ownership(config: RunConfig) -> dict[str, Any]:
     caller = sts.get_caller_identity()
     api = apigw.get_api(ApiId=config.expected_api_id)
     routes = _read_api_routes(apigw, config.expected_api_id)
-    attestation = _validate_ownership_records(config, caller, api, routes)
+    integration = apigw.get_integration(
+        ApiId=config.expected_api_id,
+        IntegrationId=config.expected_integration_id,
+    )
+    attestation = _validate_ownership_records(config, caller, api, routes, integration)
     attestation.update(
         {
             "region": EXPECTED_REGION,
@@ -1453,6 +1526,7 @@ def _validate_ownership_records(
     caller: dict[str, Any],
     api: dict[str, Any],
     routes: list[dict[str, Any]],
+    integration: dict[str, Any],
 ) -> dict[str, Any]:
     """Validate sanitized read-only STS and API Gateway responses."""
     account = str(caller.get("Account", ""))
@@ -1483,6 +1557,30 @@ def _validate_ownership_records(
     route = matching_routes[0]
     if route.get("AuthorizationType") != EXPECTED_ROUTE_AUTHORIZATION:
         raise ValueError("API Gateway scoring route must require AWS_IAM")
+    expected_binding = _expected_target_binding(config)
+    if route.get("Target") != expected_binding["route_target"]:
+        raise ValueError("API Gateway scoring route target mismatch")
+    if not isinstance(integration, dict):
+        raise ValueError("API Gateway integration response is malformed")
+    actual_integration = {
+        "integration_id": integration.get("IntegrationId"),
+        "integration_uri": integration.get("IntegrationUri"),
+        "integration_type": integration.get("IntegrationType"),
+        "integration_method": integration.get("IntegrationMethod"),
+        "connection_type": integration.get("ConnectionType"),
+    }
+    expected_integration = {
+        key: expected_binding[key]
+        for key in (
+            "integration_id",
+            "integration_uri",
+            "integration_type",
+            "integration_method",
+            "connection_type",
+        )
+    }
+    if actual_integration != expected_integration:
+        raise ValueError("API Gateway private integration does not match the reviewed target")
     return {
         "account": account,
         "caller_arn": caller_arn,
@@ -1496,6 +1594,7 @@ def _validate_ownership_records(
             "authorization_type": route["AuthorizationType"],
             "target": route.get("Target"),
         },
+        "integration": actual_integration,
     }
 
 
@@ -1555,6 +1654,7 @@ def _run_spec(
         "target": {
             "api_url": config.api_url,
             "region": config.region,
+            "reviewed_binding": _expected_target_binding(config),
             "ownership": ownership_attestation,
         },
         "reviewed_source": source_attestation,
@@ -1897,6 +1997,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--api-url", required=True)
     parser.add_argument("--region", required=True)
     parser.add_argument("--expected-api-id", required=True)
+    parser.add_argument("--expected-integration-id", required=True)
+    parser.add_argument("--expected-integration-uri", required=True)
     parser.add_argument("--expected-git-head", required=True)
     parser.add_argument("--expected-harness-sha256", required=True)
     parser.add_argument("--expected-window-logic-sha256", required=True)
@@ -1935,6 +2037,8 @@ def config_from_args(args: argparse.Namespace) -> RunConfig:
         api_url=args.api_url,
         region=args.region,
         expected_api_id=args.expected_api_id,
+        expected_integration_id=args.expected_integration_id,
+        expected_integration_uri=args.expected_integration_uri,
         expected_git_head=args.expected_git_head,
         expected_harness_sha256=args.expected_harness_sha256,
         expected_window_logic_sha256=args.expected_window_logic_sha256,
@@ -2005,6 +2109,7 @@ def _claim_supervisor_evidence(
         "artifact_dir": str(artifact_dir),
         "operator_cutoff_utc": config.operator_cutoff_utc,
         "expected_api_id": config.expected_api_id,
+        "target_binding": _expected_target_binding(config),
         "expected_git_head": config.expected_git_head,
         "reviewed_source_sha256": {
             "harness": config.expected_harness_sha256,
@@ -2052,6 +2157,8 @@ def _build_supervisor_grant(
         parent_pid=os.getpid(),
         run_id=config.run_id,
         expected_api_id=config.expected_api_id,
+        expected_integration_id=config.expected_integration_id,
+        expected_integration_uri=config.expected_integration_uri,
         expected_git_head=config.expected_git_head,
         expected_harness_sha256=config.expected_harness_sha256,
         expected_window_logic_sha256=config.expected_window_logic_sha256,
@@ -2069,6 +2176,8 @@ def _validate_supervisor_grant(config: RunConfig, grant: SupervisorGrant) -> Non
         "schema_version": SCHEMA_VERSION,
         "run_id": config.run_id,
         "expected_api_id": config.expected_api_id,
+        "expected_integration_id": config.expected_integration_id,
+        "expected_integration_uri": config.expected_integration_uri,
         "expected_git_head": config.expected_git_head,
         "expected_harness_sha256": config.expected_harness_sha256,
         "expected_window_logic_sha256": config.expected_window_logic_sha256,
@@ -2128,6 +2237,7 @@ def _consume_supervisor_grant(
             or claim_payload.get("artifact_dir") != grant.artifact_dir
             or claim_payload.get("operator_cutoff_utc") != grant.operator_cutoff_utc
             or claim_payload.get("expected_api_id") != grant.expected_api_id
+            or claim_payload.get("target_binding") != _expected_target_binding(config)
             or claim_payload.get("expected_git_head") != grant.expected_git_head
             or claim_payload.get("reviewed_source_sha256")
             != {
@@ -2212,6 +2322,7 @@ def _write_supervisor_stop(
         "claim_filename": grant.claim_filename,
         "expected_claim_sha256": grant.claim_sha256,
         "observed_claim_sha256": observed_claim_sha256,
+        "target_binding": _expected_target_binding(grant),
         "reason": reason,
         "child_exit_code": child_exit_code,
         "terminate_sent": terminate_sent,
@@ -2255,6 +2366,7 @@ def _write_supervisor_complete(
         "claim_id": grant.claim_id,
         "claim_filename": grant.claim_filename,
         "claim_sha256": grant.claim_sha256,
+        "target_binding": _expected_target_binding(grant),
         "child_exit_code": child_exit_code,
         "started_at_utc": _utc_z(started_at),
         "completed_at_utc": _utc_z(completed_at),
@@ -2294,6 +2406,7 @@ def _verify_supervisor_complete(artifact_dir: Path, grant: SupervisorGrant) -> b
             or complete.get("artifact_dir") != grant.artifact_dir
             or complete.get("claim_id") != grant.claim_id
             or complete.get("claim_sha256") != grant.claim_sha256
+            or complete.get("target_binding") != _expected_target_binding(grant)
         ):
             return False
         summary_path = artifact_dir / "summary.json"
@@ -2332,6 +2445,50 @@ def _verify_evidence_binding(config: RunConfig, grant: SupervisorGrant) -> bool:
             "artifact_dir": grant.artifact_dir,
         }
         if binding != expected_binding or run_spec.get("run_id") != grant.run_id:
+            return False
+        target = run_spec.get("target")
+        if not isinstance(target, dict):
+            return False
+        if target.get("api_url") != config.api_url or target.get("region") != config.region:
+            return False
+        if target.get("reviewed_binding") != _expected_target_binding(config):
+            return False
+        recorded_config = run_spec.get("config")
+        if not isinstance(recorded_config, dict):
+            return False
+        if (
+            recorded_config.get("expected_api_id") != config.expected_api_id
+            or recorded_config.get("expected_integration_id") != config.expected_integration_id
+            or recorded_config.get("expected_integration_uri") != config.expected_integration_uri
+        ):
+            return False
+        ownership = target.get("ownership")
+        if not isinstance(ownership, dict):
+            return False
+        expected_binding = _expected_target_binding(config)
+        if (
+            ownership.get("api_id") != expected_binding["api_id"]
+            or ownership.get("route")
+            != {
+                "route_id": ownership.get("route", {}).get("route_id")
+                if isinstance(ownership.get("route"), dict)
+                else None,
+                "route_key": expected_binding["route_key"],
+                "authorization_type": expected_binding["route_authorization"],
+                "target": expected_binding["route_target"],
+            }
+            or ownership.get("integration")
+            != {
+                key: expected_binding[key]
+                for key in (
+                    "integration_id",
+                    "integration_uri",
+                    "integration_type",
+                    "integration_method",
+                    "connection_type",
+                )
+            }
+        ):
             return False
         manifest_path = artifact_dir / "evidence-files.sha256"
         lines = manifest_path.read_text(encoding="utf-8").splitlines()

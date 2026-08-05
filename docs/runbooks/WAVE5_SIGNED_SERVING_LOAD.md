@@ -55,14 +55,17 @@ It is not a representative AIS distribution or a model-quality benchmark.
 - Request bound: at most 100,000 client requests including the signed preflight,
   with a lower explicit cap required on every command.
 - URL bound: exact regional HTTPS execute-api host and exact
-  `/v1/score-ais` path. Userinfo, ports, query strings, fragments, wrong regions,
-  alternate hosts, and redirects are rejected.
+  `/v1/score-ais` request path. Userinfo, ports, query strings, fragments, wrong
+  regions, alternate hosts, and redirects are rejected.
 - Identity: only `us-east-1` is accepted. Account `645322802947`, an assumed
   `harbormaster-platform` role, the Terraform-owned
-  `harbormaster-base-serving-api` name and tags, and exactly one
-  `POST /v1/score-ais` route protected by `AWS_IAM` are checked read-only before
-  any scoring POST. The control-plane checks use explicit official STS and API
-  Gateway endpoints.
+  `harbormaster-base-serving-api` name and tags, and exactly one Terraform proxy
+  route keyed `ANY /{proxy+}` and protected by `AWS_IAM` are checked read-only
+  before any scoring POST. The route target must be exactly
+  `integrations/<reviewed-integration-id>`. A read-only `GetIntegration` must
+  return that exact reviewed integration ID and URI with `HTTP_PROXY`, `ANY`, and
+  `VPC_LINK`. The control-plane checks use explicit official STS and API Gateway
+  endpoints. The scoring request URL remains `/v1/score-ais`.
 - Source: clean worktree, reviewed Git HEAD, and exact SHA256 values for the
   harness, shared response validator, and serving request model.
 - Credentials: fresh SigV4 credentials and timestamp for every attempt. Frozen
@@ -120,8 +123,12 @@ and refuses to overwrite it. Its files use mode `0600`:
 Before the child starts, the supervisor exclusively creates immutable sibling
 files named `<artifact-dir>.supervisor-claim.json` and
 `<artifact-dir>.supervisor-claim.sha256`. The claim binds the run UUID, absolute
-artifact path, cutoff, target API, reviewed commit, and reviewed source hashes.
-The run specification carries the claim ID and digest.
+artifact path, cutoff, target API ID, `/v1/score-ais` request path,
+`ANY /{proxy+}` route key, `AWS_IAM` authorization, exact
+`integrations/<reviewed-integration-id>` route target, private integration ID and
+URI, `HTTP_PROXY` type, `ANY` method, `VPC_LINK` connection type, reviewed
+commit, and reviewed source hashes. The run specification carries the claim ID
+and digest.
 
 If the process supervisor intervenes or completed evidence does not match that
 claim, it writes sibling files named
@@ -193,11 +200,15 @@ Arun runs this only in the approved future window:
 ```bash
 cd /Users/arunsharma/code/harbormaster
 
+install -d -m 700 artifacts/w5
+test "$(stat -f '%Lp' artifacts/w5)" = "700"
 W5_RUN_ID="$(python3 -c 'import uuid; print(uuid.uuid4())')"
 W5_STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 W5_ARTIFACT_DIR="artifacts/w5/${W5_STAMP}-signed-load"
 W5_SCORE_URL="${SERVING_API_URL%/}/v1/score-ais"
 : "${W5_API_ID:?copy from the reviewed Wave 5 plan package}"
+: "${W5_INTEGRATION_ID:?copy from the reviewed Wave 5 plan package}"
+: "${W5_INTEGRATION_URI:?copy from the reviewed Wave 5 plan package}"
 : "${W5_REVIEWED_GIT_HEAD:?copy from the reviewed Wave 5 plan package}"
 : "${W5_HARNESS_SHA256:?copy from the reviewed Wave 5 plan package}"
 : "${W5_WINDOW_LOGIC_SHA256:?copy from the reviewed Wave 5 plan package}"
@@ -209,6 +220,8 @@ W5_SCORE_URL="${SERVING_API_URL%/}/v1/score-ais"
   --api-url "$W5_SCORE_URL" \
   --region us-east-1 \
   --expected-api-id "$W5_API_ID" \
+  --expected-integration-id "$W5_INTEGRATION_ID" \
+  --expected-integration-uri "$W5_INTEGRATION_URI" \
   --expected-git-head "$W5_REVIEWED_GIT_HEAD" \
   --expected-harness-sha256 "$W5_HARNESS_SHA256" \
   --expected-window-logic-sha256 "$W5_WINDOW_LOGIC_SHA256" \
@@ -261,11 +274,15 @@ schedules 36,601 client requests including preflight under a 40,000 cap.
 ```bash
 cd /Users/arunsharma/code/harbormaster
 
+install -d -m 700 artifacts/w5
+test "$(stat -f '%Lp' artifacts/w5)" = "700"
 W5_RUN_ID="$(python3 -c 'import uuid; print(uuid.uuid4())')"
 W5_STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 W5_ARTIFACT_DIR="artifacts/w5/${W5_STAMP}-signed-soak"
 W5_SCORE_URL="${SERVING_API_URL%/}/v1/score-ais"
 : "${W5_API_ID:?copy from the reviewed Wave 5 plan package}"
+: "${W5_INTEGRATION_ID:?copy from the reviewed Wave 5 plan package}"
+: "${W5_INTEGRATION_URI:?copy from the reviewed Wave 5 plan package}"
 : "${W5_REVIEWED_GIT_HEAD:?copy from the reviewed Wave 5 plan package}"
 : "${W5_HARNESS_SHA256:?copy from the reviewed Wave 5 plan package}"
 : "${W5_WINDOW_LOGIC_SHA256:?copy from the reviewed Wave 5 plan package}"
@@ -277,6 +294,8 @@ W5_SCORE_URL="${SERVING_API_URL%/}/v1/score-ais"
   --api-url "$W5_SCORE_URL" \
   --region us-east-1 \
   --expected-api-id "$W5_API_ID" \
+  --expected-integration-id "$W5_INTEGRATION_ID" \
+  --expected-integration-uri "$W5_INTEGRATION_URI" \
   --expected-git-head "$W5_REVIEWED_GIT_HEAD" \
   --expected-harness-sha256 "$W5_HARNESS_SHA256" \
   --expected-window-logic-sha256 "$W5_WINDOW_LOGIC_SHA256" \
