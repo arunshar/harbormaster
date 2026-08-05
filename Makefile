@@ -8,7 +8,7 @@ TF_DIR := infra/terraform/envs/base
 COST_CAP := 75
 
 .PHONY: help fmt init validate plan apply apply-plan destroy cost \
-        serve-install serve-lint serve-test serve-run serve-fixture serve-docker flink-jar flink-package e2e \
+        serve-install serve-lint serve-format serve-test serve-run serve-fixture serve-docker flink-jar flink-package e2e \
         cdc-up cdc-down cdc-smoke cdc-consumer cdc-lambda-package cdc-e2e \
         lake-quality-smoke lake-backfill-smoke lake-training-export-smoke \
         drill-l1-training-serving-skew drill-l2-canary-rollback lake-e2e \
@@ -78,14 +78,23 @@ destroy:
 # Local Python toolchain for the deterministic AIS scorer in serving/ + streaming/.
 VENV := .venv
 PY := $(VENV)/bin/python
+# Keep in lockstep with the ruff steps in .github/workflows/serving-ci.yml.
+# infra/lambda is first-party handler code (cdc_slot_lag, drift_watch,
+# teardown); ruff's default excludes skip the vendored infra/lambda/*/build
+# dependency trees, so only the handlers and their tests are linted.
+RUFF_PATHS := serving streaming cdc lake mlops tests scripts infra/lambda
 
 serve-install:        ## create .venv and install the same full-suite extras as CI
 	python3 -m venv $(VENV)
 	$(PY) -m pip install --upgrade pip
 	$(PY) -m pip install -e ".[dev,serving-runtime,ingestor,lake,mlops,pidpm-demo]"
 
-serve-lint:           ## ruff lint serving + streaming + cdc + lake + tests
-	$(PY) -m ruff check serving streaming cdc lake tests
+serve-lint:           ## ruff check + ruff format --check, exactly as serving-ci runs them
+	$(PY) -m ruff check $(RUFF_PATHS)
+	$(PY) -m ruff format --check $(RUFF_PATHS)
+
+serve-format:         ## apply ruff-format in place (fixes what serve-lint's format check rejects)
+	$(PY) -m ruff format $(RUFF_PATHS)
 
 serve-test:           ## run the unit + golden test suite
 	$(PY) -m pytest -q
