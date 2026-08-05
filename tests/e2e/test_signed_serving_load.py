@@ -2080,24 +2080,51 @@ def test_parent_liveness_pipe_eof_requests_child_stop(monkeypatch):
     assert signals == [(os.getpid(), signal.SIGTERM)]
 
 
-def test_supervisor_signal_set_is_atomically_blocked_and_drained():
+def test_supervisor_signal_state_discards_pending_before_restore():
     check = """
 import os
 import signal
 
 from scripts import loadtest_signed_serving as loadtest
 
+initial_handlers = {
+    signum: signal.getsignal(signum) for signum in loadtest._supervisor_signals()
+}
+seen = []
+
+def prior_handler(signum, _frame):
+    seen.append(signum)
+
+for signum in loadtest._supervisor_signals():
+    signal.signal(signum, prior_handler)
+previous_handlers = {
+    signum: signal.getsignal(signum) for signum in loadtest._supervisor_signals()
+}
 prior_mask = loadtest._block_supervisor_signals()
 try:
+    interrupt_state = loadtest._SupervisorInterruptState()
+    for signum in loadtest._supervisor_signals():
+        signal.signal(signum, interrupt_state.handle)
     os.kill(os.getpid(), signal.SIGTERM)
     os.kill(os.getpid(), signal.SIGHUP)
     pending = loadtest._pending_supervisor_signals()
     assert signal.SIGTERM in pending
     assert signal.SIGHUP in pending
-    loadtest._drain_pending_supervisor_signals()
+    loadtest._restore_supervisor_signal_state(previous_handlers, prior_mask)
     assert loadtest._pending_supervisor_signals() == set()
+    assert signal.pthread_sigmask(signal.SIG_BLOCK, set()) == prior_mask
+    for signum, previous in previous_handlers.items():
+        assert signal.getsignal(signum) == previous
+    assert seen == []
+    os.kill(os.getpid(), signal.SIGTERM)
+    assert seen == [signal.SIGTERM]
 finally:
+    loadtest._block_supervisor_signals()
+    for signum in loadtest._supervisor_signals():
+        signal.signal(signum, signal.SIG_IGN)
     loadtest._restore_signal_mask(prior_mask)
+    for signum, initial in initial_handlers.items():
+        signal.signal(signum, initial)
 """
     completed = subprocess.run(
         [sys.executable, "-c", check],
@@ -2108,6 +2135,52 @@ finally:
         timeout=10,
     )
     assert completed.returncode == 0, completed.stderr
+
+
+def test_stale_pending_observation_never_calls_blocking_sigwait(monkeypatch, tmp_path):
+    artifact_dir = tmp_path / "stale-pending-run"
+    cfg = config(tmp_path, artifact_dir=artifact_dir)
+    claim = loadtest._claim_supervisor_evidence(cfg)
+    grant = loadtest._build_supervisor_grant(cfg, claim)
+    now = time.monotonic()
+    plan = loadtest.SupervisorPlan(
+        cutoff_utc=datetime.now(UTC) + timedelta(seconds=3),
+        started_utc=datetime.now(UTC),
+        started_monotonic=now,
+        graceful_stop_monotonic=now + 2.0,
+        hard_stop_monotonic=now + 3.0,
+        required_window_seconds=1.0,
+        termination_grace_seconds=1.0,
+    )
+
+    monkeypatch.setattr(
+        loadtest,
+        "_pending_supervisor_signals",
+        lambda: {signal.SIGTERM},
+    )
+    monkeypatch.setattr(
+        loadtest.signal,
+        "sigwait",
+        lambda *_args: (_ for _ in ()).throw(AssertionError("blocking sigwait is forbidden")),
+    )
+
+    exit_code = loadtest._supervise_child(
+        ["must-not-launch"],
+        environment=os.environ.copy(),
+        artifact_dir=artifact_dir,
+        grant=grant,
+        plan=plan,
+        evidence_validator=lambda: True,
+        popen_factory=lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("stale pending observation must stop before launch")
+        ),
+    )
+
+    assert exit_code == 130
+    stop = json.loads(
+        artifact_dir.with_name(f"{artifact_dir.name}.supervisor-stop.json").read_text()
+    )
+    assert stop["reason"] == "child_start_interrupted"
 
 
 def test_supervisor_claim_is_exclusive_and_consumes_the_artifact_namespace(tmp_path):
@@ -2537,6 +2610,82 @@ def test_interrupt_during_process_launch_terminates_claim_with_stop_verdict(tmp_
     assert stop["claim_id"] == claim.claim_id
 
 
+def test_signal_after_pipe_close_before_sentinel_does_not_double_close(monkeypatch, tmp_path):
+    artifact_dir = tmp_path / "close-signal-run"
+    cfg = config(tmp_path, artifact_dir=artifact_dir)
+    claim = loadtest._claim_supervisor_evidence(cfg)
+    grant = loadtest._build_supervisor_grant(cfg, claim)
+    now = time.monotonic()
+    plan = loadtest.SupervisorPlan(
+        cutoff_utc=datetime.now(UTC) + timedelta(seconds=3),
+        started_utc=datetime.now(UTC),
+        started_monotonic=now,
+        graceful_stop_monotonic=now + 2.0,
+        hard_stop_monotonic=now + 3.0,
+        required_window_seconds=1.0,
+        termination_grace_seconds=1.0,
+    )
+    closed_fds = []
+    interrupt_state = loadtest._SupervisorInterruptState()
+
+    class CloseSignalChild:
+        def __init__(self):
+            self.returncode = None
+            self.capability_fd = -1
+
+        def wait(self, timeout=None):
+            del timeout
+            self.returncode = -15
+            return self.returncode
+
+        def poll(self):
+            return self.returncode
+
+        def terminate(self):
+            self.returncode = -15
+
+        def kill(self):
+            raise AssertionError("close-signal cleanup should not need SIGKILL")
+
+    child = CloseSignalChild()
+    real_close = loadtest._close_supervisor_fd
+
+    def close_fd(fd):
+        real_close(fd)
+        closed_fds.append(fd)
+        if len(closed_fds) == 1:
+            interrupt_state.handle(signal.SIGTERM, None)
+
+    def child_factory(*_args, **kwargs):
+        child.capability_fd = os.dup(kwargs["pass_fds"][0])
+        return child
+
+    monkeypatch.setattr(loadtest, "_SupervisorInterruptState", lambda: interrupt_state)
+    monkeypatch.setattr(loadtest, "_close_supervisor_fd", close_fd)
+
+    try:
+        exit_code = loadtest._supervise_child(
+            ["ignored"],
+            environment=os.environ.copy(),
+            artifact_dir=artifact_dir,
+            grant=grant,
+            plan=plan,
+            evidence_validator=lambda: True,
+            popen_factory=child_factory,
+        )
+    finally:
+        if child.capability_fd >= 0:
+            os.close(child.capability_fd)
+
+    assert exit_code == 130
+    assert len(closed_fds) == 2
+    assert len(closed_fds) == len(set(closed_fds))
+    stop = json.loads(
+        artifact_dir.with_name(f"{artifact_dir.name}.supervisor-stop.json").read_text()
+    )
+    assert stop["reason"] == "supervisor_interrupted"
+
+
 def test_signal_after_real_child_creation_before_launch_return_is_reaped(tmp_path):
     artifact_dir = tmp_path / "post-fork-signal-run"
     cfg = config(tmp_path, artifact_dir=artifact_dir)
@@ -2563,7 +2712,12 @@ def test_signal_after_real_child_creation_before_launch_return_is_reaped(tmp_pat
     command = [
         sys.executable,
         "-c",
-        ("import os,time; os.read(int(os.environ['HM_W5_SUPERVISOR_FD']), 4096); time.sleep(60)"),
+        (
+            "import os,signal,time; "
+            "signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGTERM}); "
+            "os.read(int(os.environ['HM_W5_SUPERVISOR_FD']), 4096); "
+            "time.sleep(60)"
+        ),
     ]
     exit_code = loadtest._supervise_child(
         command,
@@ -2583,6 +2737,49 @@ def test_signal_after_real_child_creation_before_launch_return_is_reaped(tmp_pat
     )
     assert stop["reason"] == "supervisor_interrupted"
     assert stop["terminate_sent"] is True
+    assert stop["kill_sent"] is False
+
+
+def test_signal_during_evidence_validation_prevents_complete_verdict(monkeypatch, tmp_path):
+    artifact_dir = tmp_path / "evidence-signal-run"
+    cfg = config(tmp_path, artifact_dir=artifact_dir)
+    claim = loadtest._claim_supervisor_evidence(cfg)
+    grant = loadtest._build_supervisor_grant(cfg, claim)
+    now = time.monotonic()
+    plan = loadtest.SupervisorPlan(
+        cutoff_utc=datetime.now(UTC) + timedelta(seconds=3),
+        started_utc=datetime.now(UTC),
+        started_monotonic=now,
+        graceful_stop_monotonic=now + 2.0,
+        hard_stop_monotonic=now + 3.0,
+        required_window_seconds=1.0,
+        termination_grace_seconds=1.0,
+    )
+    interrupt_state = loadtest._SupervisorInterruptState()
+    monkeypatch.setattr(loadtest, "_SupervisorInterruptState", lambda: interrupt_state)
+
+    def interrupting_validator():
+        interrupt_state.handle(signal.SIGTERM, None)
+        return True
+
+    exit_code = loadtest._supervise_child(
+        [
+            sys.executable,
+            "-c",
+            "import os; os.read(int(os.environ['HM_W5_SUPERVISOR_FD']), 4096)",
+        ],
+        environment=os.environ.copy(),
+        artifact_dir=artifact_dir,
+        grant=grant,
+        plan=plan,
+        evidence_validator=interrupting_validator,
+    )
+
+    assert exit_code == 130
+    stop_path = artifact_dir.with_name(f"{artifact_dir.name}.supervisor-stop.json")
+    complete_path = artifact_dir.with_name(f"{artifact_dir.name}.supervisor-complete.json")
+    assert json.loads(stop_path.read_text())["reason"] == "supervisor_interrupted"
+    assert not complete_path.exists()
 
 
 def test_normal_child_with_unbound_evidence_gets_controlling_invalid_verdict(tmp_path):
