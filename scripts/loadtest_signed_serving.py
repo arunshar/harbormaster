@@ -67,6 +67,7 @@ MAX_EVENT_LEDGER_BYTES = 128 * 1024 * 1024
 READONLY_GUARD_RESERVE_SECONDS = 60.0
 EVIDENCE_SEAL_RESERVE_SECONDS = 30.0
 POST_KILL_REAP_SECONDS = 5.0
+SUPERVISOR_INTERRUPT_POLL_SECONDS = 0.1
 EXPECTED_ACCOUNT_ID = "645322802947"
 EXPECTED_REGION = "us-east-1"
 EXPECTED_API_NAME = "harbormaster-base-serving-api"
@@ -2538,6 +2539,15 @@ def _block_supervisor_signals() -> set[signal.Signals]:
     return signal.pthread_sigmask(signal.SIG_BLOCK, set(_supervisor_signals()))
 
 
+@dataclass
+class _SupervisorInterruptState:
+    interrupted: bool = False
+
+    def handle(self, _signum: int, _frame: Any) -> None:
+        self.interrupted = True
+        _block_supervisor_signals()
+
+
 def _restore_signal_mask(mask: set[signal.Signals]) -> None:
     signal.pthread_sigmask(signal.SIG_SETMASK, mask)
 
@@ -2550,9 +2560,21 @@ def _pending_supervisor_signals() -> set[signal.Signals]:
     return set(signal.sigpending()).intersection(_supervisor_signals())
 
 
-def _drain_pending_supervisor_signals() -> None:
-    while pending := _pending_supervisor_signals():
-        signal.sigwait(pending)
+def _restore_supervisor_signal_state(
+    previous_handlers: dict[int, Any],
+    prior_signal_mask: set[signal.Signals],
+) -> None:
+    """Discard late interrupts before restoring the caller's signal policy."""
+    _block_supervisor_signals()
+    for signum in _supervisor_signals():
+        signal.signal(signum, signal.SIG_IGN)
+    _restore_signal_mask(prior_signal_mask)
+    for signum, previous in previous_handlers.items():
+        signal.signal(signum, previous)
+
+
+def _close_supervisor_fd(fd: int) -> None:
+    os.close(fd)
 
 
 def _wait_for_child_until(
@@ -2638,24 +2660,20 @@ def _supervise_child(
     read_fd = -1
     write_fd = -1
     child: subprocess.Popen | None = None
-    previous_handlers: dict[int, Any] = {}
+    interrupt_state = _SupervisorInterruptState()
+    previous_handlers = {signum: signal.getsignal(signum) for signum in _supervisor_signals()}
     environment = environment.copy()
     environment.pop("HM_W5_SUPERVISOR_PARENT_PID", None)
 
-    def parent_signal(_signum: int, _frame: Any) -> None:
-        _block_supervisor_signals()
-        raise _SupervisorInterrupted
-
     try:
         for signum in _supervisor_signals():
-            previous_handlers[signum] = signal.signal(signum, parent_signal)
+            signal.signal(signum, interrupt_state.handle)
         read_fd, write_fd = os.pipe()
         environment["HM_W5_SUPERVISOR_FD"] = str(read_fd)
         payload = json.dumps(asdict(grant), separators=(",", ":"), sort_keys=True).encode() + b"\n"
         if len(payload) > 4096:
             raise ValueError("supervisor capability payload exceeds 4096 bytes")
-        if _pending_supervisor_signals():
-            _drain_pending_supervisor_signals()
+        if interrupt_state.interrupted or _pending_supervisor_signals():
             _write_supervisor_stop(
                 artifact_dir,
                 grant=grant,
@@ -2673,10 +2691,10 @@ def _supervise_child(
             pass_fds=(read_fd,),
             start_new_session=True,
         )
-        os.close(read_fd)
-        read_fd = -1
-        if _pending_supervisor_signals():
-            os.close(write_fd)
+        if interrupt_state.interrupted or _pending_supervisor_signals():
+            _close_supervisor_fd(read_fd)
+            read_fd = -1
+            _close_supervisor_fd(write_fd)
             write_fd = -1
             _stop_and_reap(
                 child,
@@ -2691,26 +2709,107 @@ def _supervise_child(
                 monotonic=monotonic,
                 utc_now=utc_now,
             )
-            _drain_pending_supervisor_signals()
             return 130
+        _close_supervisor_fd(read_fd)
+        read_fd = -1
         os.write(write_fd, payload)
-        _restore_signal_mask(prior_signal_mask)
-        try:
-            exit_code = int(
-                child.wait(timeout=max(0.0, plan.graceful_stop_monotonic - monotonic()))
-            )
-        except subprocess.TimeoutExpired:
-            return _stop_and_reap(
+        if interrupt_state.interrupted or _pending_supervisor_signals():
+            _close_supervisor_fd(write_fd)
+            write_fd = -1
+            _stop_and_reap(
                 child,
                 artifact_dir=artifact_dir,
                 grant=grant,
-                reason="operator_cutoff_stop",
+                reason="supervisor_interrupted",
                 started_at=started_at,
-                cleanup_deadline=plan.hard_stop_monotonic,
+                cleanup_deadline=min(
+                    plan.hard_stop_monotonic,
+                    monotonic() + plan.termination_grace_seconds,
+                ),
                 monotonic=monotonic,
                 utc_now=utc_now,
             )
-        if not evidence_validator():
+            return 130
+        _restore_signal_mask(prior_signal_mask)
+        while True:
+            if interrupt_state.interrupted:
+                _block_supervisor_signals()
+                _close_supervisor_fd(write_fd)
+                write_fd = -1
+                _stop_and_reap(
+                    child,
+                    artifact_dir=artifact_dir,
+                    grant=grant,
+                    reason="supervisor_interrupted",
+                    started_at=started_at,
+                    cleanup_deadline=min(
+                        plan.hard_stop_monotonic,
+                        monotonic() + plan.termination_grace_seconds,
+                    ),
+                    monotonic=monotonic,
+                    utc_now=utc_now,
+                )
+                return 130
+            remaining = max(0.0, plan.graceful_stop_monotonic - monotonic())
+            try:
+                exit_code = int(
+                    child.wait(timeout=min(SUPERVISOR_INTERRUPT_POLL_SECONDS, remaining))
+                )
+            except subprocess.TimeoutExpired:
+                if interrupt_state.interrupted:
+                    continue
+                if monotonic() < plan.graceful_stop_monotonic:
+                    continue
+                return _stop_and_reap(
+                    child,
+                    artifact_dir=artifact_dir,
+                    grant=grant,
+                    reason="operator_cutoff_stop",
+                    started_at=started_at,
+                    cleanup_deadline=plan.hard_stop_monotonic,
+                    monotonic=monotonic,
+                    utc_now=utc_now,
+                )
+            _block_supervisor_signals()
+            if interrupt_state.interrupted or _pending_supervisor_signals():
+                _close_supervisor_fd(write_fd)
+                write_fd = -1
+                _stop_and_reap(
+                    child,
+                    artifact_dir=artifact_dir,
+                    grant=grant,
+                    reason="supervisor_interrupted",
+                    started_at=started_at,
+                    cleanup_deadline=min(
+                        plan.hard_stop_monotonic,
+                        monotonic() + plan.termination_grace_seconds,
+                    ),
+                    monotonic=monotonic,
+                    utc_now=utc_now,
+                )
+                return 130
+            break
+        evidence_valid = evidence_validator()
+        # This blocked check is the terminal-verdict linearization point. Signals
+        # observed before it invalidate the run; later signals are post-verdict.
+        if interrupt_state.interrupted or _pending_supervisor_signals():
+            _close_supervisor_fd(write_fd)
+            write_fd = -1
+            _stop_and_reap(
+                child,
+                artifact_dir=artifact_dir,
+                grant=grant,
+                reason="supervisor_interrupted",
+                started_at=started_at,
+                cleanup_deadline=min(
+                    plan.hard_stop_monotonic,
+                    monotonic() + plan.termination_grace_seconds,
+                ),
+                monotonic=monotonic,
+                utc_now=utc_now,
+            )
+            return 130
+        if not evidence_valid:
             _block_supervisor_signals()
             _write_supervisor_stop(
                 artifact_dir,
@@ -2797,14 +2896,13 @@ def _supervise_child(
         raise
     finally:
         _block_supervisor_signals()
-        if read_fd >= 0:
-            os.close(read_fd)
-        if write_fd >= 0:
-            os.close(write_fd)
-        for signum, previous in previous_handlers.items():
-            signal.signal(signum, previous)
-        _drain_pending_supervisor_signals()
-        _restore_signal_mask(prior_signal_mask)
+        try:
+            if read_fd >= 0:
+                _close_supervisor_fd(read_fd)
+            if write_fd >= 0:
+                _close_supervisor_fd(write_fd)
+        finally:
+            _restore_supervisor_signal_state(previous_handlers, prior_signal_mask)
 
 
 def supervise_cli(raw_argv: list[str], config: RunConfig) -> int:
