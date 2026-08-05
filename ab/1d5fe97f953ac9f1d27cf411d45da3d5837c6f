@@ -1,0 +1,23 @@
+tests/e2e/test_recovery4_sweep_wait.py
+  s_87fd0589dba2e0::t_33963c5b943cee 279
+  s_87fd0589dba2e0::t_8756b3c7898f9d 63-74,162,198,201,262,300-301,303,306-339
+  s_87fd0589dba2e0::t_63a941c18ef761 1,5-9,18,28-30,36-39,86,129,157-161,212-213,232-240,242,244-260,264-267,271-277,280-299,302,304-305
+  s_87fd0589dba2e0::t_bdc13b80f939b0 132,148,156,163-164,172,186-197,199-200,202-211,241,243,261,263,268-270,278
+  s_87fd0589dba2e0::t_8dc58fa139ba91 214-216
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "ab1d5fe97f953ac9f1d27cf411d45da3d5837c6f",
+  "prompts": {},
+  "sessions": {
+    "s_87fd0589dba2e0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5912-4f5a-7aa3-8604-0ccba141cb86",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Arun Sharma <sharm485@umn.edu>"
+    }
+  }
+}
