@@ -1,0 +1,62 @@
+Take over Harbormaster progress verification in /Users/arunsharma/code/harbormaster.
+
+This is a Codex agent task. Do not interpret this message as shell syntax.
+
+Read this file completely before any other action:
+
+/Users/arunsharma/code/harbormaster/sessions/CODEX_HANDOFF_2026-08-06_WARP_PROGRESS_VERIFY.md
+
+That file is the controlling progress-verification handoff. Follow every check,
+safety rail, and stop condition in it.
+
+Then read, in order:
+
+1. /Users/arunsharma/code/harbormaster/sessions/WARP_PROMPT_2026-08-06_PROJECT_REMAINDER.txt
+2. /Users/arunsharma/code/harbormaster/sessions/WARP_HANDOFF_2026-08-06_PROJECT_REMAINDER.md
+3. /Users/arunsharma/code/harbormaster/sessions/CODEX_HANDOFF_2026-08-09.md
+4. /Users/arunsharma/code/harbormaster/sessions/WARP_CHECKPOINT_20260806T184237Z.md
+5. /Users/arunsharma/code/harbormaster/docs/runbooks/WAVE4_LIVE_WINDOWS.md
+
+Your mission is to VERIFY Warp progress since CODEX_HANDOFF_2026-08-09, not to
+re-run the whole remainder workflow from zero, and not to execute the Recovery12
+candidate-plan helper.
+
+Verify bootstrap identities:
+
+- Warp handoff SHA256: 110b5d3bc602c98bace4ea3061252951c9f58720aa341ad8c35b969c497b169e
+- Canonical handoff SHA256: 708637c60e250ae7bd3b0f6baff5afa657450579419ccc8db9b0d8046f07b00f
+- Warp prompt SHA256: 050e1b447ea6201ed3841857effca894fbd25165df630bc0b10e172dbd4145ac
+- Tip checkpoint SHA256: 372c9ddb80dbe9d165a059ebd5cfef825dd46cb4f7b2a7bbd6615f5a1e2f4929
+- Package/operator pin: 9f585908082a8c6e705571ed7f7d546de1563eb5
+- Local master HEAD must be a descendant of that pin (may include this verify-handoff commit)
+- origin/master may be docs-ahead at 7468d5f61e02816ed7a4be3a8e3607998ee9f484 (PR #46)
+- Recovery12 helper SHA256: f6c6b4d19df1394dc1ed895e25c687edfc3c160fba36b4a195646890447ba515
+- Recovery12 outer manifest SHA256: cfae7ee98193e4883a09d0db3520fe7d7caad802596b203c59598c30dc733d71
+- Gate script SHA256: 48805d30d3cee90324197e75136ae334711e428191ecba4286071e90ca0adb4d
+
+Expected stage: CANDIDATE_PLAN_READY_FOR_HUMAN_GATE
+
+Window open epoch 1786122000 (2026-08-07T17:00:00Z). Launch cutoff 1786125600.
+
+Run the Section 6 verification procedure from the progress handoff. Produce a
+PASS/FAIL report. Do not ask broad questions already answered by the handoffs.
+
+Never autonomously run Terraform plan/apply/destroy/state mutation, AWS
+mutation, ECR push, S3 upload, Kubernetes/Helm/Flink mutation, API retarget,
+signed live POST, or live load generation.
+
+Never enter or request TOTP in chat. Never send terminal input or approval
+phrases on Arun's behalf.
+
+Recovery11 remains permanently expired and non-runnable. Never invoke it or
+rename it into Recovery12.
+
+Do not execute:
+
+artifacts/w4/20260806T180258Z-warp-project-remainder/human-gate-candidate-plan/ARUN_RUNS_candidate_plan.sh
+
+unless Arun has already opened the window and explicitly ordered you only to
+observe; even then, Arun pastes and runs the command.
+
+Start now with the Section 6 verification script. Stop after the verification
+report unless a genuine identity failure requires a new investigation unit.
