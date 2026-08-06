@@ -1,0 +1,16 @@
+sessions/CODEX_BOOTSTRAP_2026-08-06_WARP_PROGRESS_VERIFY.txt
+  h_d0776529af46f1 1-61
+sessions/CODEX_HANDOFF_2026-08-06_WARP_PROGRESS_VERIFY.md
+  h_d0776529af46f1 1-370
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "7fd5dfa86b8c34e398f1b1eaf4d80b7186b9255b",
+  "prompts": {},
+  "humans": {
+    "h_d0776529af46f1": {
+      "author": "Arun Sharma <arunshar@umn.edu>"
+    }
+  }
+}
