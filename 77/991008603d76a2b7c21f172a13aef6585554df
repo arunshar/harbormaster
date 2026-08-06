@@ -1,0 +1,28 @@
+docs/w4/EVIDENCE_INDEX.md
+  h_d0776529af46f1 1-33
+docs/w4/HONESTY_DELTA_RECOVERY12.md
+  h_d0776529af46f1 1-22
+docs/w4/STATUS_RECOVERY12_PRE_CANDIDATE.md
+  h_d0776529af46f1 1-99
+sessions/WARP_CHECKPOINT_20260806T150223Z.md
+  h_d0776529af46f1 1-35
+sessions/WARP_CHECKPOINT_20260806T155756Z.md
+  h_d0776529af46f1 1-48
+sessions/WARP_CHECKPOINT_20260806T170832Z.md
+  h_d0776529af46f1 1-57
+sessions/WARP_CHECKPOINT_20260806T172546Z.md
+  h_d0776529af46f1 1-55
+sessions/WARP_CHECKPOINT_20260806T173554Z.md
+  h_d0776529af46f1 1-44
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "77991008603d76a2b7c21f172a13aef6585554df",
+  "prompts": {},
+  "humans": {
+    "h_d0776529af46f1": {
+      "author": "Arun Sharma <arunshar@umn.edu>"
+    }
+  }
+}
